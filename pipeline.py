@@ -27,16 +27,16 @@ from offset_corrector import OffsetCorrector
 
 @dataclass
 class PipelineConfig:
-    use_layer_selection: bool       # True for Config C/D/E
+    use_layer_selection: bool       # True for Config C/D
     compression_mode: str           # 'none'|'uniform_int8'|'uniform_int4'|'adaptive'
-    use_offset_correction: bool     # True for Config E only
+    use_offset_correction: bool
     reconstruction_strategy: str    # 'zeros'|'nearest'|'interpolate'
     n_agents: int = 3
     profile_path: Optional[str] = None
     system_prompts: List[str] = field(default_factory=lambda: [
-        "You are a mathematical reasoning agent. Analyze the problem carefully.",
-        "You are a verification agent. Review the reasoning and identify any errors.",
-        "You are a solution agent. Provide only the final numerical answer.",
+        "You are a mathematical reasoning agent. Think through the problem step by step. Do not give the final answer yet.",
+        "You are a verification agent. You have access to reasoning from a previous agent. Review the reasoning and check for errors. Do not give the final answer yet.",
+        "You are a solution agent. You have access to reasoning and verification from previous agents. Give only the final numerical answer in the format: The answer is [number].",
     ])
 
 
@@ -117,7 +117,7 @@ class LAKVPipeline:
             # ── decompress + inject KV from previous agent ───────────
             injected_kv_tuple: Optional[tuple] = None
             if kv_message is not None:
-                decompressed = self.compressor.decompress(kv_message)   # raw tuple
+                decompressed = self.compressor.decompress(kv_message, device=self.device)
 
                 if self.selector and selection_mask is not None:
                     decompressed = self.selector.reconstruct(
@@ -126,7 +126,8 @@ class LAKVPipeline:
                         strategy=self.config.reconstruction_strategy,
                     )
 
-                injected_kv_tuple = decompressed  # stays as tuple; _forward/_generate convert
+                # Ensure reconstructed tensors are on the model device before injection.
+                injected_kv_tuple = tuple((k.to(self.device), v.to(self.device)) for k, v in decompressed)
 
             if is_last:
                 # ── final agent: generate text ───────────────────────
@@ -212,12 +213,19 @@ class LAKVPipeline:
 
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
-            cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            kv_seq_len = injected_kv_tuple[0][0].shape[2]
+            new_seq_len = input_ids.shape[1]
             kwargs["past_key_values"] = cache
             kwargs["position_ids"] = torch.arange(
-                cache_seq_len, cache_seq_len + input_ids.shape[1],
-                device=self.device,
+                kv_seq_len,
+                kv_seq_len + new_seq_len,
+                device=input_ids.device,
             ).unsqueeze(0)
+            kwargs["cache_position"] = torch.arange(
+                kv_seq_len,
+                kv_seq_len + new_seq_len,
+                device=input_ids.device,
+            )
 
         with torch.no_grad():
             outputs = self.model(**kwargs)
@@ -225,68 +233,36 @@ class LAKVPipeline:
         return self._to_tuple(outputs.past_key_values)
 
     def _generate(self, input_ids: torch.Tensor, injected_kv_tuple: Optional[tuple] = None) -> str:
-        """Run generation for the final agent.
-
-        When KV is injected from a prior agent, model.generate() cannot be used
-        directly — generate() assumes past_key_values covers a prefix of the
-        *same* input_ids, but our KV comes from a *different* agent's prompt.
-        This causes internal cache_position trimming to produce an empty tensor,
-        crashing in _cache_dependant_input_preparation.
-
-        Solution: prime the cache with one explicit forward() call, then run a
-        manual greedy decode loop (one token at a time) using the primed cache.
-        When there is no KV to inject, fall back to model.generate() normally.
-        """
-        eos_id = self.tokenizer.eos_token_id
-
+        """Run generation for the final agent."""
+        kwargs = {
+            "input_ids": input_ids,
+            "max_new_tokens": 512,
+            "do_sample": False,
+            "use_cache": True,
+        }
         if injected_kv_tuple is None:
-            # ── No KV injection: standard generate ───────────────────
             with torch.no_grad():
-                output_ids = self.model.generate(
-                    input_ids=input_ids,
-                    max_new_tokens=512,
-                    do_sample=False,
-                )
-            new_tokens = output_ids[0, input_ids.shape[1]:]
-            return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-        # ── KV injection: forward-prime then manual greedy decode ─────
-        cache = self._to_dynamic_cache(injected_kv_tuple)
-        cache_seq_len = injected_kv_tuple[0][0].shape[2]
-        position_ids = torch.arange(
-            cache_seq_len, cache_seq_len + input_ids.shape[1],
-            device=self.device,
-        ).unsqueeze(0)
-
-        # Step 1 — Prime: forward pass with injected KV + full prompt
-        with torch.no_grad():
-            out = self.model(
-                input_ids=input_ids,
-                past_key_values=cache,
-                position_ids=position_ids,
-                use_cache=True,
+                output_ids = self.model.generate(**kwargs)
+        else:
+            cache = self._to_dynamic_cache(injected_kv_tuple)
+            kv_seq_len = injected_kv_tuple[0][0].shape[2]
+            new_seq_len = input_ids.shape[1]
+            kwargs["past_key_values"] = cache
+            kwargs["position_ids"] = torch.arange(
+                kv_seq_len,
+                kv_seq_len + new_seq_len,
+                device=input_ids.device,
+            ).unsqueeze(0)
+            kwargs["cache_position"] = torch.arange(
+                kv_seq_len,
+                kv_seq_len + new_seq_len,
+                device=input_ids.device,
             )
-        running_cache = out.past_key_values          # natural DynamicCache
-        next_logits   = out.logits[:, -1, :]         # logits for the next token
-
-        # Step 2 — Greedy decode one token at a time
-        generated: List[int] = []
-        for _ in range(512):
-            next_token = next_logits.argmax(-1, keepdim=True)  # (1, 1)
-            tok_id = next_token.item()
-            if tok_id == eos_id:
-                break
-            generated.append(tok_id)
             with torch.no_grad():
-                out = self.model(
-                    input_ids=next_token,
-                    past_key_values=running_cache,
-                    use_cache=True,
-                )
-            running_cache = out.past_key_values
-            next_logits   = out.logits[:, -1, :]
+                output_ids = self.model.generate(**kwargs)
 
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        new_tokens = output_ids[0, input_ids.shape[1]:]
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
 
 

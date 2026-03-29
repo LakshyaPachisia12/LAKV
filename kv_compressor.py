@@ -48,36 +48,6 @@ class KVMessage:
         return self.original_bytes / (1024 ** 2)
 
 
-# ─── quantisation math ────────────────────────────────────────────────────────
-
-def _quantize(tensor: torch.Tensor, bits: int):
-    """Per-head min-max quantisation.
-    tensor shape: (batch, heads, seq, dim)
-    Returns: (quantized_uint8, scale_per_head, zero_point_per_head)
-    """
-    t = tensor.detach().float()
-    qmax = (1 << bits) - 1
-
-    # Reduce over seq and dim dimensions -> per-head min/max
-    t_min = t.amin(dim=(-2, -1), keepdim=True)
-    t_max = t.amax(dim=(-2, -1), keepdim=True)
-
-    same = (t_max == t_min)
-    scale = torch.where(same, torch.ones_like(t_max), (t_max - t_min) / qmax)
-    zero_point = t_min
-
-    q = ((t - zero_point) / scale).round().clamp(0, qmax).to(torch.uint8)
-    return q, scale.squeeze(-1).squeeze(-1), zero_point.squeeze(-1).squeeze(-1)
-
-
-def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) -> torch.Tensor:
-    """Reconstruct float16 from per-head quantisation."""
-    s = scale.unsqueeze(-1).unsqueeze(-1).float()
-    zp = zero_point.unsqueeze(-1).unsqueeze(-1).float()
-    t = q.to(torch.float32) * s + zp
-    return t.to(torch.float16)
-
-
 # ─── compressor ───────────────────────────────────────────────────────────────
 
 class KVCompressor:
@@ -93,6 +63,34 @@ class KVCompressor:
             raise ValueError("'adaptive' mode requires a LayerProfile")
         self.mode = mode
         self.profile = profile
+
+    def _quantize_tensor(self, tensor: torch.Tensor, bits: int):
+        # tensor shape: (1, 4, seq_len, 128)
+        t = tensor.float()
+        qmax = (1 << bits) - 1  # 255 for 8-bit
+
+        # Per-head min/max: reduce over seq and dim dimensions
+        t_min = t.amin(dim=(-2, -1), keepdim=True)  # (1, 4, 1, 1)
+        t_max = t.amax(dim=(-2, -1), keepdim=True)  # (1, 4, 1, 1)
+
+        same = (t_max == t_min)
+        scale = torch.where(same, torch.ones_like(t_max), (t_max - t_min) / qmax)
+        zero_point = t_min
+
+        q = ((t - zero_point) / scale).round().clamp(0, qmax).to(torch.uint8)
+        # Store scale/zp as (1, 4) tensors for reconstruction
+        return q, scale.squeeze(-1).squeeze(-1), zero_point.squeeze(-1).squeeze(-1)
+
+    def _dequantize_tensor(
+        self,
+        q: torch.Tensor,
+        scale: torch.Tensor,
+        zero_point: torch.Tensor,
+    ) -> torch.Tensor:
+        # Broadcast scale/zp back to (1, 4, 1, 1)
+        s = scale.unsqueeze(-1).unsqueeze(-1).float()
+        zp = zero_point.unsqueeze(-1).unsqueeze(-1).float()
+        return (q.float() * s + zp).to(torch.float16)
 
     def _get_bits_for_layer(self, layer_idx: int, tier_info: Optional[Dict[int, int]] = None) -> int:
         if self.mode == 'none':
@@ -142,8 +140,11 @@ class KVCompressor:
                 )
                 compressed_bytes += k.nbytes + v.nbytes
             else:
-                k_q, k_scale, k_zp = _quantize(k, bits)
-                v_q, v_scale, v_zp = _quantize(v, bits)
+                if bits == 4:
+                    bits = 8  # INT4 disabled, fallback to INT8
+
+                k_q, k_scale, k_zp = self._quantize_tensor(k, bits)
+                v_q, v_scale, v_zp = self._quantize_tensor(v, bits)
 
                 cl = CompressedLayer(
                     k_q=k_q.cpu(),
@@ -180,12 +181,12 @@ class KVCompressor:
                 k = cl.k_q.to(device)
                 v = cl.v_q.to(device)
             else:
-                k = _dequantize(
+                k = self._dequantize_tensor(
                     cl.k_q.to(device),
                     cl.k_scale.to(device),
                     cl.k_zp.to(device)
                 )
-                v = _dequantize(
+                v = self._dequantize_tensor(
                     cl.v_q.to(device),
                     cl.v_scale.to(device),
                     cl.v_zp.to(device)

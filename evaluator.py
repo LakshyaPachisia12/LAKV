@@ -9,7 +9,7 @@ import csv
 import json
 import re
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -20,45 +20,60 @@ from pipeline import LAKVPipeline, PipelineConfig, RunResult
 
 # ── config presets ────────────────────────────────────────────────────────────
 
-PRESETS: Dict[str, PipelineConfig] = {
+CONFIGS: Dict[str, PipelineConfig] = {
     "A": PipelineConfig(
         use_layer_selection=False, compression_mode="none",
-        use_offset_correction=False, reconstruction_strategy="zeros",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+        n_agents=3,
     ),
     "B_int8": PipelineConfig(
         use_layer_selection=False, compression_mode="uniform_int8",
-        use_offset_correction=False, reconstruction_strategy="zeros",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+        n_agents=3,
     ),
     "B_int4": PipelineConfig(
         use_layer_selection=False, compression_mode="uniform_int4",
-        use_offset_correction=False, reconstruction_strategy="zeros",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+        n_agents=3,
     ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
-        use_offset_correction=False, reconstruction_strategy="zeros",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+        n_agents=3,
     ),
-    # "D": PipelineConfig(
-    #     use_layer_selection=True, compression_mode="none",
-    #     use_offset_correction=False, reconstruction_strategy="zeros",
-    # ),
-    # "D": PipelineConfig(
-    #     use_layer_selection=True, compression_mode="adaptive",
-    #     use_offset_correction=False, reconstruction_strategy="zeros",
-    # ),
     "D": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
-        use_offset_correction=False, reconstruction_strategy="zeros",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+        n_agents=3,
     ),
 }
 
+PRESETS = CONFIGS
+
 
 def extract_answer(text: str) -> Optional[str]:
-    """Extract numerical answer from model output (GSM8K format)."""
-    match = re.search(r"####\s*(-?\d[\d,]*(?:\.\d+)?)", text)
+    # Try "The answer is X" pattern first
+    match = re.search(r"[Tt]he answer is\s*\$?(-?[\d,]+(?:\.\d+)?)", text)
     if match:
         return match.group(1).replace(",", "")
+    # Try #### pattern (GSM8K standard)
+    match = re.search(r"####\s*\$?(-?[\d,]+(?:\.\d+)?)", text)
+    if match:
+        return match.group(1).replace(",", "")
+    # Fallback: last number in response
     numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)
-    return numbers[-1].replace(",", "") if numbers else None
+    if numbers:
+        return numbers[-1].replace(",", "")
+    return None
+
+
+def answers_match(predicted: Optional[str], gold: str) -> bool:
+    if predicted is None:
+        return False
+    try:
+        return abs(float(predicted) - float(gold)) < 1e-3
+    except Exception:
+        return predicted.strip() == gold.strip()
 
 
 class Evaluator:
@@ -70,14 +85,15 @@ class Evaluator:
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/"):
         if configs_to_run is None:
-            configs_to_run = ["A", "B_int8", "B_int4", "C", "D"]
+            configs_to_run = ["A", "B_int8", "C", "D"]
 
         samples = dataset[:n_samples]
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
         all_results = {}
 
         for cfg_name in configs_to_run:
-            preset = PRESETS[cfg_name]
+            base_cfg = CONFIGS[cfg_name]
+            preset = replace(base_cfg)
             if preset.use_layer_selection or preset.compression_mode == "adaptive":
                 preset.profile_path = profile_path
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
@@ -92,7 +108,8 @@ class Evaluator:
                 elapsed = time.time() - t0
                 pred = extract_answer(r.answer)
                 gold = str(s["answer"]).strip()
-                ok = pred is not None and pred.strip() == gold
+                ok = answers_match(pred, gold)
+                print(f"  Sample {i} | time={elapsed:.1f}s | answer={r.answer[:50]}")
                 if ok: correct += 1
                 nh = max(len(r.hop_stats), 1)
                 per_sample.append({"idx":i,"question":s["question"],"gold":gold,
@@ -131,38 +148,77 @@ class Evaluator:
                 {"question":"A train travels 60 miles in 2 hours. Speed in mph?","answer":"30"},
                 {"question":"Apples cost $2 each. How much for 5?","answer":"10"}]
         samples = dataset[:n_samples]
-        for cfg_name in ("A","D"):
-            preset = PRESETS[cfg_name]
-            if preset.use_layer_selection or preset.compression_mode == "adaptive":
-                preset.profile_path = profile_path
-            pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
-            print(f"\n{'='*60}\nSanity Check — Config {cfg_name}\n{'='*60}")
-            for i,s in enumerate(samples):
-                r = pipe.run(s["question"])
-                pred = extract_answer(r.answer)
-                print(f"  Q{i}: {s['question']}")
-                print(f"  → answer: {r.answer[:200]}...")
-                print(f"  → extracted: {pred}  |  gold: {s['answer']}")
-                print(f"  → KV: {r.total_compressed_mb:.2f} MB (ratio {r.overall_compression_ratio:.2f}x)\n")
+        cfg_a = replace(CONFIGS["A"])
+        cfg_d = replace(CONFIGS["D"])
+        cfg_d.profile_path = profile_path
+
+        pipe_a = LAKVPipeline(self.model, self.tokenizer, cfg_a, self.device)
+        pipe_d = LAKVPipeline(self.model, self.tokenizer, cfg_d, self.device)
+
+        print(f"\n{'='*80}\nSanity Check — Config A vs Config D\n{'='*80}")
+        for i, s in enumerate(samples):
+            r_a = pipe_a.run(s["question"])
+            r_d = pipe_d.run(s["question"])
+
+            pred_a = extract_answer(r_a.answer)
+            pred_d = extract_answer(r_d.answer)
+            gold = str(s["answer"]).strip()
+
+            print(f"\nSample {i}")
+            print(f"  Q: {s['question']}")
+            print(f"  Gold: {gold}")
+            print(f"  A answer: {r_a.answer[:150]}")
+            print(f"  A extracted: {pred_a} | match={answers_match(pred_a, gold)}")
+            print(f"  D answer: {r_d.answer[:150]}")
+            print(f"  D extracted: {pred_d} | match={answers_match(pred_d, gold)}")
+            print(
+                f"  KV sizes | A: {r_a.total_compressed_mb:.2f} MB "
+                f"({r_a.overall_compression_ratio:.2f}x) "
+                f"| D: {r_d.total_compressed_mb:.2f} MB ({r_d.overall_compression_ratio:.2f}x)"
+            )
 
     @staticmethod
     def _print_table(all_results):
-        labels = {"A":"A (raw)","B_int8":"B_int8","B_int4":"B_int4","C":"C (sel)","D":"D (sel+cmp)"}
-        hdr = f"{'Config':<13}| {'Accuracy':>8} | {'KV/hop (MB)':>11} | {'Comp Ratio':>10} | {'Layers Sent':>11} | {'Latency(s)':>10}"
-        print(f"\n{hdr}\n{'-'*len(hdr)}")
-        for c,d in all_results.items():
-            s=d["summary"]; lb=labels.get(c,c)
-            print(f"{lb:<13}| {s['accuracy']*100:>7.1f}% | {s['mean_compressed_mb']:>8.2f} MB | "
-                  f"{s['mean_compression_ratio']:>8.2f}x | {s['mean_layers_transmitted']:>5.0f}/28     | {s['mean_latency_seconds']:>8.1f}s")
+        labels = {
+            "A": "A (raw)",
+            "B_int8": "B_int8",
+            "B_int4": "B_int4",
+            "C": "C (sel)",
+            "D": "D (sel+cmp)",
+        }
+        order = ["A", "B_int8", "B_int4", "C", "D"]
+
+        print("\nConfig       | Accuracy | KV/hop (MB) | Comp Ratio | Layers Sent | Latency(s)")
+        print("-------------|----------|-------------|------------|-------------|----------")
+        for cfg_name in order:
+            if cfg_name not in all_results:
+                continue
+            s = all_results[cfg_name]["summary"]
+            layers = int(round(s["mean_layers_transmitted"]))
+            print(
+                f"{labels[cfg_name]:<12} | "
+                f"{s['accuracy']*100:>6.1f}% | "
+                f"{s['mean_compressed_mb']:>9.2f} MB | "
+                f"{s['mean_compression_ratio']:>8.2f}x | "
+                f"{layers:>6d}/28    | "
+                f"{s['mean_latency_seconds']:>7.1f}s"
+            )
 
     @staticmethod
     def _save_csv(all_results, path):
-        with open(path,"w",newline="") as f:
-            w=csv.writer(f)
-            w.writerow(["config","accuracy","mean_compressed_mb","mean_compression_ratio",
-                "mean_layers_transmitted","mean_latency_seconds","n_correct","n_samples"])
-            for c,d in all_results.items():
-                s=d["summary"]
-                w.writerow([c,f"{s['accuracy']:.4f}",f"{s['mean_compressed_mb']:.4f}",
-                    f"{s['mean_compression_ratio']:.4f}",f"{s['mean_layers_transmitted']:.1f}",
-                    f"{s['mean_latency_seconds']:.2f}",s["n_correct"],s["n_samples"]])
+        order = ["A", "B_int8", "B_int4", "C", "D"]
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["Config", "Accuracy", "KV/hop (MB)", "Comp Ratio", "Layers Sent", "Latency(s)"])
+            for cfg_name in order:
+                if cfg_name not in all_results:
+                    continue
+                s = all_results[cfg_name]["summary"]
+                w.writerow([
+                    cfg_name,
+                    f"{s['accuracy']*100:.1f}%",
+                    f"{s['mean_compressed_mb']:.2f}",
+                    f"{s['mean_compression_ratio']:.2f}x",
+                    f"{int(round(s['mean_layers_transmitted']))}/28",
+                    f"{s['mean_latency_seconds']:.1f}s",
+                ])

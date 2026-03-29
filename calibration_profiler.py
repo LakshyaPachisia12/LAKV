@@ -188,45 +188,28 @@ class CalibrationProfiler:
     # ── Signal 1: Attention Importance ────────────────────────────────────
 
     def _compute_attention_importance(self, question: str) -> torch.Tensor:
-        """A_l = 1 / (mean_entropy + ε) from attention weight matrices.
-
-        Requires the model to be loaded with attn_implementation='eager' so
-        that output_attentions=True is respected (sdpa/flash do not return
-        attention weight tensors). We also call set_attn_implementation here
-        as a belt-and-suspenders guard.
-        """
+        """A_l = 1 / (mean_entropy + ε) from attention weight matrices."""
         prompt = self._build_prompt(question)
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-        # Ensure eager attention so output_attentions works
-        if hasattr(self.model, "set_attn_implementation"):
-            self.model.set_attn_implementation("eager")
-
         with torch.no_grad():
-            outputs = self.model(**inputs, output_attentions=True)
+            outputs = self.model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs.get("attention_mask"),
+                output_attentions=True,
+                use_cache=True,
+            )
 
         if outputs.attentions is None:
-            raise RuntimeError(
-                "outputs.attentions is None — load the model with "
-                "attn_implementation='eager' in AutoModelForCausalLM.from_pretrained()"
-            )
+            raise RuntimeError("outputs.attentions is None; attention signal cannot be computed")
 
         # outputs.attentions: tuple of (batch, n_heads, seq, seq) per layer
         A_l = torch.zeros(self.N_LAYERS)
         for layer_idx, attn_weights in enumerate(outputs.attentions):
-            # attn_weights: (1, n_heads, seq, seq)
-            # Cast to float32 first — float16 entropy can overflow to ±inf
-            w = attn_weights[0].float().clamp(min=0.0)  # (n_heads, seq, seq)
-            # Renormalise rows in case of fp16 rounding drift
-            w = w / (w.sum(dim=-1, keepdim=True) + 1e-9)
-            log_w = torch.log(w + 1e-9)
-            entropy = -(w * log_w).sum(dim=-1)           # (n_heads, seq)
-            # Guard: replace any NaN/Inf from degenerate heads with zeros
+            w = attn_weights.float()
+            entropy = -torch.sum(w * torch.log(w + 1e-9), dim=-1)
             entropy = torch.nan_to_num(entropy, nan=0.0, posinf=0.0, neginf=0.0)
-            mean_entropy = entropy.mean().item()
-            # Clamp to avoid 1/0; negative entropy is impossible, treat as zero
-            mean_entropy = max(mean_entropy, 0.0)
-            A_l[layer_idx] = 1.0 / (mean_entropy + 1e-6)
+            A_l[layer_idx] = 1.0 / (entropy.mean().item() + 1e-6)
 
         return A_l.cpu()
 

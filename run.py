@@ -3,12 +3,12 @@ LAKV — Main entry point.
 
 Usage:
   python run.py --mode calibrate
-      → saves to profiles/run_<timestamp>/
+            → saves to profiles/qwen_gsm8k.json and plots in profiles/
 
-  python run.py --mode sanity --profile_path profiles/run_<timestamp>/qwen_gsm8k.json
-      → 3-sample sanity check (Config A vs D)
+    python run.py --mode sanity --profile_path profiles/qwen_gsm8k.json
+            → 3-sample sanity check (Config A vs D)
 
-  python run.py --mode experiment --profile_path profiles/run_<timestamp>/qwen_gsm8k.json
+    python run.py --mode experiment --profile_path profiles/qwen_gsm8k.json
       → full evaluation, results saved to results/run_<timestamp>/
 """
 
@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -25,17 +26,18 @@ def _timestamp() -> str:
 
 
 def load_model(model_name: str, device: str):
-    """Load Qwen2.5-7B in float16 with eager attention for calibration support."""
+    """Load Qwen2.5-7B using the standard LAKV settings."""
     print(f"[run] Loading model: {model_name} …")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        dtype=torch.float16,
-        device_map=device,
-        attn_implementation="eager",
-        trust_remote_code=True,
+        torch_dtype=torch.float16,
+        device_map="cuda",
     )
     model.eval()
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        padding_side="left",
+    )
     return model, tokenizer
 
 
@@ -52,11 +54,32 @@ def load_gsm8k(split: str = "test", n: int = None):
     return data
 
 
+def run_compressor_test(device: str = "cuda"):
+    from kv_compressor import KVCompressor
+
+    dummy_k = torch.randn(1, 4, 512, 128, dtype=torch.float16, device=device)
+    dummy_v = torch.randn(1, 4, 512, 128, dtype=torch.float16, device=device)
+    dummy_kv = ((dummy_k, dummy_v),)
+
+    compressor = KVCompressor(mode="uniform_int8")
+    msg = compressor.compress(dummy_kv)
+    recon = compressor.decompress(msg, device=device)
+
+    k_orig = dummy_k.float().flatten().unsqueeze(0)
+    k_recon = recon[0][0].float().flatten().unsqueeze(0)
+    cosine_sim = F.cosine_similarity(k_orig, k_recon).item()
+
+    print(f"Compressor test: cosine_sim={cosine_sim:.6f}")
+    if cosine_sim < 0.999:
+        print("WARNING: compression may be broken")
+    else:
+        print("Compressor OK")
+
+
 def mode_calibrate(args):
     from calibration_profiler import CalibrationProfiler, plot_signals, plot_score_scatter
 
-    # New timestamped folder for every calibration run
-    profile_dir = Path(args.profile_dir) / f"run_{_timestamp()}"
+    profile_dir = Path(args.profile_dir)
     profile_dir.mkdir(parents=True, exist_ok=True)
     profile_path = profile_dir / "qwen_gsm8k.json"
     print(f"[run] Profile will be saved to: {profile_path}")
@@ -83,15 +106,13 @@ def mode_calibrate(args):
 
 def mode_sanity(args):
     from evaluator import Evaluator
-    from kv_compressor import KVCompressor
-    
+
     if not args.profile_path:
         raise ValueError("--profile_path is required for --mode sanity. "
                          "Run calibrate first and use the printed path.")
-                         
-    # Run compressor sanity check FIRST before pipeline sanity
-    print("Step 0: Verifying KVCompressor before running pipeline...")
-    KVCompressor.run_sanity_check(device=args.device)
+
+    print("Step 0: Verifying compressor before running pipeline...")
+    run_compressor_test(device=args.device)
     print()
 
     model, tokenizer = load_model(args.model, args.device)
@@ -129,9 +150,9 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100)
     parser.add_argument("--n_calibration", type=int, default=50)
     parser.add_argument("--configs", nargs="+",
-                        default=["A", "B_int8", "B_int4", "C", "D"])
+                        default=["A", "B_int8", "C", "D"])
     parser.add_argument("--profile_dir", default="profiles",
-                        help="Base dir for calibration profiles (timestamped sub-folder auto-created)")
+                        help="Directory where calibration profile and plots are saved")
     parser.add_argument("--profile_path", default=None,
                         help="Explicit path to LayerProfile JSON (required for sanity/experiment)")
     parser.add_argument("--output_dir", default="results",
