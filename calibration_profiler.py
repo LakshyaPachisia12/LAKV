@@ -331,7 +331,7 @@ def plot_signals(profile: LayerProfile, save_path: str) -> None:
     axes[1, 1].set_xlabel("Layer")
     axes[1, 1].set_ylabel("Score")
 
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
