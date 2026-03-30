@@ -167,38 +167,29 @@ class LAKVPipeline:
             # -- build input_ids for this agent -----------------------------
             # Agent 0 encodes the full conversation. Agent 1+ with injected KV
             # must encode only the newly appended continuation user turn.
+            # Always apply template to full history
+            prompt_text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            full_enc = self.tokenizer(prompt_text, return_tensors="pt").to(self.device)
+
             if injected_kv_tuple is None:
-                prompt_text = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                input_ids = full_enc["input_ids"]
+                attn_mask = full_enc["attention_mask"]
             else:
-                if not messages or messages[-1]["role"] != "user":
-                    raise RuntimeError(
-                        "Injected KV requires the last message to be a user continuation turn."
-                    )
-
-                prompt_text = self.tokenizer.apply_chat_template(
-                    [messages[-1]], tokenize=False, add_generation_prompt=True
+                # Encode the previous turn's full context to find the split point
+                prev_messages = messages[:-1]  # everything except the last user turn
+                prev_text = self.tokenizer.apply_chat_template(
+                    prev_messages, tokenize=False, add_generation_prompt=False
                 )
+                prev_len = len(self.tokenizer(prev_text, return_tensors="pt")["input_ids"][0])
 
-            enc = self.tokenizer(prompt_text, return_tensors="pt").to(self.device)
-            input_ids = enc["input_ids"]
-            attn_mask = enc["attention_mask"]
-
-            if injected_kv_tuple is not None:
-                bos_id = self.tokenizer.bos_token_id
-                if (
-                    bos_id is not None
-                    and input_ids.shape[1] > 0
-                    and int(input_ids[0, 0].item()) == int(bos_id)
-                ):
-                    input_ids = input_ids[:, 1:]
-                    attn_mask = attn_mask[:, 1:]
+                # Feed only the new tokens — the KV already covers prev_len tokens
+                input_ids = full_enc["input_ids"][:, prev_len:]
+                attn_mask = full_enc["attention_mask"][:, prev_len:]
 
                 if input_ids.shape[1] == 0:
-                    raise RuntimeError(
-                        "Continuation encoding produced zero tokens for an injected-KV agent."
-                    )
+                    raise RuntimeError("Delta encoding produced zero tokens.")
 
             # -- generate (all agents generate) -----------------------------
             raw_output_ids, full_kv_tuple = self._generate_with_kv(
@@ -306,10 +297,11 @@ class LAKVPipeline:
         generation_attention_mask = attention_mask
 
         kwargs: dict = {
-            "input_ids":      input_ids,
-            "max_new_tokens": max_new_tokens,
-            "do_sample":      False,
-            "use_cache":      True,
+            "input_ids":              input_ids,
+            "max_new_tokens":         max_new_tokens,
+            "do_sample":              False,
+            "use_cache":              True,
+            "repetition_penalty":     1.1,
             "return_dict_in_generate": True,
         }
 
