@@ -30,7 +30,8 @@ def load_model(model_name: str, device: str):
     print(f"[run] Loading model: {model_name} …")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
+        attn_implementation="eager",
         device_map="cuda",
     )
     model.eval()
@@ -79,7 +80,8 @@ def run_compressor_test(device: str = "cuda"):
 def mode_calibrate(args):
     from calibration_profiler import CalibrationProfiler, plot_signals, plot_score_scatter
 
-    profile_dir = Path(args.profile_dir)
+    run_tag = _timestamp()
+    profile_dir = Path(args.profile_dir) / f"run_{run_tag}"
     profile_dir.mkdir(parents=True, exist_ok=True)
     profile_path = profile_dir / "qwen_gsm8k.json"
     print(f"[run] Profile will be saved to: {profile_path}")
@@ -97,7 +99,7 @@ def mode_calibrate(args):
     print("\n[run] Tier assignments:")
     for i, t in enumerate(profile.tier_assignment):
         tag = {1: "INT8 (keep)", 2: "INT4 (keep)", 3: "DROP"}[t]
-        print(f"  Layer {i:2d}: Tier {t}  \u2192  {tag}")
+        print(f"  Layer {i:2d}: Tier {t}  ->  {tag}")
 
     print(f'\n[run] Next steps:')
     print(f'  Sanity : python run.py --mode sanity    --profile_path "{profile_path}"')

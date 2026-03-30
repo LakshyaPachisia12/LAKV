@@ -1,13 +1,26 @@
 """
 LAKV Module 5: LAKVPipeline
 
-Thin orchestrator — connects profile → selector → compressor → corrector
-into a 3-agent forward-pass pipeline. Zero compression / selection logic here.
+Multi-agent KV-cache relay pipeline.
+
+Each agent in the chain:
+  1. Receives the compressed KV from the previous agent (if any).
+  2. Encodes a SHORT continuation turn on top of that KV.
+  3. Generates up to `intermediate_max_tokens` tokens (all agents generate).
+  4. The KV now includes the generated reasoning/verification tokens.
+  5. Compresses + selects layers, then transmits to the next agent.
+
+Agent 1 sends the full [system][user: question][assistant: <reasoning>] KV.
+Agent 2+ encode only a short new user turn ("Verify the above…") appended to
+the injected KV, then generate their contribution.
+
+This way each agent genuinely READS the previous agent's output via the KV,
+and the model never sees a semantically incoherent "stacked prompt" context.
 
 Transformers 4.36+ stores past_key_values as DynamicCache, not raw tuples.
 Conversion helpers:
-  _to_tuple  : DynamicCache → plain tuple of (K, V) pairs  (after forward)
-  _to_dynamic_cache : plain tuple → DynamicCache           (before injection)
+  _to_tuple         : DynamicCache -> plain tuple of (K, V) pairs  (after generate)
+  _to_dynamic_cache : plain tuple  -> DynamicCache                 (before injection)
 """
 
 import time
@@ -23,7 +36,7 @@ from kv_compressor import KVCompressor, KVMessage
 from offset_corrector import OffsetCorrector
 
 
-# ─── config / result dataclasses ──────────────────────────────────────────────
+# --- config / result dataclasses -------------------------------------------
 
 @dataclass
 class PipelineConfig:
@@ -33,10 +46,21 @@ class PipelineConfig:
     reconstruction_strategy: str    # 'zeros'|'nearest'|'interpolate'
     n_agents: int = 3
     profile_path: Optional[str] = None
-    system_prompts: List[str] = field(default_factory=lambda: [
-        "You are a mathematical reasoning agent. Think through the problem step by step. Do not give the final answer yet.",
-        "You are a verification agent. You have access to reasoning from a previous agent. Review the reasoning and check for errors. Do not give the final answer yet.",
-        "You are a solution agent. You have access to reasoning and verification from previous agents. Give only the final numerical answer in the format: The answer is [number].",
+    # Tokens each intermediate agent may generate before passing KV forward.
+    intermediate_max_tokens: int = 200
+    # Tokens the final agent may generate.
+    final_max_tokens: int = 512
+    # System prompt for agent 0 (the first agent receives the full question).
+    first_system_prompt: str = (
+        "You are a mathematical reasoning agent. "
+        "Think through the problem step by step. "
+        "Do not state the final answer yet."
+    )
+    # Short user turn injected to continue the conversation for agents 1+.
+    continuation_prompts: List[str] = field(default_factory=lambda: [
+        "Review the reasoning above for errors. Do not state the final answer yet.",
+        "Based on all the reasoning and verification above, state only the final "
+        "numerical answer in the format: The answer is [number].",
     ])
 
 
@@ -60,7 +84,7 @@ class RunResult:
     overall_compression_ratio: float
 
 
-# ─── pipeline ─────────────────────────────────────────────────────────────────
+# --- pipeline ---------------------------------------------------------------
 
 class LAKVPipeline:
     """Multi-agent KV-cache relay pipeline for Qwen2.5-7B."""
@@ -68,10 +92,10 @@ class LAKVPipeline:
     N_LAYERS = 28
 
     def __init__(self, model, tokenizer, config: PipelineConfig, device: str = "cuda"):
-        self.model = model
+        self.model     = model
         self.tokenizer = tokenizer
-        self.config = config
-        self.device = device
+        self.config    = config
+        self.device    = device
 
         # load profile if provided
         self.profile: Optional[LayerProfile] = None
@@ -94,10 +118,10 @@ class LAKVPipeline:
         if config.use_offset_correction:
             self.corrector = OffsetCorrector()
 
-    # ── public API ────────────────────────────────────────────────────────
+    # -- public API ----------------------------------------------------------
 
     def run(self, question: str) -> RunResult:
-        """Execute the 3-agent pipeline and return the final answer."""
+        """Execute the n-agent pipeline and return the final answer."""
         hop_stats: List[HopStat] = []
         kv_message: Optional[KVMessage] = None
         selection_mask: Optional[SelectionMask] = None
@@ -105,16 +129,21 @@ class LAKVPipeline:
         answer = ""
 
         n_agents = self.config.n_agents
-        prompts = self.config.system_prompts
+
+        # Track full conversation history
+        messages = [
+            {"role": "system", "content": self.config.first_system_prompt},
+            {"role": "user",   "content": question},
+        ]
 
         for agent_idx in range(n_agents):
-            system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
-            prompt_text = self._build_prompt(question, system_prompt)
-            input_ids = self.tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(self.device)
-
             is_last = (agent_idx == n_agents - 1)
+            max_new = (
+                self.config.final_max_tokens if is_last
+                else self.config.intermediate_max_tokens
+            )
 
-            # ── decompress + inject KV from previous agent ───────────
+            # -- decompress + inject KV from previous agent -----------------
             injected_kv_tuple: Optional[tuple] = None
             if kv_message is not None:
                 decompressed = self.compressor.decompress(kv_message, device=self.device)
@@ -126,32 +155,54 @@ class LAKVPipeline:
                         strategy=self.config.reconstruction_strategy,
                     )
 
-                # Ensure reconstructed tensors are on the model device before injection.
-                injected_kv_tuple = tuple((k.to(self.device), v.to(self.device)) for k, v in decompressed)
+                injected_kv_tuple = tuple(
+                    (k.to(self.device), v.to(self.device)) for k, v in decompressed
+                )
+
+            # -- build full input_ids for this agent ------------------------
+            prompt_text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            enc = self.tokenizer(prompt_text, return_tensors="pt").to(self.device)
+            input_ids = enc["input_ids"]
+            attn_mask = enc["attention_mask"]
+
+            # -- generate (all agents generate) -----------------------------
+            raw_output_ids, full_kv_tuple = self._generate_with_kv(
+                input_ids, attn_mask, injected_kv_tuple, max_new
+            )
+
+            new_tokens = raw_output_ids[0, input_ids.shape[1]:]
+            generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
             if is_last:
-                # ── final agent: generate text ───────────────────────
-                answer = self._generate(input_ids, injected_kv_tuple)
-
+                answer = generated_text
             else:
-                # ── intermediate agent: forward pass ONLY ─────────────
-                raw_kv_tuple = self._forward(input_ids, injected_kv_tuple)
-
-                # layer selection
+                # Add agent's reasoning to history, plus next user turn
+                messages.append({"role": "assistant", "content": generated_text})
+                
+                cont_idx = agent_idx
+                cont_prompts = self.config.continuation_prompts
+                user_msg = (
+                    cont_prompts[cont_idx] if cont_idx < len(cont_prompts)
+                    else cont_prompts[-1]
+                )
+                messages.append({"role": "user", "content": user_msg})
+                # -- layer selection ----------------------------------------
                 tier_info: Optional[Dict[int, int]] = None
                 if self.selector:
-                    filtered_kv, selection_mask = self.selector.select(raw_kv_tuple)
+                    filtered_kv, selection_mask = self.selector.select(full_kv_tuple)
                     tier_info = selection_mask.tier_per_kept_layer
                     n_transmitted = len(selection_mask.kept_layer_indices)
                 else:
-                    filtered_kv = raw_kv_tuple
+                    filtered_kv = full_kv_tuple
                     selection_mask = None
                     n_transmitted = self.N_LAYERS
 
-                # compression
+                # -- compression --------------------------------------------
                 kv_message = self.compressor.compress(filtered_kv, tier_info=tier_info)
 
-                # offset correction (stub)
+                # -- offset correction (stub) --------------------------------
                 if self.corrector:
                     kv_message = self.corrector.correct(
                         kv_message,
@@ -161,10 +212,13 @@ class LAKVPipeline:
 
                 total_bytes += kv_message.compressed_bytes
                 if self.verbose:
-                    print(f"    [KV] Transmitting {len(kv_message.layers)} layers "
-                          f"| Original: {kv_message.original_bytes / 1e6:.2f} MB "
-                          f"| Compressed: {kv_message.compressed_bytes / 1e6:.2f} MB "
-                          f"| Ratio: {kv_message.compression_ratio:.2f}x")
+                    print(
+                        f"    [KV] Agent {agent_idx} -> "
+                        f"{len(kv_message.layers)} layers | "
+                        f"Original: {kv_message.original_bytes / 1e6:.2f} MB | "
+                        f"Compressed: {kv_message.compressed_bytes / 1e6:.2f} MB | "
+                        f"Ratio: {kv_message.compression_ratio:.2f}x"
+                    )
                 hop_stats.append(HopStat(
                     agent_idx=agent_idx,
                     original_mb=kv_message.original_bytes / 1e6,
@@ -186,89 +240,52 @@ class LAKVPipeline:
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
         )
 
-    # ── cache conversion helpers ──────────────────────────────────────────
+    # -- cache conversion helpers -------------------------------------------
 
     @staticmethod
     def _to_tuple(pkv) -> tuple:
-        """Convert DynamicCache → plain tuple of (K, V) pairs.
-
-        Uses the stable .to_legacy_cache() API (works in all transformers
-        versions that have DynamicCache, from 4.36 through 4.57+).
-        Falls through for objects that are already plain tuples.
-        """
+        """Convert DynamicCache -> plain tuple of (K, V) pairs."""
         if isinstance(pkv, DynamicCache):
-            return pkv.to_legacy_cache()   # returns ((k0,v0),(k1,v1),...)
-        return pkv  # already a tuple
+            return pkv.to_legacy_cache()
+        return pkv
 
     @staticmethod
     def _to_dynamic_cache(kv_tuple: tuple) -> DynamicCache:
-        """Wrap plain (K, V) tuple → DynamicCache for Transformers injection."""
+        """Wrap plain (K, V) tuple -> DynamicCache for Transformers injection."""
         return DynamicCache.from_legacy_cache(kv_tuple)
 
-    # ── forward / generate ────────────────────────────────────────────────
+    # -- core generation method ---------------------------------------------
 
-    def _forward(self, input_ids: torch.Tensor, injected_kv_tuple: Optional[tuple] = None) -> tuple:
-        """model.forward() only — NO text generation. Returns raw (K, V) tuple."""
-        kwargs: dict = {"input_ids": input_ids, "use_cache": True}
+    def _generate_with_kv(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        injected_kv_tuple: Optional[tuple],
+        max_new_tokens: int,
+    ) -> Tuple[torch.Tensor, tuple]:
+        """
+        Generate tokens, optionally continuing from an injected KV cache.
+
+        Returns:
+          output_ids   : full token tensor (input + generated) shape [1, T+G]
+          full_kv_tuple: the complete KV cache after generation (all layers)
+        """
+        kwargs: dict = {
+            "input_ids":      input_ids,
+            "attention_mask": attention_mask,
+            "max_new_tokens": max_new_tokens,
+            "do_sample":      False,
+            "use_cache":      True,
+            "return_dict_in_generate": True,
+        }
 
         if injected_kv_tuple is not None:
-            cache = self._to_dynamic_cache(injected_kv_tuple)
-            kv_seq_len = injected_kv_tuple[0][0].shape[2]
-            new_seq_len = input_ids.shape[1]
-            kwargs["past_key_values"] = cache
-            kwargs["position_ids"] = torch.arange(
-                kv_seq_len,
-                kv_seq_len + new_seq_len,
-                device=input_ids.device,
-            ).unsqueeze(0)
-            kwargs["cache_position"] = torch.arange(
-                kv_seq_len,
-                kv_seq_len + new_seq_len,
-                device=input_ids.device,
-            )
+            kwargs["past_key_values"] = self._to_dynamic_cache(injected_kv_tuple)
 
         with torch.no_grad():
-            outputs = self.model(**kwargs)
+            outputs = self.model.generate(**kwargs)
 
-        return self._to_tuple(outputs.past_key_values)
+        output_ids   = outputs.sequences          # [1, T+G]
+        full_kv_tuple = self._to_tuple(outputs.past_key_values)
 
-    def _generate(self, input_ids: torch.Tensor, injected_kv_tuple: Optional[tuple] = None) -> str:
-        """Run generation for the final agent."""
-        kwargs = {
-            "input_ids": input_ids,
-            "max_new_tokens": 512,
-            "do_sample": False,
-            "use_cache": True,
-        }
-        if injected_kv_tuple is None:
-            with torch.no_grad():
-                output_ids = self.model.generate(**kwargs)
-        else:
-            cache = self._to_dynamic_cache(injected_kv_tuple)
-            kv_seq_len = injected_kv_tuple[0][0].shape[2]
-            new_seq_len = input_ids.shape[1]
-            kwargs["past_key_values"] = cache
-            kwargs["position_ids"] = torch.arange(
-                kv_seq_len,
-                kv_seq_len + new_seq_len,
-                device=input_ids.device,
-            ).unsqueeze(0)
-            kwargs["cache_position"] = torch.arange(
-                kv_seq_len,
-                kv_seq_len + new_seq_len,
-                device=input_ids.device,
-            )
-            with torch.no_grad():
-                output_ids = self.model.generate(**kwargs)
-
-        new_tokens = output_ids[0, input_ids.shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-
-
-    def _build_prompt(self, question: str, system_prompt: str) -> str:
-        return (
-            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{question}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
+        return output_ids, full_kv_tuple
