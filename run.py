@@ -28,17 +28,28 @@ def _timestamp() -> str:
 def load_model(model_name: str, device: str):
     """Load Qwen2.5-7B using the standard LAKV settings."""
     print(f"[run] Loading model: {model_name} …")
+    device_l = (device or "cuda").lower()
+    if device_l.startswith("cuda") and torch.cuda.is_available():
+        torch_dtype = torch.float16
+        device_map = "cuda"
+    else:
+        torch_dtype = torch.float32
+        device_map = "cpu"
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        dtype=torch.float16,
+        torch_dtype=torch_dtype,
         attn_implementation="eager",
-        device_map="cuda",
+        device_map=device_map,
     )
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
         padding_side="left",
     )
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     return model, tokenizer
 
 

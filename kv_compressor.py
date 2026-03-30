@@ -51,7 +51,7 @@ class KVMessage:
 # ─── compressor ───────────────────────────────────────────────────────────────
 
 class KVCompressor:
-    def __init__(self, mode: str, profile: LayerProfile = None):
+    def __init__(self, mode: str, profile: Optional[LayerProfile] = None):
         """
         Args:
             mode: 'none' | 'uniform_int8' | 'uniform_int4' | 'adaptive'
@@ -121,7 +121,15 @@ class KVCompressor:
         original_bytes = 0
         compressed_bytes = 0
 
-        for layer_idx, (k, v) in enumerate(past_key_values):
+        # When layer selection is enabled, past_key_values may contain only kept
+        # layers. In that case, preserve original layer indices from tier_info.
+        if tier_info is not None and len(tier_info) == len(past_key_values):
+            source_layer_indices = list(tier_info.keys())
+        else:
+            source_layer_indices = list(range(len(past_key_values)))
+
+        for local_idx, (k, v) in enumerate(past_key_values):
+            layer_idx = source_layer_indices[local_idx]
             original_bytes += k.nbytes + v.nbytes
             bits = self._get_bits_for_layer(layer_idx, tier_info)
 

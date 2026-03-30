@@ -52,16 +52,18 @@ PRESETS = CONFIGS
 
 
 def extract_answer(text: str) -> Optional[str]:
+    number_pat = r"[+-]?(?:\d[\d,]*(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?"
+
     # Try "The answer is X" pattern first
-    match = re.search(r"[Tt]he answer is\s*\$?(-?[\d,]+(?:\.\d+)?)", text)
+    match = re.search(rf"[Tt]he answer is\s*\$?({number_pat})", text)
     if match:
         return match.group(1).replace(",", "")
     # Try #### pattern (GSM8K standard)
-    match = re.search(r"####\s*\$?(-?[\d,]+(?:\.\d+)?)", text)
+    match = re.search(rf"####\s*\$?({number_pat})", text)
     if match:
         return match.group(1).replace(",", "")
     # Fallback: last number in response
-    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)
+    numbers = re.findall(number_pat, text)
     if numbers:
         return numbers[-1].replace(",", "")
     return None
@@ -71,7 +73,7 @@ def answers_match(predicted: Optional[str], gold: str) -> bool:
     if predicted is None:
         return False
     try:
-        return abs(float(predicted) - float(gold)) < 1e-3
+        return abs(float(predicted.strip()) - float(gold.strip())) < 1e-3
     except Exception:
         return predicted.strip() == gold.strip()
 

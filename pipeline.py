@@ -52,15 +52,20 @@ class PipelineConfig:
     final_max_tokens: int = 512
     # System prompt for agent 0 (the first agent receives the full question).
     first_system_prompt: str = (
-        "You are a mathematical reasoning agent. "
-        "Think through the problem step by step. "
-        "Do not state the final answer yet."
+        "You are Agent 1 in a math reasoning relay. "
+        "Solve the problem step by step using concise arithmetic reasoning. "
+        "Do not output the final answer line. "
+        "End your response with: Reasoning complete."
     )
     # Short user turn injected to continue the conversation for agents 1+.
     continuation_prompts: List[str] = field(default_factory=lambda: [
-        "Review the reasoning above for errors. Do not state the final answer yet.",
-        "Based on all the reasoning and verification above, state only the final "
-        "numerical answer in the format: The answer is [number].",
+        "You are Agent 2. Review the reasoning above for mistakes. "
+        "If you find an error, correct it and continue from the corrected step. "
+        "Keep the response concise and do not output the final answer line. "
+        "End your response with: Verification complete.",
+        "You are Agent 3 (final). Using all prior context, output exactly one line "
+        "in this format: The answer is [number]. "
+        "Do not add any explanation, units, or extra text.",
     ])
 
 
@@ -159,13 +164,41 @@ class LAKVPipeline:
                     (k.to(self.device), v.to(self.device)) for k, v in decompressed
                 )
 
-            # -- build full input_ids for this agent ------------------------
-            prompt_text = self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
+            # -- build input_ids for this agent -----------------------------
+            # Agent 0 encodes the full conversation. Agent 1+ with injected KV
+            # must encode only the newly appended continuation user turn.
+            if injected_kv_tuple is None:
+                prompt_text = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+            else:
+                if not messages or messages[-1]["role"] != "user":
+                    raise RuntimeError(
+                        "Injected KV requires the last message to be a user continuation turn."
+                    )
+
+                prompt_text = self.tokenizer.apply_chat_template(
+                    [messages[-1]], tokenize=False, add_generation_prompt=True
+                )
+
             enc = self.tokenizer(prompt_text, return_tensors="pt").to(self.device)
             input_ids = enc["input_ids"]
             attn_mask = enc["attention_mask"]
+
+            if injected_kv_tuple is not None:
+                bos_id = self.tokenizer.bos_token_id
+                if (
+                    bos_id is not None
+                    and input_ids.shape[1] > 0
+                    and int(input_ids[0, 0].item()) == int(bos_id)
+                ):
+                    input_ids = input_ids[:, 1:]
+                    attn_mask = attn_mask[:, 1:]
+
+                if input_ids.shape[1] == 0:
+                    raise RuntimeError(
+                        "Continuation encoding produced zero tokens for an injected-KV agent."
+                    )
 
             # -- generate (all agents generate) -----------------------------
             raw_output_ids, full_kv_tuple = self._generate_with_kv(
@@ -270,9 +303,10 @@ class LAKVPipeline:
           output_ids   : full token tensor (input + generated) shape [1, T+G]
           full_kv_tuple: the complete KV cache after generation (all layers)
         """
+        generation_attention_mask = attention_mask
+
         kwargs: dict = {
             "input_ids":      input_ids,
-            "attention_mask": attention_mask,
             "max_new_tokens": max_new_tokens,
             "do_sample":      False,
             "use_cache":      True,
@@ -280,7 +314,46 @@ class LAKVPipeline:
         }
 
         if injected_kv_tuple is not None:
+            kv_seq_len = self._validate_injected_kv(injected_kv_tuple)
             kwargs["past_key_values"] = self._to_dynamic_cache(injected_kv_tuple)
+
+            position_ids = torch.arange(
+                kv_seq_len,
+                kv_seq_len + input_ids.shape[1],
+                device=input_ids.device,
+                dtype=torch.long,
+            )
+            kwargs["position_ids"] = position_ids.unsqueeze(0)
+            kwargs["cache_position"] = position_ids
+
+            if generation_attention_mask is None:
+                generation_attention_mask = torch.ones_like(input_ids)
+
+            if generation_attention_mask.shape[1] == input_ids.shape[1]:
+                prefix_mask = torch.ones(
+                    (generation_attention_mask.shape[0], kv_seq_len),
+                    dtype=generation_attention_mask.dtype,
+                    device=generation_attention_mask.device,
+                )
+                generation_attention_mask = torch.cat(
+                    [prefix_mask, generation_attention_mask], dim=1
+                )
+            else:
+                expected_len = kv_seq_len + input_ids.shape[1]
+                if generation_attention_mask.shape[1] != expected_len:
+                    raise RuntimeError(
+                        "Injected-KV attention_mask length mismatch: "
+                        f"expected {expected_len}, got {generation_attention_mask.shape[1]}"
+                    )
+
+            if self.verbose:
+                print(
+                    f"    [KV] Injected cache seq={kv_seq_len}, "
+                    f"new input seq={input_ids.shape[1]}, "
+                    f"attention seq={generation_attention_mask.shape[1]}"
+                )
+
+        kwargs["attention_mask"] = generation_attention_mask
 
         with torch.no_grad():
             outputs = self.model.generate(**kwargs)
@@ -289,3 +362,25 @@ class LAKVPipeline:
         full_kv_tuple = self._to_tuple(outputs.past_key_values)
 
         return output_ids, full_kv_tuple
+
+    def _validate_injected_kv(self, injected_kv_tuple: tuple) -> int:
+        if len(injected_kv_tuple) != self.N_LAYERS:
+            raise RuntimeError(
+                f"Injected KV must contain {self.N_LAYERS} layers, got {len(injected_kv_tuple)}."
+            )
+
+        seq_lens = set()
+        for layer_idx, (k, v) in enumerate(injected_kv_tuple):
+            if k.shape[2] != v.shape[2]:
+                raise RuntimeError(
+                    f"Injected KV layer {layer_idx} has mismatched K/V seq lens: "
+                    f"{k.shape[2]} vs {v.shape[2]}."
+                )
+            seq_lens.add(int(k.shape[2]))
+
+        if len(seq_lens) != 1:
+            raise RuntimeError(
+                f"Injected KV layers must share one seq_len; got {sorted(seq_lens)}."
+            )
+
+        return next(iter(seq_lens))
