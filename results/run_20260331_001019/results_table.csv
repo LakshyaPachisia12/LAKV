@@ -1,0 +1,6 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,n_correct,n_samples
+A,0.2700,27.6022,1.0000,28.0,18.91,27,100
+B_int8,0.3000,13.8029,1.9997,28.0,19.19,30,100
+B_int4,0.0000,6.8292,3.9989,28.0,36.15,0,100
+C,0.4800,19.6364,1.0000,20.0,18.03,48,100
+D,0.4800,9.8130,1.9997,20.0,18.03,48,100
