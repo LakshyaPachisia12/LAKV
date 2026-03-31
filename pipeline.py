@@ -34,9 +34,26 @@ class PipelineConfig:
     n_agents: int = 3
     profile_path: Optional[str] = None
     system_prompts: List[str] = field(default_factory=lambda: [
-        "You are a mathematical reasoning agent. Analyze the problem carefully.",
-        "You are a verification agent. Review the reasoning and identify any errors.",
-        "You are a solution agent. Provide only the final numerical answer.",
+        (
+            "You are a precise mathematical reasoning agent. "
+            "When given a problem, break it into clear numbered steps. "
+            "Show every arithmetic operation explicitly — do not skip steps. "
+            "Compute intermediate values at each step. "
+            "Work through the entire problem to completion."
+        ),
+        (
+            "You are a critical verification agent. "
+            "You have access to a prior agent's reasoning in your context. "
+            "Go through each step and check the arithmetic carefully. "
+            "If any step is wrong or incomplete, recompute it correctly. "
+            "Then state the corrected final answer explicitly as a number."
+        ),
+        (
+            "You are the final answer agent. "
+            "You have the full reasoning and verification in your context. "
+            "Output exactly one line in this format: The answer is <number>. "
+            "Do not add explanation, units, or any other text."
+        ),
     ])
 
 
@@ -129,12 +146,11 @@ class LAKVPipeline:
                 injected_kv_tuple = decompressed  # stays as tuple; _forward/_generate convert
 
             if is_last:
-                # ── final agent: generate text ───────────────────────
                 answer = self._generate(input_ids, injected_kv_tuple)
 
             else:
-                # ── intermediate agent: forward pass ONLY ─────────────
-                raw_kv_tuple = self._forward(input_ids, injected_kv_tuple)
+                # Intermediate agent: generate reasoning, KV includes generated tokens
+                raw_kv_tuple = self._generate_intermediate(input_ids, injected_kv_tuple)
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
@@ -246,6 +262,7 @@ class LAKVPipeline:
                     input_ids=input_ids,
                     max_new_tokens=512,
                     do_sample=False,
+                    repetition_penalty=1.1,
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
@@ -289,6 +306,56 @@ class LAKVPipeline:
         return self.tokenizer.decode(generated, skip_special_tokens=True)
 
 
+
+    def _generate_intermediate(
+        self,
+        input_ids: torch.Tensor,
+        injected_kv_tuple: Optional[tuple] = None,
+        max_new: int = 200,
+    ) -> tuple:
+        """
+        Generate up to max_new tokens for an intermediate agent.
+        Returns the full KV tuple INCLUDING the generated tokens,
+        so the next agent's context contains this agent's reasoning.
+        """
+        eos_id = self.tokenizer.eos_token_id
+
+        if injected_kv_tuple is not None:
+            cache = self._to_dynamic_cache(injected_kv_tuple)
+            cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            position_ids = torch.arange(
+                cache_seq_len, cache_seq_len + input_ids.shape[1],
+                device=self.device,
+            ).unsqueeze(0)
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=input_ids,
+                    past_key_values=cache,
+                    position_ids=position_ids,
+                    use_cache=True,
+                )
+        else:
+            with torch.no_grad():
+                out = self.model(input_ids=input_ids, use_cache=True)
+
+        running_cache = out.past_key_values
+        next_logits = out.logits[:, -1, :]
+
+        for _ in range(max_new):
+            next_token = next_logits.argmax(-1, keepdim=True)
+            tok_id = next_token.item()
+            if tok_id == eos_id:
+                break
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=next_token,
+                    past_key_values=running_cache,
+                    use_cache=True,
+                )
+            running_cache = out.past_key_values
+            next_logits = out.logits[:, -1, :]
+
+        return self._to_tuple(running_cache)
 
     def _build_prompt(self, question: str, system_prompt: str) -> str:
         return (
