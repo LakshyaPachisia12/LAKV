@@ -1,0 +1,4 @@
+gsm8k:
+  single_agent: "You are a mathematical reasoning assistant. Solve carefully and return final answer as #### [number]"
+  solver: "You are a mathematical reasoning agent. Solve carefully step by step."
+  finalizer: "You have access to prior reasoning memory. Use it to solve the problem. Return only: #### [number]"
