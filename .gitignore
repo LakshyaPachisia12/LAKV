@@ -24,6 +24,29 @@ env/
 *~
 
 # ── Project Outputs ──────────────────────────────────────────────────────────
+results/
+profiles/
+
+# ── Research Papers (large PDFs tracked separately) ──────────────────────────
+r-papers/
+
+# ── Model Checkpoints & Cache ────────────────────────────────────────────────
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.onnx
+huggingface_cache/
+.cache/
+
+# ── Experiment Artifacts ─────────────────────────────────────────────────────
+*.png
+*.csv
+wandb/
+runs/
+lightning_logs/
 
 # ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
