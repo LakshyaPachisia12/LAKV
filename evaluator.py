@@ -13,6 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import torch
 from tqdm import tqdm
 
 from pipeline import LAKVPipeline, PipelineConfig, RunResult
@@ -37,18 +38,37 @@ PRESETS: Dict[str, PipelineConfig] = {
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",
     ),
-    # "D": PipelineConfig(
-    #     use_layer_selection=True, compression_mode="none",
-    #     use_offset_correction=False, reconstruction_strategy="zeros",
-    # ),
-    # "D": PipelineConfig(
-    #     use_layer_selection=True, compression_mode="adaptive",
-    #     use_offset_correction=False, reconstruction_strategy="zeros",
-    # ),
+    "C_nearest": PipelineConfig(
+        use_layer_selection=True, compression_mode="none",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+    ),
+    "C_interpolate": PipelineConfig(
+        use_layer_selection=True, compression_mode="none",
+        use_offset_correction=False, reconstruction_strategy="interpolate",
+    ),
     "D": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
         use_offset_correction=False, reconstruction_strategy="zeros",
     ),
+    "D_nearest": PipelineConfig(
+        use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=False, reconstruction_strategy="nearest",
+    ),
+    "E": PipelineConfig(
+        use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=True, reconstruction_strategy="zeros",
+    ),
+}
+
+
+# ── ablation presets (require custom layer indices, built at runtime) ─────────
+# These are registered by name; Evaluator builds them after loading the profile.
+ABLATION_CONFIGS = {
+    "C_random_20_s0": {"type": "random_select", "n_keep": 20, "seed": 0},
+    "C_random_20_s1": {"type": "random_select", "n_keep": 20, "seed": 1},
+    "C_random_20_s2": {"type": "random_select", "n_keep": 20, "seed": 2},
+    "C_top20":        {"type": "fixed_select",  "indices": list(range(20))},
+    "C_bottom20":     {"type": "fixed_select",  "indices": list(range(8, 28))},
 }
 
 
@@ -67,20 +87,59 @@ class Evaluator:
         self.tokenizer = tokenizer
         self.device = device
 
+    # ── pipeline factories ────────────────────────────────────────────────
+
+    def _build_pipeline(self, cfg_name: str, profile_path: Optional[str]):
+        """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent."""
+        import random as _random
+        from layer_selector import LayerSelector
+        from calibration_profiler import LayerProfile
+
+        if cfg_name == "single_agent":
+            from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
+            return SingleAgentPipeline(self.model, self.tokenizer,
+                                       SingleAgentPipelineConfig(), self.device), "single"
+
+        if cfg_name in ABLATION_CONFIGS:
+            spec = ABLATION_CONFIGS[cfg_name]
+            if spec["type"] == "random_select":
+                rng = _random.Random(spec["seed"])
+                indices = sorted(rng.sample(range(28), spec["n_keep"]))
+            else:
+                indices = spec["indices"]
+
+            # Build a fake profile where Tier 3 = dropped, Tier 1 = kept
+            profile = LayerProfile.load(profile_path) if profile_path else None
+            preset = PipelineConfig(
+                use_layer_selection=True,
+                compression_mode="none",
+                use_offset_correction=False,
+                reconstruction_strategy="zeros",
+                profile_path=profile_path,
+                _custom_layer_indices=indices,
+            )
+            pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
+                                custom_layer_indices=indices)
+            return pipe, "multi"
+
+        # Standard preset
+        preset = PRESETS[cfg_name]
+        if preset.use_layer_selection or preset.compression_mode == "adaptive":
+            preset.profile_path = profile_path
+        pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
+        return pipe, "multi"
+
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/"):
         if configs_to_run is None:
-            configs_to_run = ["A", "B_int8", "B_int4", "C", "D"]
+            configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D"]
 
         samples = dataset[:n_samples]
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
         all_results = {}
 
         for cfg_name in configs_to_run:
-            preset = PRESETS[cfg_name]
-            if preset.use_layer_selection or preset.compression_mode == "adaptive":
-                preset.profile_path = profile_path
-            pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
+            pipe, pipe_type = self._build_pipeline(cfg_name, profile_path)
             print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
             correct = 0; per_sample = []
@@ -88,23 +147,37 @@ class Evaluator:
 
             for i, s in enumerate(tqdm(samples, desc=f"Config {cfg_name}")):
                 t0 = time.time()
-                r = pipe.run(s["question"])
-                elapsed = time.time() - t0
-                pred = extract_answer(r.answer)
-                gold = str(s["answer"]).strip()
-                ok = pred is not None and pred.strip() == gold
-                if ok: correct += 1
-                nh = max(len(r.hop_stats), 1)
-                per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                    "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                    "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
-                    "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
-                    "hop_stats":[asdict(h) for h in r.hop_stats]})
-                tot_comp += r.total_compressed_mb/nh
-                tot_orig += r.total_original_mb/nh
-                tot_ratio += r.overall_compression_ratio
-                tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
-                tot_lat += elapsed
+
+                if pipe_type == "single":
+                    raw_answer = pipe.run(s["question"])
+                    elapsed = time.time() - t0
+                    pred = extract_answer(raw_answer)
+                    gold = str(s["answer"]).strip()
+                    ok = pred is not None and pred.strip() == gold
+                    if ok: correct += 1
+                    per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                        "predicted":pred,"raw_answer":raw_answer,"correct":ok,
+                        "compressed_mb":0.0,"original_mb":0.0,
+                        "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
+                    tot_lat += elapsed
+                else:
+                    r = pipe.run(s["question"])
+                    elapsed = time.time() - t0
+                    pred = extract_answer(r.answer)
+                    gold = str(s["answer"]).strip()
+                    ok = pred is not None and pred.strip() == gold
+                    if ok: correct += 1
+                    nh = max(len(r.hop_stats), 1)
+                    per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                        "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                        "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
+                        "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
+                        "hop_stats":[asdict(h) for h in r.hop_stats]})
+                    tot_comp += r.total_compressed_mb/nh
+                    tot_orig += r.total_original_mb/nh
+                    tot_ratio += r.overall_compression_ratio
+                    tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
+                    tot_lat += elapsed
 
             n = len(samples)
             summary = {"config":cfg_name,"accuracy":correct/n if n else 0,
@@ -147,13 +220,16 @@ class Evaluator:
 
     @staticmethod
     def _print_table(all_results):
-        labels = {"A":"A (raw)","B_int8":"B_int8","B_int4":"B_int4","C":"C (sel)","D":"D (sel+cmp)"}
-        hdr = f"{'Config':<13}| {'Accuracy':>8} | {'KV/hop (MB)':>11} | {'Comp Ratio':>10} | {'Layers Sent':>11} | {'Latency(s)':>10}"
+        hdr = f"{'Config':<22}| {'Accuracy':>8} | {'KV/hop (MB)':>11} | {'Comp Ratio':>10} | {'Layers Sent':>11} | {'Latency(s)':>10}"
         print(f"\n{hdr}\n{'-'*len(hdr)}")
-        for c,d in all_results.items():
-            s=d["summary"]; lb=labels.get(c,c)
-            print(f"{lb:<13}| {s['accuracy']*100:>7.1f}% | {s['mean_compressed_mb']:>8.2f} MB | "
-                  f"{s['mean_compression_ratio']:>8.2f}x | {s['mean_layers_transmitted']:>5.0f}/28     | {s['mean_latency_seconds']:>8.1f}s")
+        for c, d in all_results.items():
+            s = d["summary"]
+            is_single = (c == "single_agent")
+            comp_str = "      —   " if is_single else f"{s['mean_compressed_mb']:>8.2f} MB"
+            ratio_str = "        — " if is_single else f"{s['mean_compression_ratio']:>8.2f}x"
+            layer_str = "   —      " if is_single else f"{s['mean_layers_transmitted']:>5.0f}/28    "
+            print(f"{c:<22}| {s['accuracy']*100:>7.1f}% | {comp_str} | "
+                  f"{ratio_str} | {layer_str} | {s['mean_latency_seconds']:>8.1f}s")
 
     @staticmethod
     def _save_csv(all_results, path):

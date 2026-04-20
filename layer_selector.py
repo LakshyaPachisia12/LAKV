@@ -36,6 +36,26 @@ class LayerSelector:
         self.tier_assignment = profile.tier_assignment  # list of int, length 28
         self.n_layers = profile.n_layers
 
+    @classmethod
+    def _from_custom_indices(cls, keep_indices: List[int], n_layers: int = 28) -> "LayerSelector":
+        """Build a selector that keeps exactly the given layer indices (ablation use)."""
+        keep_set = set(keep_indices)
+        tier_assignment = [1 if i in keep_set else 3 for i in range(n_layers)]
+        # Minimal stub profile — only tier_assignment and n_layers are used by select()
+        from dataclasses import fields
+        dummy_floats = [0.0] * n_layers
+        from calibration_profiler import LayerProfile
+        dummy = LayerProfile(
+            model_name="custom", dataset_name="custom",
+            n_calibration_examples=0, n_layers=n_layers,
+            attention_importance=dummy_floats, offset_variance=dummy_floats,
+            effective_rank=dummy_floats, attention_importance_norm=dummy_floats,
+            offset_variance_norm=dummy_floats, effective_rank_norm=dummy_floats,
+            joint_score=dummy_floats, tier_assignment=tier_assignment,
+            estimated_bytes_per_layer=dummy_floats,
+        )
+        return cls(dummy)
+
     # ── select ────────────────────────────────────────────────────────────
 
     def select(

@@ -21,6 +21,7 @@ from calibration_profiler import LayerProfile
 from layer_selector import LayerSelector, SelectionMask
 from kv_compressor import KVCompressor, KVMessage
 from offset_corrector import OffsetCorrector
+from anchor_table import AnchorTable, question_key as make_key, compute_base_kv
 
 
 # ─── config / result dataclasses ──────────────────────────────────────────────
@@ -33,6 +34,7 @@ class PipelineConfig:
     reconstruction_strategy: str    # 'zeros'|'nearest'|'interpolate'
     n_agents: int = 3
     profile_path: Optional[str] = None
+    _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
     system_prompts: List[str] = field(default_factory=lambda: [
         (
             "You are a precise mathematical reasoning agent. "
@@ -84,7 +86,8 @@ class LAKVPipeline:
 
     N_LAYERS = 28
 
-    def __init__(self, model, tokenizer, config: PipelineConfig, device: str = "cuda"):
+    def __init__(self, model, tokenizer, config: PipelineConfig, device: str = "cuda",
+                 custom_layer_indices: Optional[List[int]] = None):
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
@@ -97,7 +100,11 @@ class LAKVPipeline:
 
         # sub-modules
         self.selector: Optional[LayerSelector] = None
-        if config.use_layer_selection and self.profile:
+        effective_custom = custom_layer_indices or config._custom_layer_indices
+        if effective_custom is not None:
+            # Ablation: build a synthetic profile with Tier 1 = custom indices, Tier 3 = rest
+            self.selector = LayerSelector._from_custom_indices(effective_custom, self.N_LAYERS)
+        elif config.use_layer_selection and self.profile:
             self.selector = LayerSelector(self.profile)
 
         self.verbose = getattr(config, 'verbose', False)
@@ -107,9 +114,11 @@ class LAKVPipeline:
             profile=self.profile if config.compression_mode == "adaptive" else None,
         )
 
+        self.anchor_table: Optional[AnchorTable] = None
         self.corrector: Optional[OffsetCorrector] = None
         if config.use_offset_correction:
-            self.corrector = OffsetCorrector()
+            self.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3)
+            self.corrector = OffsetCorrector(anchor_table=self.anchor_table)
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -120,6 +129,14 @@ class LAKVPipeline:
         selection_mask: Optional[SelectionMask] = None
         total_bytes = 0
         answer = ""
+        q_key = make_key(question)
+
+        # Compute base KV (no-prefix) once per question for anchor table updates
+        base_kv: Optional[tuple] = None
+        base_hidden: Optional[torch.Tensor] = None
+        if self.anchor_table is not None:
+            base_kv, base_hidden = compute_base_kv(
+                self.model, self.tokenizer, question, self.device)
 
         n_agents = self.config.n_agents
         prompts = self.config.system_prompts
@@ -134,7 +151,7 @@ class LAKVPipeline:
             # ── decompress + inject KV from previous agent ───────────
             injected_kv_tuple: Optional[tuple] = None
             if kv_message is not None:
-                decompressed = self.compressor.decompress(kv_message)   # raw tuple
+                decompressed = self.compressor.decompress(kv_message, device=self.device)
 
                 if self.selector and selection_mask is not None:
                     decompressed = self.selector.reconstruct(
@@ -143,14 +160,20 @@ class LAKVPipeline:
                         strategy=self.config.reconstruction_strategy,
                     )
 
-                injected_kv_tuple = decompressed  # stays as tuple; _forward/_generate convert
+                injected_kv_tuple = decompressed
 
             if is_last:
                 answer = self._generate(input_ids, injected_kv_tuple)
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
-                raw_kv_tuple = self._generate_intermediate(input_ids, injected_kv_tuple)
+                raw_kv_tuple, agent_hidden = self._generate_intermediate_with_hidden(
+                    input_ids, injected_kv_tuple)
+
+                # Populate anchor table with this agent's observation
+                if self.anchor_table is not None and base_kv is not None:
+                    self.anchor_table.update(
+                        q_key, f"agent_{agent_idx}", base_kv, raw_kv_tuple, agent_hidden)
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
@@ -166,12 +189,17 @@ class LAKVPipeline:
                 # compression
                 kv_message = self.compressor.compress(filtered_kv, tier_info=tier_info)
 
-                # offset correction (stub)
-                if self.corrector:
-                    kv_message = self.corrector.correct(
+                # anchor-table offset correction
+                if self.corrector and base_hidden is not None:
+                    receiver_id = f"agent_{agent_idx + 1}"
+                    kv_message, was_corrected = self.corrector.correct(
                         kv_message,
                         sender_suffix_len=input_ids.shape[1],
                         receiver_suffix_len=input_ids.shape[1],
+                        question=question,
+                        agent_id=receiver_id,
+                        query_hidden=base_hidden,
+                        device=self.device,
                     )
 
                 total_bytes += kv_message.compressed_bytes
@@ -211,14 +239,48 @@ class LAKVPipeline:
         versions that have DynamicCache, from 4.36 through 4.57+).
         Falls through for objects that are already plain tuples.
         """
+        if isinstance(pkv, tuple):
+            return pkv
+
         if isinstance(pkv, DynamicCache):
-            return pkv.to_legacy_cache()   # returns ((k0,v0),(k1,v1),...)
+            # Older transformers versions
+            if hasattr(pkv, "to_legacy_cache"):
+                return pkv.to_legacy_cache()  # returns ((k0,v0),(k1,v1),...)
+
+            # Newer transformers versions expose iteration over layer tuples:
+            # (keys, values, optional_sliding_window_tensor)
+            layers = []
+            for layer in pkv:
+                if isinstance(layer, tuple):
+                    layers.append((layer[0], layer[1]))
+                else:
+                    layers.append((layer.keys, layer.values))
+            return tuple(layers)
+
+        # Generic fallback for cache-like iterables
+        if hasattr(pkv, "__iter__"):
+            layers = []
+            for layer in pkv:
+                if isinstance(layer, tuple):
+                    layers.append((layer[0], layer[1]))
+                else:
+                    layers.append((layer.keys, layer.values))
+            if layers:
+                return tuple(layers)
+
         return pkv  # already a tuple
 
     @staticmethod
     def _to_dynamic_cache(kv_tuple: tuple) -> DynamicCache:
         """Wrap plain (K, V) tuple → DynamicCache for Transformers injection."""
-        return DynamicCache.from_legacy_cache(kv_tuple)
+        if isinstance(kv_tuple, DynamicCache):
+            return kv_tuple
+
+        if hasattr(DynamicCache, "from_legacy_cache"):
+            return DynamicCache.from_legacy_cache(kv_tuple)
+
+        # Newer transformers versions accept legacy tuples directly.
+        return DynamicCache(kv_tuple)
 
     # ── forward / generate ────────────────────────────────────────────────
 
@@ -356,6 +418,55 @@ class LAKVPipeline:
             next_logits = out.logits[:, -1, :]
 
         return self._to_tuple(running_cache)
+
+    def _generate_intermediate_with_hidden(
+        self,
+        input_ids: torch.Tensor,
+        injected_kv_tuple: Optional[tuple] = None,
+        max_new: int = 200,
+    ) -> tuple:
+        """Like _generate_intermediate but also returns last hidden states for anchor embedding."""
+        eos_id = self.tokenizer.eos_token_id
+
+        if injected_kv_tuple is not None:
+            cache = self._to_dynamic_cache(injected_kv_tuple)
+            cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            position_ids = torch.arange(
+                cache_seq_len, cache_seq_len + input_ids.shape[1],
+                device=self.device,
+            ).unsqueeze(0)
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=input_ids,
+                    past_key_values=cache,
+                    position_ids=position_ids,
+                    use_cache=True,
+                    output_hidden_states=True,
+                )
+        else:
+            with torch.no_grad():
+                out = self.model(input_ids=input_ids, use_cache=True,
+                                 output_hidden_states=True)
+
+        last_hidden = out.hidden_states[-1]  # (1, seq, hidden)
+        running_cache = out.past_key_values
+        next_logits = out.logits[:, -1, :]
+
+        for _ in range(max_new):
+            next_token = next_logits.argmax(-1, keepdim=True)
+            tok_id = next_token.item()
+            if tok_id == eos_id:
+                break
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=next_token,
+                    past_key_values=running_cache,
+                    use_cache=True,
+                )
+            running_cache = out.past_key_values
+            next_logits = out.logits[:, -1, :]
+
+        return self._to_tuple(running_cache), last_hidden
 
     def _build_prompt(self, question: str, system_prompt: str) -> str:
         return (

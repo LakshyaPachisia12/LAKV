@@ -129,7 +129,7 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100)
     parser.add_argument("--n_calibration", type=int, default=50)
     parser.add_argument("--configs", nargs="+",
-                        default=["A", "B_int8", "B_int4", "C", "D"])
+                        default=["single_agent", "A", "B_int8", "B_int4", "C", "D"])
     parser.add_argument("--profile_dir", default="profiles",
                         help="Base dir for calibration profiles (timestamped sub-folder auto-created)")
     parser.add_argument("--profile_path", default=None,
