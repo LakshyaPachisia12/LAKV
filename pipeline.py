@@ -143,8 +143,16 @@ class LAKVPipeline:
 
         for agent_idx in range(n_agents):
             system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
-            prompt_text = self._build_prompt(question, system_prompt)
-            input_ids = self.tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(self.device)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+            ]
+            prompt_text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            input_ids = self.tokenizer(
+                prompt_text, return_tensors="pt", add_special_tokens=False
+            )["input_ids"].to(self.device)
 
             is_last = (agent_idx == n_agents - 1)
 
@@ -324,7 +332,6 @@ class LAKVPipeline:
                     input_ids=input_ids,
                     max_new_tokens=512,
                     do_sample=False,
-                    repetition_penalty=1.1,
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
@@ -469,8 +476,10 @@ class LAKVPipeline:
         return self._to_tuple(running_cache), last_hidden
 
     def _build_prompt(self, question: str, system_prompt: str) -> str:
-        return (
-            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{question}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ]
+        return self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
         )

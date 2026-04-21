@@ -105,9 +105,17 @@ def mode_experiment(args):
     if not args.profile_path:
         raise ValueError("--profile_path is required for --mode experiment.")
 
-    output_dir = Path(args.output_dir) / f"run_{_timestamp()}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"[run] Results will be saved to: {output_dir}")
+    if args.resume_dir:
+        output_dir = Path(args.resume_dir)
+        if not output_dir.exists():
+            raise ValueError(f"--resume_dir does not exist: {output_dir}")
+        print(f"[run] Resuming run in: {output_dir}")
+        resume = True
+    else:
+        output_dir = Path(args.output_dir) / f"run_{_timestamp()}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[run] Results will be saved to: {output_dir}")
+        resume = False
 
     model, tokenizer = load_model(args.model, args.device)
     dataset = load_gsm8k("test", n=args.n_samples)
@@ -117,6 +125,7 @@ def mode_experiment(args):
         configs_to_run=args.configs,
         n_samples=args.n_samples,
         output_dir=str(output_dir),
+        resume=resume,
     )
 
 
@@ -136,6 +145,8 @@ def main():
                         help="Explicit path to LayerProfile JSON (required for sanity/experiment)")
     parser.add_argument("--output_dir", default="results",
                         help="Base dir for experiment results (timestamped sub-folder auto-created)")
+    parser.add_argument("--resume_dir", default=None,
+                        help="Path to an existing run folder to resume (e.g. results/run_20260420_123456)")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
 

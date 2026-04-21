@@ -130,63 +130,158 @@ class Evaluator:
         return pipe, "multi"
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
-                       n_samples=100, output_dir="results/"):
+                       n_samples=100, output_dir="results/", checkpoint_every=5,
+                       resume=False):
         if configs_to_run is None:
             configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D"]
 
         samples = dataset[:n_samples]
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
+
+        partial_path = out / "experiment_results.partial.json"
         all_results = {}
 
-        for cfg_name in configs_to_run:
-            pipe, pipe_type = self._build_pipeline(cfg_name, profile_path)
-            print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
+        # ── resume: load prior partial checkpoint ─────────────────────────────
+        if resume and partial_path.exists():
+            with open(partial_path) as f:
+                all_results = json.load(f)
+            completed = [c for c, d in all_results.items() if d["summary"].get("status") == "completed"]
+            print(f"[Evaluator] Resuming — already completed: {completed or 'none'}")
 
-            correct = 0; per_sample = []
-            tot_comp = tot_orig = tot_ratio = tot_layers = tot_lat = 0.0
+        def _write_partial_file():
+            with open(partial_path, "w") as f:
+                json.dump(all_results, f, indent=2, default=str)
 
-            for i, s in enumerate(tqdm(samples, desc=f"Config {cfg_name}")):
-                t0 = time.time()
+        def _update_running_summary(cfg_name: str, per_sample: List[dict], correct: int):
+            n_done = len(per_sample)
+            if n_done == 0:
+                summary = {
+                    "config": cfg_name,
+                    "accuracy": 0.0,
+                    "mean_compressed_mb": 0.0,
+                    "mean_compression_ratio": 0.0,
+                    "mean_layers_transmitted": 0.0,
+                    "mean_latency_seconds": 0.0,
+                    "n_correct": 0,
+                    "n_samples": 0,
+                    "n_expected": len(samples),
+                    "status": "running",
+                }
+                all_results[cfg_name] = {"summary": summary, "per_sample": per_sample}
+                return
 
-                if pipe_type == "single":
-                    raw_answer = pipe.run(s["question"])
-                    elapsed = time.time() - t0
-                    pred = extract_answer(raw_answer)
-                    gold = str(s["answer"]).strip()
-                    ok = pred is not None and pred.strip() == gold
-                    if ok: correct += 1
-                    per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                        "predicted":pred,"raw_answer":raw_answer,"correct":ok,
-                        "compressed_mb":0.0,"original_mb":0.0,
-                        "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
-                    tot_lat += elapsed
+            mean_latency = sum(x["latency_s"] for x in per_sample) / n_done
+            mean_comp = sum(x["compressed_mb"] for x in per_sample) / n_done
+            mean_ratio = sum(x["compression_ratio"] for x in per_sample) / n_done
+
+            layers_vals = []
+            for x in per_sample:
+                hs = x.get("hop_stats", [])
+                if hs:
+                    layers_vals.append(sum(h["n_layers_transmitted"] for h in hs) / max(len(hs), 1))
+            mean_layers = (sum(layers_vals) / len(layers_vals)) if layers_vals else 0.0
+
+            summary = {
+                "config": cfg_name,
+                "accuracy": correct / n_done,
+                "mean_compressed_mb": mean_comp,
+                "mean_compression_ratio": mean_ratio,
+                "mean_layers_transmitted": mean_layers,
+                "mean_latency_seconds": mean_latency,
+                "n_correct": correct,
+                "n_samples": n_done,
+                "n_expected": len(samples),
+                "status": "running",
+            }
+            all_results[cfg_name] = {"summary": summary, "per_sample": per_sample}
+
+        try:
+            for cfg_name in configs_to_run:
+                # Skip configs already completed in a prior run
+                if resume and cfg_name in all_results and all_results[cfg_name]["summary"].get("status") == "completed":
+                    print(f"[Evaluator] Skipping {cfg_name} (already completed)")
+                    continue
+
+                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path)
+                print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
+
+                # Restore partial progress for this config if resuming mid-config
+                if resume and cfg_name in all_results and all_results[cfg_name]["summary"].get("status") == "running":
+                    per_sample = all_results[cfg_name]["per_sample"]
+                    correct = sum(1 for x in per_sample if x["correct"])
+                    start_idx = len(per_sample)
+                    print(f"[Evaluator] Resuming {cfg_name} from sample {start_idx}/{len(samples)}")
                 else:
-                    r = pipe.run(s["question"])
-                    elapsed = time.time() - t0
-                    pred = extract_answer(r.answer)
-                    gold = str(s["answer"]).strip()
-                    ok = pred is not None and pred.strip() == gold
-                    if ok: correct += 1
-                    nh = max(len(r.hop_stats), 1)
-                    per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                        "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                        "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
-                        "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
-                        "hop_stats":[asdict(h) for h in r.hop_stats]})
-                    tot_comp += r.total_compressed_mb/nh
-                    tot_orig += r.total_original_mb/nh
-                    tot_ratio += r.overall_compression_ratio
-                    tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
-                    tot_lat += elapsed
+                    per_sample = []
+                    correct = 0
+                    start_idx = 0
 
-            n = len(samples)
-            summary = {"config":cfg_name,"accuracy":correct/n if n else 0,
-                "mean_compressed_mb":tot_comp/n if n else 0,
-                "mean_compression_ratio":tot_ratio/n if n else 0,
-                "mean_layers_transmitted":tot_layers/n if n else 0,
-                "mean_latency_seconds":tot_lat/n if n else 0,
-                "n_correct":correct,"n_samples":n}
-            all_results[cfg_name] = {"summary":summary,"per_sample":per_sample}
+                tot_comp = sum(x["compressed_mb"] for x in per_sample)
+                tot_orig = sum(x.get("original_mb", 0.0) for x in per_sample)
+                tot_ratio = sum(x["compression_ratio"] for x in per_sample)
+                tot_layers = sum(
+                    sum(h["n_layers_transmitted"] for h in x["hop_stats"]) / max(len(x["hop_stats"]), 1)
+                    for x in per_sample if x.get("hop_stats")
+                )
+                tot_lat = sum(x["latency_s"] for x in per_sample)
+
+                remaining = samples[start_idx:]
+                for i_rel, s in enumerate(tqdm(remaining, desc=f"Config {cfg_name}", initial=start_idx, total=len(samples))):
+                    i = start_idx + i_rel
+                    t0 = time.time()
+
+                    if pipe_type == "single":
+                        raw_answer = pipe.run(s["question"])
+                        elapsed = time.time() - t0
+                        pred = extract_answer(raw_answer)
+                        gold = str(s["answer"]).strip()
+                        ok = pred is not None and pred.strip() == gold
+                        if ok: correct += 1
+                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                            "predicted":pred,"raw_answer":raw_answer,"correct":ok,
+                            "compressed_mb":0.0,"original_mb":0.0,
+                            "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
+                        tot_lat += elapsed
+                    else:
+                        r = pipe.run(s["question"])
+                        elapsed = time.time() - t0
+                        pred = extract_answer(r.answer)
+                        gold = str(s["answer"]).strip()
+                        ok = pred is not None and pred.strip() == gold
+                        if ok: correct += 1
+                        nh = max(len(r.hop_stats), 1)
+                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                            "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                            "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
+                            "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
+                            "hop_stats":[asdict(h) for h in r.hop_stats]})
+                        tot_comp += r.total_compressed_mb/nh
+                        tot_orig += r.total_original_mb/nh
+                        tot_ratio += r.overall_compression_ratio
+                        tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
+                        tot_lat += elapsed
+
+                    if checkpoint_every and ((i + 1) % checkpoint_every == 0):
+                        _update_running_summary(cfg_name, per_sample, correct)
+                        _write_partial_file()
+
+                n = len(samples)
+                summary = {"config":cfg_name,"accuracy":correct/n if n else 0,
+                    "mean_compressed_mb":tot_comp/n if n else 0,
+                    "mean_compression_ratio":tot_ratio/n if n else 0,
+                    "mean_layers_transmitted":tot_layers/n if n else 0,
+                    "mean_latency_seconds":tot_lat/n if n else 0,
+                    "n_correct":correct,"n_samples":n,
+                    "n_expected":n,
+                    "status":"completed"}
+                all_results[cfg_name] = {"summary":summary,"per_sample":per_sample}
+                _write_partial_file()
+        except KeyboardInterrupt:
+            print("\n[Evaluator] Interrupted. Saving partial progress...")
+            _write_partial_file()
+            print(f"[Evaluator] Checkpoint saved to {partial_path}")
+            print(f"[Evaluator] Resume with: --resume --output_dir {out}")
+            raise
 
         self._print_table(all_results)
         with open(out/"experiment_results.json","w") as f:

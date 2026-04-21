@@ -22,19 +22,22 @@ class SingleAgentPipeline:
         self.device = device
 
     def run(self, question: str) -> str:
-        prompt_text = (
-            f"<|im_start|>system\n{self.config.system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{question}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+        messages = [
+            {"role": "system", "content": self.config.system_prompt},
+            {"role": "user", "content": question},
+        ]
+        prompt_text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
         )
-        input_ids = self.tokenizer(prompt_text, return_tensors="pt")["input_ids"].to(self.device)
+        input_ids = self.tokenizer(
+            prompt_text, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
         
         with torch.no_grad():
             output_ids = self.model.generate(
                 input_ids=input_ids,
                 max_new_tokens=512,
                 do_sample=False,
-                repetition_penalty=1.1,
             )
             
         new_tokens = output_ids[0, input_ids.shape[1]:]

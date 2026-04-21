@@ -45,12 +45,14 @@ class TwoAgentPipeline:
         # ---------------------------------------------
         # 1. SOLVER AGENT (Generates KV Memory)
         # ---------------------------------------------
-        prompt_1 = (
-            f"<|im_start|>system\n{self.config.solver_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{question}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+        prompt_1 = self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": self.config.solver_prompt},
+             {"role": "user", "content": question}],
+            tokenize=False, add_generation_prompt=True,
         )
-        input_ids_1 = self.tokenizer(prompt_1, return_tensors="pt")["input_ids"].to(self.device)
+        input_ids_1 = self.tokenizer(
+            prompt_1, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
 
         with torch.no_grad():
             out_1 = self.model.generate(
@@ -109,12 +111,14 @@ class TwoAgentPipeline:
         # ---------------------------------------------
         # 3. FINALIZER AGENT (Consumes KV Memory)
         # ---------------------------------------------
-        prompt_2 = (
-            f"<|im_start|>system\n{self.config.finalizer_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{question}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+        prompt_2 = self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": self.config.finalizer_prompt},
+             {"role": "user", "content": question}],
+            tokenize=False, add_generation_prompt=True,
         )
-        input_ids_2 = self.tokenizer(prompt_2, return_tensors="pt")["input_ids"].to(self.device)
+        input_ids_2 = self.tokenizer(
+            prompt_2, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
         
         dynamic_cache = self.aligner.prepare_handoff_cache(processed_kv)
         # Extending attention mask and generating explicitly mapped position IDs
