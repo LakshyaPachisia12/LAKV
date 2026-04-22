@@ -75,8 +75,8 @@ class ValidationSuite:
         from kv_compressor import KVCompressor # use old just for testing the logic
         comp = KVCompressor(mode="uniform_int8")
         
-        dummy_k = torch.randn(1, 4, 128, 128, dtype=torch.float16, device=self.device)
-        dummy_v = torch.randn(1, 4, 128, 128, dtype=torch.float16, device=self.device)
+        dummy_k = torch.randn(1, 4, 128, 128, dtype=torch.bfloat16, device=self.device)
+        dummy_v = torch.randn(1, 4, 128, 128, dtype=torch.bfloat16, device=self.device)
         dummy_kv = ((dummy_k, dummy_v),)
         
         msg = comp.compress(dummy_kv)
@@ -100,8 +100,8 @@ class ValidationSuite:
         mid = len(kv_list) // 2
         # Zero out middle layer
         k_shape, v_shape = kv_list[mid][0].shape, kv_list[mid][1].shape
-        kv_list[mid] = (torch.zeros(k_shape, dtype=torch.float16, device=self.device),
-                        torch.zeros(v_shape, dtype=torch.float16, device=self.device))
+        kv_list[mid] = (torch.zeros(k_shape, dtype=torch.bfloat16, device=self.device),
+                        torch.zeros(v_shape, dtype=torch.bfloat16, device=self.device))
         
         cache_dropped = self.aligner.prepare_handoff_cache(tuple(kv_list))
         # Evaluate one step of logits

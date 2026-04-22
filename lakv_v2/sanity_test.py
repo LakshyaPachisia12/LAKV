@@ -83,7 +83,7 @@ def run_sanity(args):
                 transfer_mode="full",
                 use_layer_selection=True,
                 compression_mode="none",
-                reconstruction_strategy="zeros",
+                reconstruction_strategy="nearest",
                 profile_path=args.profile_path,
                 solver_max_new_tokens=256,
                 print_raw_outputs=True,

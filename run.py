@@ -25,12 +25,12 @@ def _timestamp() -> str:
 
 
 def load_model(model_name: str, device: str):
-    """Load Qwen2.5-7B in float16 with eager attention for calibration support."""
+    """Load Qwen2.5-7B in bfloat16 with eager attention for calibration support."""
     print(f"[run] Loading model: {model_name} …")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map=device,
         attn_implementation="eager",
         trust_remote_code=True,

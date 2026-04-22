@@ -38,7 +38,7 @@ class ReconstructorV2:
     def _mean_fill(self, kv_map: Dict[int, Tuple[torch.Tensor, torch.Tensor]]):
         all_k = torch.stack([kv[0] for kv in kv_map.values()])
         all_v = torch.stack([kv[1] for kv in kv_map.values()])
-        # Compute mean across layers, keep float16
-        mean_k = all_k.mean(dim=0).to(torch.float16)
-        mean_v = all_v.mean(dim=0).to(torch.float16)
+        # Compute mean across layers, keep bfloat16
+        mean_k = all_k.mean(dim=0).to(torch.bfloat16)
+        mean_v = all_v.mean(dim=0).to(torch.bfloat16)
         return (mean_k, mean_v)

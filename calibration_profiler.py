@@ -215,7 +215,7 @@ class CalibrationProfiler:
         A_l = torch.zeros(self.N_LAYERS)
         for layer_idx, attn_weights in enumerate(outputs.attentions):
             # attn_weights: (1, n_heads, seq, seq)
-            # Cast to float32 first — float16 entropy can overflow to ±inf
+            # Cast to float32 first — bfloat16 entropy can overflow to ±inf
             w = attn_weights[0].float().clamp(min=0.0)  # (n_heads, seq, seq)
             # Renormalise rows in case of fp16 rounding drift
             w = w / (w.sum(dim=-1, keepdim=True) + 1e-9)

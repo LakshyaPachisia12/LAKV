@@ -19,7 +19,7 @@ from calibration_profiler import LayerProfile
 
 @dataclass
 class CompressedLayer:
-    k_q: torch.Tensor          # uint8 (or float16 if mode='none')
+    k_q: torch.Tensor          # uint8 (or bfloat16 if mode='none')
     v_q: torch.Tensor
     k_scale: torch.Tensor      # shape (batch, heads)
     k_zp: torch.Tensor         # shape (batch, heads)
@@ -71,11 +71,11 @@ def _quantize(tensor: torch.Tensor, bits: int):
 
 
 def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) -> torch.Tensor:
-    """Reconstruct float16 from per-head quantisation."""
+    """Reconstruct bfloat16 from per-head quantisation."""
     s = scale.unsqueeze(-1).unsqueeze(-1).float()
     zp = zero_point.unsqueeze(-1).unsqueeze(-1).float()
     t = q.to(torch.float32) * s + zp
-    return t.to(torch.float16)
+    return t.to(torch.bfloat16)
 
 
 # ─── compressor ───────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ class KVCompressor:
         )
 
     def decompress(self, message: KVMessage, device: str = 'cuda') -> Tuple:
-        """Reconstruct float16 past_key_values from a KVMessage."""
+        """Reconstruct bfloat16 past_key_values from a KVMessage."""
         result = []
 
         for cl in message.layers:
@@ -216,8 +216,8 @@ class KVCompressor:
     def run_sanity_check(device='cuda'):
         """Verifies compress/decompress math works."""
         print("Running KVCompressor sanity check...")
-        dummy_k = torch.randn(1, 4, 512, 128, dtype=torch.float16).to(device)
-        dummy_v = torch.randn(1, 4, 512, 128, dtype=torch.float16).to(device)
+        dummy_k = torch.randn(1, 4, 512, 128, dtype=torch.bfloat16).to(device)
+        dummy_v = torch.randn(1, 4, 512, 128, dtype=torch.bfloat16).to(device)
         dummy_kv = ((dummy_k, dummy_v),)
 
         for mode in ['none', 'uniform_int8', 'uniform_int4']:

@@ -87,7 +87,7 @@ class OffsetCorrector:
 
         corrected_kv, confidence = result
 
-        # Rebuild KVMessage from corrected float16 tensors (mode='none', no re-quantisation)
+        # Rebuild KVMessage from corrected bfloat16 tensors (mode='none', no re-quantisation)
         # We preserve original bytes accounting so stats stay comparable.
         new_layers = []
         for layer_idx, (k, v) in enumerate(corrected_kv):

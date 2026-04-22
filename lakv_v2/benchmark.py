@@ -150,7 +150,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_A_full_96":
@@ -166,7 +166,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_C_full":
@@ -174,9 +174,9 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="full",
             use_layer_selection=True,
             compression_mode="none",
-            reconstruction_strategy="zeros",
+            reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_C_nearest":
@@ -186,7 +186,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="none",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_D_full":
@@ -194,9 +194,9 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="full",
             use_layer_selection=True,
             compression_mode="adaptive",
-            reconstruction_strategy="zeros",
+            reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_D_tail":
@@ -204,9 +204,9 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="tail",
             use_layer_selection=True,
             compression_mode="adaptive",
-            reconstruction_strategy="zeros",
+            reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     elif row_name == "v2_A_verify":
@@ -215,7 +215,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             use_layer_selection=False,
             compression_mode="none",
             finalizer_suffix=VERIFY_FINALIZER_SUFFIX,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=128,
         )
 
     else:
@@ -473,7 +473,7 @@ def load_model(model_name: str, device: str):
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         device_map=device,
         attn_implementation="eager",
         trust_remote_code=True,

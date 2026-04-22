@@ -67,7 +67,7 @@ SHARED_SYSTEM_PROMPT = (
 # Default short continuation suffix for the Finalizer.
 # This is appended as raw tokens directly after the Solver's KV cache —
 # it does NOT repeat the question or system prompt.
-DEFAULT_FINALIZER_SUFFIX = "\nFinal answer: ####"
+DEFAULT_FINALIZER_SUFFIX = "\n\nTherefore, the final answer in #### format is: ####"
 
 # Alternative slightly richer suffix for ablation
 VERIFY_FINALIZER_SUFFIX = "\nCheck the reasoning above. Final answer: ####"
@@ -100,7 +100,7 @@ class SharedPrefixConfig:
     compression_mode: str = "none"
 
     # Reconstruction strategy for dropped layers: 'zeros' | 'nearest' | 'interpolate'
-    reconstruction_strategy: str = "zeros"
+    reconstruction_strategy: str = "nearest"
 
     # Profile path — required for adaptive compression / layer selection
     profile_path: Optional[str] = None
