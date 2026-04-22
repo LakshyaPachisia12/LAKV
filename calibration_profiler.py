@@ -265,9 +265,7 @@ class CalibrationProfiler:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         seq_len = inputs["input_ids"].shape[1]
 
-        with torch.no_grad():
-            outputs = self.model(**inputs, use_cache=True)
-        pkv = outputs.past_key_values
+        pkv = self._get_kv(prompt)
 
         R_l = torch.zeros(self.N_LAYERS)
         for layer_idx in range(self.N_LAYERS):
@@ -299,7 +297,30 @@ class CalibrationProfiler:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         with torch.no_grad():
             outputs = self.model(**inputs, use_cache=True)
-        return outputs.past_key_values
+        return self._to_legacy_cache(outputs.past_key_values)
+
+    @staticmethod
+    def _to_legacy_cache(pkv):
+        """Convert cache objects (e.g. DynamicCache) into ((K,V), ...) tuples."""
+        if isinstance(pkv, tuple):
+            return pkv
+
+        # Transformers DynamicCache (stable API in 4.36+)
+        if hasattr(pkv, "to_legacy_cache"):
+            return pkv.to_legacy_cache()
+
+        # Fallback for cache-like iterables across versions
+        if hasattr(pkv, "__iter__"):
+            layers = []
+            for layer in pkv:
+                if isinstance(layer, tuple) and len(layer) >= 2:
+                    layers.append((layer[0], layer[1]))
+                elif hasattr(layer, "keys") and hasattr(layer, "values"):
+                    layers.append((layer.keys, layer.values))
+            if layers:
+                return tuple(layers)
+
+        raise TypeError(f"Unsupported cache type: {type(pkv)}")
 
     @staticmethod
     def _minmax(t: torch.Tensor) -> torch.Tensor:
