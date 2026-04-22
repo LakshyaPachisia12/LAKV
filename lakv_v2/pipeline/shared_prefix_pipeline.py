@@ -90,6 +90,9 @@ class SharedPrefixConfig:
     # KV transfer mode
     transfer_mode: str = "full"              # 'full' | 'tail'
 
+    # KV injection mode: if False, bypass KV cache and concatenate text instead (baseline test)
+    use_kv_injection: bool = True
+
     # Layer selection (set selector on the pipeline instance directly)
     use_layer_selection: bool = False
 
@@ -230,57 +233,64 @@ class SharedPrefixPipeline:
             print(f"  [Solver] prefix_len={prefix_len} | generated={solver_gen_len} tokens")
             print(f"  [Solver] reasoning: {solver_reasoning[:120]}...")
 
-        # ── Phase 3: LAKV Transfer ────────────────────────────────────────
-        kv_to_transfer, transferred_cache_seq_len = self._build_transfer_kv(
-            full_kv_tuple, prefix_ids, prefix_len, question
-        )
-
-        # Layer selection
-        selection_mask: Optional[SelectionMask] = None
-        tier_info: Optional[Dict[int, int]] = None
-        if self.selector is not None:
-            kv_to_transfer, selection_mask = self.selector.select(kv_to_transfer)
-            tier_info = selection_mask.tier_per_kept_layer
-            n_transferred = len(selection_mask.kept_layer_indices)
-        else:
-            n_transferred = self.N_LAYERS
-
-        # Compression
-        layer_indices = selection_mask.kept_layer_indices if selection_mask else None
-        kv_message = self.compressor.compress(
-            kv_to_transfer,
-            tier_info=tier_info,
-            layer_indices=layer_indices,
-        )
-        original_mb = kv_message.original_bytes / 1e6
-        compressed_mb = kv_message.compressed_bytes / 1e6
-        compression_ratio = kv_message.compression_ratio
-
-        if self.config.verbose:
-            print(f"  [Transfer] mode={self.config.transfer_mode} | "
-                  f"layers={n_transferred}/28 | "
-                  f"orig={original_mb:.2f}MB | comp={compressed_mb:.2f}MB | "
-                  f"ratio={compression_ratio:.2f}x")
-
-        # Decompression
-        decompressed = self.compressor.decompress(kv_message, device=self.device)
-
-        # Reconstruct full 28-layer tuple for dropped layers
-        if self.selector is not None and selection_mask is not None:
-            decompressed = self.selector.reconstruct(
-                decompressed,
-                selection_mask,
-                strategy=self.config.reconstruction_strategy,
+        # ── Phase 3 & 4: Either KV injection OR text concatenation ────────
+        if self.config.use_kv_injection:
+            # LAKV Transfer
+            kv_to_transfer, transferred_cache_seq_len = self._build_transfer_kv(
+                full_kv_tuple, prefix_ids, prefix_len, question
             )
 
-        # ── Phase 4: Finalizer suffix continuation ────────────────────────
-        answer = self._run_finalizer(
-            decompressed,
-            transferred_cache_seq_len,
-            full_kv_tuple,
-            prefix_ids,
-            prefix_len,
-        )
+            # Layer selection
+            selection_mask: Optional[SelectionMask] = None
+            tier_info: Optional[Dict[int, int]] = None
+            if self.selector is not None:
+                kv_to_transfer, selection_mask = self.selector.select(kv_to_transfer)
+                tier_info = selection_mask.tier_per_kept_layer
+                n_transferred = len(selection_mask.kept_layer_indices)
+            else:
+                n_transferred = self.N_LAYERS
+
+            # Compression
+            layer_indices = selection_mask.kept_layer_indices if selection_mask else None
+            kv_message = self.compressor.compress(
+                kv_to_transfer,
+                tier_info=tier_info,
+                layer_indices=layer_indices,
+            )
+            original_mb = kv_message.original_bytes / 1e6
+            compressed_mb = kv_message.compressed_bytes / 1e6
+            compression_ratio = kv_message.compression_ratio
+
+            if self.config.verbose:
+                print(f"  [Transfer] mode={self.config.transfer_mode} | "
+                      f"layers={n_transferred}/28 | "
+                      f"orig={original_mb:.2f}MB | comp={compressed_mb:.2f}MB | "
+                      f"ratio={compression_ratio:.2f}x")
+
+            # Decompression
+            decompressed = self.compressor.decompress(kv_message, device=self.device)
+
+            # Reconstruct full 28-layer tuple for dropped layers
+            if self.selector is not None and selection_mask is not None:
+                decompressed = self.selector.reconstruct(
+                    decompressed,
+                    selection_mask,
+                    strategy=self.config.reconstruction_strategy,
+                )
+
+            # Finalizer with KV injection
+            answer = self._run_finalizer(
+                decompressed,
+                transferred_cache_seq_len,
+                full_kv_tuple,
+                prefix_ids,
+                prefix_len,
+            )
+        else:
+            # Text-only mode: concatenate solver reasoning + suffix and process as fresh prompt
+            n_transferred = 0
+            compression_ratio = 0.0
+            answer = self._run_finalizer_text_only(solver_reasoning)
 
         if self.config.print_raw_outputs:
             print(f"\n[RAW Solver]    {solver_reasoning}")
@@ -374,6 +384,28 @@ class SharedPrefixPipeline:
         )
 
     # ── finalizer ─────────────────────────────────────────────────────────
+
+    def _run_finalizer_text_only(self, solver_reasoning: str) -> str:
+        """
+        Text-only baseline: concatenate solver reasoning + suffix as a fresh prompt.
+        This bypasses all KV cache injection to test if the problem is KV-related.
+        """
+        # Build full text prompt
+        full_text = solver_reasoning + self.config.finalizer_suffix
+        inputs = self.tokenizer(full_text, return_tensors="pt").to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(
+                inputs["input_ids"],
+                max_new_tokens=self.config.finalizer_max_new_tokens,
+                num_beams=1,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
+
+        # Decode only the generated part (skip input tokens)
+        generated_ids = outputs[0, inputs["input_ids"].shape[1]:]
+        answer = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return answer
 
     def _run_finalizer(
         self,

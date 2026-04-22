@@ -51,6 +51,12 @@ def run_sanity(args):
     print("[sanity] Model loaded.\n")
 
     configs_to_test = [
+        ("v2_TEXT_ONLY (text concatenation baseline)", SharedPrefixConfig(
+            use_kv_injection=False,
+            solver_max_new_tokens=64,
+            print_raw_outputs=True,
+            verbose=True,
+        )),
         ("v2_A_full (Phase 2 baseline)", SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=False,
