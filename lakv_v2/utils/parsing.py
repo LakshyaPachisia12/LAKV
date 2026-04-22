@@ -11,11 +11,25 @@ def extract_answer(text: str) -> Optional[str]:
     Robust extraction for `#### [number]` format.
     Ignores trailing periods, commas, and dollar signs securely.
     """
-    # 1. Primary path: try to find explicit #### delim
-    match = re.search(r"####\s*\$?(-?\d[\d,]*(?:\.\d+)?)", text)
-    if match:
-        return match.group(1).replace(",", "")
-        
-    # 2. Fallback path: last found number
-    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)
-    return numbers[-1].replace(",", "") if numbers else None
+    if not text:
+        return None
+
+    cleaned = re.sub(r"(?<=\d)[^\d,\.\-]+(?=\d)", "", text)
+
+    for candidate in (text, cleaned):
+        match = re.search(r"####\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    for candidate in (text, cleaned):
+        match = re.search(r"(?im)^\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\.?\s*$", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    for candidate in (text, cleaned):
+        match = re.search(r"(?i)answer\s*(?:is|=|:)?\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", cleaned)
+    return numbers[-1].replace(",", "").rstrip(".") if numbers else None

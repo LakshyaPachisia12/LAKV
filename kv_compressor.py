@@ -117,13 +117,25 @@ class KVCompressor:
         else:
             return 8
 
-    def compress(self, past_key_values: Tuple, tier_info: Optional[Dict[int, int]] = None) -> KVMessage:
+    def compress(
+        self,
+        past_key_values: Tuple,
+        tier_info: Optional[Dict[int, int]] = None,
+        layer_indices: Optional[List[int]] = None,
+    ) -> KVMessage:
         """Quantise a full KV cache tuple."""
         compressed_layers = []
         original_bytes = 0
         compressed_bytes = 0
 
-        for layer_idx, (k, v) in enumerate(past_key_values):
+        if layer_indices is not None and len(layer_indices) != len(past_key_values):
+            raise ValueError(
+                "layer_indices length must match past_key_values length: "
+                f"{len(layer_indices)} != {len(past_key_values)}"
+            )
+
+        for local_idx, (k, v) in enumerate(past_key_values):
+            layer_idx = layer_indices[local_idx] if layer_indices is not None else local_idx
             original_bytes += k.nbytes + v.nbytes
             bits = self._get_bits_for_layer(layer_idx, tier_info)
 

@@ -13,6 +13,7 @@ class SingleAgentPipelineConfig:
         "You are a mathematical reasoning assistant. "
         "Solve carefully and return final answer as #### [number]"
     )
+    print_raw_outputs: bool = False
 
 class SingleAgentPipeline:
     def __init__(self, model, tokenizer, config: SingleAgentPipelineConfig = None, device: str = "cuda"):
@@ -38,7 +39,15 @@ class SingleAgentPipeline:
                 input_ids=input_ids,
                 max_new_tokens=512,
                 do_sample=False,
+                temperature=0.0,
+                top_p=1.0,
+                num_beams=1,
             )
             
         new_tokens = output_ids[0, input_ids.shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+        answer = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+        
+        if getattr(self.config, "print_raw_outputs", False):
+            print(f"\n[RAW OUTPUT Single Agent] {answer}\n")
+            
+        return answer

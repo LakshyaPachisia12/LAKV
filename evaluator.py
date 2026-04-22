@@ -6,6 +6,7 @@ and produces the results table suitable for a paper.
 """
 
 import csv
+import copy
 import json
 import re
 import time
@@ -17,6 +18,21 @@ import torch
 from tqdm import tqdm
 
 from pipeline import LAKVPipeline, PipelineConfig, RunResult
+
+
+TWO_AGENT_BENCH_PROMPTS = [
+    (
+        "You are a careful mathematical reasoning agent.\n"
+        "Solve step-by-step internally.\n"
+        "Be accurate."
+    ),
+    (
+        "You have access to previous reasoning memory.\n"
+        "Use it to solve the problem.\n\n"
+        "Return ONLY:\n\n"
+        "#### number"
+    ),
+]
 
 
 # ── config presets ────────────────────────────────────────────────────────────
@@ -73,12 +89,42 @@ ABLATION_CONFIGS = {
 
 
 def extract_answer(text: str) -> Optional[str]:
-    """Extract numerical answer from model output (GSM8K format)."""
-    match = re.search(r"####\s*(-?\d[\d,]*(?:\.\d+)?)", text)
-    if match:
-        return match.group(1).replace(",", "")
-    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)
-    return numbers[-1].replace(",", "") if numbers else None
+    """Extract numeric answer, preferring #### format with robust fallbacks."""
+    if not text:
+        return None
+
+    # Repair split-digit artifacts like "1!2!0" before fallback parsing.
+    cleaned = re.sub(r"(?<=\d)[^\d,\.\-]+(?=\d)", "", text)
+
+    for candidate in (text, cleaned):
+        match = re.search(r"####\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    for candidate in (text, cleaned):
+        match = re.search(r"(?im)^\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\.?\s*$", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    for candidate in (text, cleaned):
+        match = re.search(r"(?i)answer\s*(?:is|=|:)?\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if match:
+            return match.group(1).replace(",", "").rstrip(".")
+
+    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", cleaned)
+    return numbers[-1].replace(",", "").rstrip(".") if numbers else None
+
+
+def is_malformed(text: str) -> bool:
+    if not text:
+        return True
+    # Too many repeated punctuations
+    if re.search(r"[!?.]{4,}", text):
+        return True
+    # Or split digits
+    if re.search(r"(?<=\d)[^\d,\.\-\s]+(?=\d)", text):
+        return True
+    return False
 
 
 class Evaluator:
@@ -89,11 +135,21 @@ class Evaluator:
 
     # ── pipeline factories ────────────────────────────────────────────────
 
-    def _build_pipeline(self, cfg_name: str, profile_path: Optional[str]):
+    @staticmethod
+    def _apply_arch(preset: PipelineConfig, arch: str) -> None:
+        if arch == "legacy":
+            return
+        if arch != "two_agent":
+            raise ValueError(f"Unknown arch: {arch}")
+
+        preset.n_agents = 2
+        preset.system_prompts = list(TWO_AGENT_BENCH_PROMPTS)
+        preset.intermediate_max_new_tokens = 64
+        preset.final_max_new_tokens = 16
+
+    def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy"):
         """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent."""
         import random as _random
-        from layer_selector import LayerSelector
-        from calibration_profiler import LayerProfile
 
         if cfg_name == "single_agent":
             from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
@@ -118,12 +174,14 @@ class Evaluator:
                 profile_path=profile_path,
                 _custom_layer_indices=indices,
             )
+            self._apply_arch(preset, arch)
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
                                 custom_layer_indices=indices)
             return pipe, "multi"
 
         # Standard preset
-        preset = PRESETS[cfg_name]
+        preset = copy.deepcopy(PRESETS[cfg_name])
+        self._apply_arch(preset, arch)
         if preset.use_layer_selection or preset.compression_mode == "adaptive":
             preset.profile_path = profile_path
         pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
@@ -131,7 +189,7 @@ class Evaluator:
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/", checkpoint_every=5,
-                       resume=False):
+                       resume=False, arch: str = "legacy", print_raw_outputs: bool = False):
         if configs_to_run is None:
             configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D"]
 
@@ -162,6 +220,8 @@ class Evaluator:
                     "mean_compression_ratio": 0.0,
                     "mean_layers_transmitted": 0.0,
                     "mean_latency_seconds": 0.0,
+                    "parse_failures": 0,
+                    "malformed_output_rate": 0.0,
                     "n_correct": 0,
                     "n_samples": 0,
                     "n_expected": len(samples),
@@ -173,6 +233,8 @@ class Evaluator:
             mean_latency = sum(x["latency_s"] for x in per_sample) / n_done
             mean_comp = sum(x["compressed_mb"] for x in per_sample) / n_done
             mean_ratio = sum(x["compression_ratio"] for x in per_sample) / n_done
+            parse_failures = sum(1 for x in per_sample if x["predicted"] is None)
+            malformed_rate = sum(1 for x in per_sample if x["is_malformed"]) / n_done
 
             layers_vals = []
             for x in per_sample:
@@ -188,6 +250,8 @@ class Evaluator:
                 "mean_compression_ratio": mean_ratio,
                 "mean_layers_transmitted": mean_layers,
                 "mean_latency_seconds": mean_latency,
+                "parse_failures": parse_failures,
+                "malformed_output_rate": malformed_rate,
                 "n_correct": correct,
                 "n_samples": n_done,
                 "n_expected": len(samples),
@@ -202,7 +266,8 @@ class Evaluator:
                     print(f"[Evaluator] Skipping {cfg_name} (already completed)")
                     continue
 
-                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path)
+                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch)
+                pipe.config.print_raw_outputs = print_raw_outputs
                 print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
                 # Restore partial progress for this config if resuming mid-config
@@ -239,6 +304,7 @@ class Evaluator:
                         if ok: correct += 1
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                             "predicted":pred,"raw_answer":raw_answer,"correct":ok,
+                            "is_malformed":is_malformed(raw_answer),
                             "compressed_mb":0.0,"original_mb":0.0,
                             "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
                         tot_lat += elapsed
@@ -252,6 +318,7 @@ class Evaluator:
                         nh = max(len(r.hop_stats), 1)
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                             "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                            "is_malformed":is_malformed(r.answer),
                             "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
                             "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                             "hop_stats":[asdict(h) for h in r.hop_stats]})
@@ -271,6 +338,8 @@ class Evaluator:
                     "mean_compression_ratio":tot_ratio/n if n else 0,
                     "mean_layers_transmitted":tot_layers/n if n else 0,
                     "mean_latency_seconds":tot_lat/n if n else 0,
+                    "parse_failures":sum(1 for x in per_sample if x["predicted"] is None),
+                    "malformed_output_rate":sum(1 for x in per_sample if x["is_malformed"])/n if n else 0,
                     "n_correct":correct,"n_samples":n,
                     "n_expected":n,
                     "status":"completed"}
@@ -293,17 +362,19 @@ class Evaluator:
         print(f"\n[Evaluator] Results saved to {out}/")
         return all_results
 
-    def run_sanity_check(self, profile_path, dataset=None, n_samples=3):
+    def run_sanity_check(self, profile_path, dataset=None, n_samples=3, arch: str = "legacy", print_raw_outputs: bool = False):
         if dataset is None:
             dataset = [{"question":"What is 15 + 27?","answer":"42"},
                 {"question":"A train travels 60 miles in 2 hours. Speed in mph?","answer":"30"},
                 {"question":"Apples cost $2 each. How much for 5?","answer":"10"}]
         samples = dataset[:n_samples]
         for cfg_name in ("A","D"):
-            preset = PRESETS[cfg_name]
+            preset = copy.deepcopy(PRESETS[cfg_name])
+            self._apply_arch(preset, arch)
             if preset.use_layer_selection or preset.compression_mode == "adaptive":
                 preset.profile_path = profile_path
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
+            pipe.config.print_raw_outputs = print_raw_outputs
             print(f"\n{'='*60}\nSanity Check — Config {cfg_name}\n{'='*60}")
             for i,s in enumerate(samples):
                 r = pipe.run(s["question"])
@@ -331,9 +402,9 @@ class Evaluator:
         with open(path,"w",newline="") as f:
             w=csv.writer(f)
             w.writerow(["config","accuracy","mean_compressed_mb","mean_compression_ratio",
-                "mean_layers_transmitted","mean_latency_seconds","n_correct","n_samples"])
+                "mean_layers_transmitted","mean_latency_seconds","parse_failures","malformed_output_rate","n_correct","n_samples"])
             for c,d in all_results.items():
                 s=d["summary"]
                 w.writerow([c,f"{s['accuracy']:.4f}",f"{s['mean_compressed_mb']:.4f}",
                     f"{s['mean_compression_ratio']:.4f}",f"{s['mean_layers_transmitted']:.1f}",
-                    f"{s['mean_latency_seconds']:.2f}",s["n_correct"],s["n_samples"]])
+                    f"{s['mean_latency_seconds']:.2f}",s["parse_failures"],f"{s['malformed_output_rate']:.4f}",s["n_correct"],s["n_samples"]])

@@ -28,14 +28,18 @@ class OffsetCorrector:
                  anchor_table_path: Optional[str] = None):
         # anchor_table_path kept for backwards compat with old stub signature
         self.anchor_table = anchor_table
+        self.last_offset_log = {}
 
     def correct(
         self,
         kv_message: KVMessage,
-        sender_suffix_len: int,
-        receiver_suffix_len: int,
+        sender_suffix_len: int = 0,
+        receiver_suffix_len: int = 0,
         question: Optional[str] = None,
         agent_id: Optional[str] = None,
+        channel_key: Optional[str] = None,
+        sender_seq_len: Optional[int] = None,
+        receiver_prompt_len: Optional[int] = None,
         query_hidden: Optional[torch.Tensor] = None,
         device: str = "cuda",
     ) -> Tuple[KVMessage, bool]:
@@ -54,12 +58,30 @@ class OffsetCorrector:
         Returns:
             (corrected_message, was_corrected): corrected KVMessage + bool flag.
         """
+        sender_len = sender_seq_len if sender_seq_len is not None else sender_suffix_len
+        receiver_len = receiver_prompt_len if receiver_prompt_len is not None else receiver_suffix_len
+        raw_offset = int(sender_len - receiver_len)
+        applied_offset = max(0, raw_offset)
+        self.last_offset_log = {
+            "sender_len": int(sender_len),
+            "receiver_len": int(receiver_len),
+            "raw_offset": raw_offset,
+            "applied_offset": applied_offset,
+        }
+
+        effective_channel = channel_key or agent_id
+
         if (self.anchor_table is None or question is None
-                or agent_id is None or query_hidden is None):
+                or effective_channel is None or query_hidden is None):
             return kv_message, False
 
         key = make_key(question)
-        result = self.anchor_table.query_correction(key, agent_id, query_hidden, device)
+        result = self.anchor_table.query_correction(
+            key,
+            effective_channel,
+            query_hidden,
+            device,
+        )
         if result is None:
             return kv_message, False
 

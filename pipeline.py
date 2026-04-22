@@ -34,6 +34,16 @@ class PipelineConfig:
     reconstruction_strategy: str    # 'zeros'|'nearest'|'interpolate'
     n_agents: int = 3
     profile_path: Optional[str] = None
+    intermediate_max_new_tokens: int = 200
+    final_max_new_tokens: int = 512
+    generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
+        "do_sample": False,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "num_beams": 1,
+    })
+    print_raw_outputs: bool = False
+    anchor_channel_key: str = "solver_to_finalizer"
     _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
     system_prompts: List[str] = field(default_factory=lambda: [
         (
@@ -113,6 +123,7 @@ class LAKVPipeline:
             mode=config.compression_mode,
             profile=self.profile if config.compression_mode == "adaptive" else None,
         )
+        self.last_run_offset_logs: List[Dict[str, int]] = []
 
         self.anchor_table: Optional[AnchorTable] = None
         self.corrector: Optional[OffsetCorrector] = None
@@ -127,9 +138,11 @@ class LAKVPipeline:
         hop_stats: List[HopStat] = []
         kv_message: Optional[KVMessage] = None
         selection_mask: Optional[SelectionMask] = None
+        pending_position_offset = 0
         total_bytes = 0
         answer = ""
         q_key = make_key(question)
+        self.last_run_offset_logs = []
 
         # Compute base KV (no-prefix) once per question for anchor table updates
         base_kv: Optional[tuple] = None
@@ -171,17 +184,33 @@ class LAKVPipeline:
                 injected_kv_tuple = decompressed
 
             if is_last:
-                answer = self._generate(input_ids, injected_kv_tuple)
+                answer = self._generate(
+                    input_ids,
+                    injected_kv_tuple,
+                    max_new_tokens=self.config.final_max_new_tokens,
+                    position_offset=pending_position_offset,
+                    receiver_prompt_len=input_ids.shape[1],
+                )
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
                 raw_kv_tuple, agent_hidden = self._generate_intermediate_with_hidden(
-                    input_ids, injected_kv_tuple)
+                    input_ids,
+                    injected_kv_tuple,
+                    max_new=self.config.intermediate_max_new_tokens,
+                    position_offset=pending_position_offset,
+                    receiver_prompt_len=input_ids.shape[1],
+                )
+                pending_position_offset = 0
 
                 # Populate anchor table with this agent's observation
                 if self.anchor_table is not None and base_kv is not None:
+                    channel_key = (
+                        self.config.anchor_channel_key
+                        if self.config.n_agents == 2 else f"agent_{agent_idx}"
+                    )
                     self.anchor_table.update(
-                        q_key, f"agent_{agent_idx}", base_kv, raw_kv_tuple, agent_hidden)
+                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden)
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
@@ -195,20 +224,34 @@ class LAKVPipeline:
                     n_transmitted = self.N_LAYERS
 
                 # compression
-                kv_message = self.compressor.compress(filtered_kv, tier_info=tier_info)
+                kv_message = self.compressor.compress(
+                    filtered_kv,
+                    tier_info=tier_info,
+                    layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
+                )
 
                 # anchor-table offset correction
                 if self.corrector and base_hidden is not None:
-                    receiver_id = f"agent_{agent_idx + 1}"
+                    receiver_id = (
+                        self.config.anchor_channel_key
+                        if self.config.n_agents == 2 else f"agent_{agent_idx + 1}"
+                    )
+                    sender_seq_len = raw_kv_tuple[0][0].shape[2]
+                    receiver_prompt_len = self._prompt_len_for_agent(
+                        question, prompts, agent_idx + 1
+                    )
                     kv_message, was_corrected = self.corrector.correct(
                         kv_message,
-                        sender_suffix_len=input_ids.shape[1],
-                        receiver_suffix_len=input_ids.shape[1],
+                        sender_seq_len=sender_seq_len,
+                        receiver_prompt_len=receiver_prompt_len,
                         question=question,
-                        agent_id=receiver_id,
+                        channel_key=receiver_id,
                         query_hidden=base_hidden,
                         device=self.device,
                     )
+                    if self.corrector.last_offset_log:
+                        self.last_run_offset_logs.append(dict(self.corrector.last_offset_log))
+                        pending_position_offset = self.corrector.last_offset_log.get("applied_offset", 0)
 
                 total_bytes += kv_message.compressed_bytes
                 if self.verbose:
@@ -225,6 +268,9 @@ class LAKVPipeline:
                     n_layers_total=self.N_LAYERS,
                 ))
 
+        if self.config.print_raw_outputs:
+            print(f"\n[RAW OUTPUT Agent {n_agents-1}] {answer}\n")
+
         total_orig = sum(h.original_mb for h in hop_stats)
         total_comp = sum(h.compressed_mb for h in hop_stats)
 
@@ -236,6 +282,22 @@ class LAKVPipeline:
             total_original_mb=total_orig,
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
         )
+
+    def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
+        if agent_idx >= self.config.n_agents:
+            return 0
+        system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ]
+        prompt_text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        prompt_ids = self.tokenizer(
+            prompt_text, return_tensors="pt", add_special_tokens=False
+        )["input_ids"]
+        return int(prompt_ids.shape[1])
 
     # ── cache conversion helpers ──────────────────────────────────────────
 
@@ -292,16 +354,27 @@ class LAKVPipeline:
 
     # ── forward / generate ────────────────────────────────────────────────
 
-    def _forward(self, input_ids: torch.Tensor, injected_kv_tuple: Optional[tuple] = None) -> tuple:
+    def _forward(
+        self,
+        input_ids: torch.Tensor,
+        injected_kv_tuple: Optional[tuple] = None,
+        position_offset: int = 0,
+        receiver_prompt_len: Optional[int] = None,
+    ) -> tuple:
         """model.forward() only — NO text generation. Returns raw (K, V) tuple."""
         kwargs: dict = {"input_ids": input_ids, "use_cache": True}
 
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            position_start = (
+                (receiver_prompt_len + position_offset)
+                if receiver_prompt_len is not None
+                else (cache_seq_len + position_offset)
+            )
             kwargs["past_key_values"] = cache
             kwargs["position_ids"] = torch.arange(
-                cache_seq_len, cache_seq_len + input_ids.shape[1],
+                position_start, position_start + input_ids.shape[1],
                 device=self.device,
             ).unsqueeze(0)
 
@@ -310,7 +383,14 @@ class LAKVPipeline:
 
         return self._to_tuple(outputs.past_key_values)
 
-    def _generate(self, input_ids: torch.Tensor, injected_kv_tuple: Optional[tuple] = None) -> str:
+    def _generate(
+        self,
+        input_ids: torch.Tensor,
+        injected_kv_tuple: Optional[tuple] = None,
+        max_new_tokens: Optional[int] = None,
+        position_offset: int = 0,
+        receiver_prompt_len: Optional[int] = None,
+    ) -> str:
         """Run generation for the final agent.
 
         When KV is injected from a prior agent, model.generate() cannot be used
@@ -324,14 +404,16 @@ class LAKVPipeline:
         When there is no KV to inject, fall back to model.generate() normally.
         """
         eos_id = self.tokenizer.eos_token_id
+        if max_new_tokens is None:
+            max_new_tokens = self.config.final_max_new_tokens
 
         if injected_kv_tuple is None:
             # ── No KV injection: standard generate ───────────────────
             with torch.no_grad():
                 output_ids = self.model.generate(
                     input_ids=input_ids,
-                    max_new_tokens=512,
-                    do_sample=False,
+                    max_new_tokens=max_new_tokens,
+                    **self.config.generation_kwargs,
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
@@ -339,8 +421,13 @@ class LAKVPipeline:
         # ── KV injection: forward-prime then manual greedy decode ─────
         cache = self._to_dynamic_cache(injected_kv_tuple)
         cache_seq_len = injected_kv_tuple[0][0].shape[2]
+        position_start = (
+            (receiver_prompt_len + position_offset)
+            if receiver_prompt_len is not None
+            else (cache_seq_len + position_offset)
+        )
         position_ids = torch.arange(
-            cache_seq_len, cache_seq_len + input_ids.shape[1],
+            position_start, position_start + input_ids.shape[1],
             device=self.device,
         ).unsqueeze(0)
 
@@ -357,7 +444,7 @@ class LAKVPipeline:
 
         # Step 2 — Greedy decode one token at a time
         generated: List[int] = []
-        for _ in range(512):
+        for _ in range(max_new_tokens):
             next_token = next_logits.argmax(-1, keepdim=True)  # (1, 1)
             tok_id = next_token.item()
             if tok_id == eos_id:
@@ -380,7 +467,9 @@ class LAKVPipeline:
         self,
         input_ids: torch.Tensor,
         injected_kv_tuple: Optional[tuple] = None,
-        max_new: int = 200,
+        max_new: Optional[int] = None,
+        position_offset: int = 0,
+        receiver_prompt_len: Optional[int] = None,
     ) -> tuple:
         """
         Generate up to max_new tokens for an intermediate agent.
@@ -388,12 +477,19 @@ class LAKVPipeline:
         so the next agent's context contains this agent's reasoning.
         """
         eos_id = self.tokenizer.eos_token_id
+        if max_new is None:
+            max_new = self.config.intermediate_max_new_tokens
 
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            position_start = (
+                (receiver_prompt_len + position_offset)
+                if receiver_prompt_len is not None
+                else (cache_seq_len + position_offset)
+            )
             position_ids = torch.arange(
-                cache_seq_len, cache_seq_len + input_ids.shape[1],
+                position_start, position_start + input_ids.shape[1],
                 device=self.device,
             ).unsqueeze(0)
             with torch.no_grad():
@@ -430,16 +526,25 @@ class LAKVPipeline:
         self,
         input_ids: torch.Tensor,
         injected_kv_tuple: Optional[tuple] = None,
-        max_new: int = 200,
+        max_new: Optional[int] = None,
+        position_offset: int = 0,
+        receiver_prompt_len: Optional[int] = None,
     ) -> tuple:
         """Like _generate_intermediate but also returns last hidden states for anchor embedding."""
         eos_id = self.tokenizer.eos_token_id
+        if max_new is None:
+            max_new = self.config.intermediate_max_new_tokens
 
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
+            position_start = (
+                (receiver_prompt_len + position_offset)
+                if receiver_prompt_len is not None
+                else (cache_seq_len + position_offset)
+            )
             position_ids = torch.arange(
-                cache_seq_len, cache_seq_len + input_ids.shape[1],
+                position_start, position_start + input_ids.shape[1],
                 device=self.device,
             ).unsqueeze(0)
             with torch.no_grad():

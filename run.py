@@ -97,7 +97,7 @@ def mode_sanity(args):
     model, tokenizer = load_model(args.model, args.device)
     dataset = load_gsm8k("test", n=3)
     Evaluator(model, tokenizer, device=args.device).run_sanity_check(
-        profile_path=args.profile_path, dataset=dataset)
+        profile_path=args.profile_path, dataset=dataset, arch=args.arch, print_raw_outputs=args.print_raw_outputs)
 
 
 def mode_experiment(args):
@@ -126,6 +126,8 @@ def mode_experiment(args):
         n_samples=args.n_samples,
         output_dir=str(output_dir),
         resume=resume,
+        arch=args.arch,
+        print_raw_outputs=args.print_raw_outputs,
     )
 
 
@@ -148,6 +150,9 @@ def main():
     parser.add_argument("--resume_dir", default=None,
                         help="Path to an existing run folder to resume (e.g. results/run_20260420_123456)")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--arch", choices=["legacy", "two_agent"], default="legacy",
+                        help="Architecture mode for multi-agent configs (default: legacy)")
+    parser.add_argument("--print_raw_outputs", action="store_true", help="Print raw generated outputs")
     args = parser.parse_args()
 
     if args.mode == "calibrate":
