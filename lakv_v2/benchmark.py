@@ -473,7 +473,7 @@ def load_model(model_name: str, device: str):
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16,
+        dtype=torch.bfloat16,
         device_map=device,
         attn_implementation="eager",
         trust_remote_code=True,

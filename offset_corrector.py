@@ -81,6 +81,7 @@ class OffsetCorrector:
             effective_channel,
             query_hidden,
             device,
+            target_prompt_len=receiver_len,
         )
         if result is None:
             return kv_message, False
