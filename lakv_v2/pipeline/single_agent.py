@@ -30,20 +30,24 @@ class SingleAgentPipeline:
         prompt_text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        input_ids = self.tokenizer(
+        encoded = self.tokenizer(
             prompt_text, return_tensors="pt", add_special_tokens=False
-        )["input_ids"].to(self.device)
-        
+        )
+        input_ids = encoded["input_ids"].to(self.device)
+        attention_mask = encoded["attention_mask"].to(self.device)
+
         with torch.no_grad():
             output_ids = self.model.generate(
                 input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=512,
                 do_sample=False,
                 temperature=0.0,
                 top_p=1.0,
                 num_beams=1,
+                pad_token_id=self.tokenizer.eos_token_id,
             )
-            
+
         new_tokens = output_ids[0, input_ids.shape[1]:]
         answer = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
         

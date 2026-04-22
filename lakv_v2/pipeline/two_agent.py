@@ -67,12 +67,23 @@ class TwoAgentPipeline:
         # hidden_states: tuple of (n_layers+1) each (1, seq, hidden) — take last token's last layer
         solver_hidden = out_1.hidden_states[-1][-1]  # (1, 1, hidden) → use base_hidden instead
 
+        # Build finalizer prompt early (needed for anchor table pass)
+        prompt_2 = self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": self.config.finalizer_prompt},
+             {"role": "user", "content": question}],
+            tokenize=False, add_generation_prompt=True,
+        )
+        input_ids_2 = self.tokenizer(
+            prompt_2, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
+
         # Populate anchor table with solver's observation
         if self.config.anchor_table is not None and base_kv is not None:
             from anchor_table import question_key as make_key
             q_key = make_key(question)
             self.config.anchor_table.update(
-                q_key, "agent_0", base_kv, raw_kv_tuple, base_hidden)
+                q_key, "agent_0", base_kv, raw_kv_tuple, base_hidden,
+                prompt_seq_len=int(input_ids_1.shape[1]))
 
         # ---------------------------------------------
         # 2. KV MANIPULATION (Selection & Compression)
@@ -99,7 +110,8 @@ class TwoAgentPipeline:
             from anchor_table import question_key as make_key
             q_key = make_key(question)
             result = self.config.anchor_table.query_correction(
-                q_key, "agent_1", base_hidden, device=self.device)
+                q_key, "agent_1", base_hidden, device=self.device,
+                target_prompt_len=int(input_ids_2.shape[1]))
             if result is not None:
                 corrected_kv, conf = result
                 processed_kv = corrected_kv
@@ -111,14 +123,6 @@ class TwoAgentPipeline:
         # ---------------------------------------------
         # 3. FINALIZER AGENT (Consumes KV Memory)
         # ---------------------------------------------
-        prompt_2 = self.tokenizer.apply_chat_template(
-            [{"role": "system", "content": self.config.finalizer_prompt},
-             {"role": "user", "content": question}],
-            tokenize=False, add_generation_prompt=True,
-        )
-        input_ids_2 = self.tokenizer(
-            prompt_2, return_tensors="pt", add_special_tokens=False
-        )["input_ids"].to(self.device)
         
         dynamic_cache = self.aligner.prepare_handoff_cache(processed_kv)
         # Extending attention mask and generating explicitly mapped position IDs

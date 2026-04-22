@@ -70,6 +70,8 @@ class AnchorTable:
         base_kv: Tuple,             # tuple of (K, V) per layer, no-prefix KV
         actual_kv: Tuple,           # tuple of (K, V) per layer, in-context KV
         hidden_states: torch.Tensor,  # (1, seq, hidden) last-layer hidden states
+        prompt_seq_len: Optional[int] = None,
+        rope_theta: float = 1_000_000.0,
     ) -> None:
         """Compute ΔKV and store under (question_key, agent_id)."""
         n_layers = len(base_kv)
@@ -79,10 +81,23 @@ class AnchorTable:
         for layer_idx in range(n_layers):
             bk, bv = base_kv[layer_idx]
             ak, av = actual_kv[layer_idx]
-            # Align sequence lengths (actual may be longer due to prefix tokens)
-            min_seq = min(bk.shape[2], ak.shape[2])
-            delta_k.append((ak[:, :, :min_seq, :] - bk[:, :, :min_seq, :]).cpu())
-            delta_v.append((av[:, :, :min_seq, :] - bv[:, :, :min_seq, :]).cpu())
+            # Suffix-aligned + de-rotated delta computation
+            base_seq = bk.shape[2]
+            actual_prompt_seq = min(int(prompt_seq_len) if prompt_seq_len is not None else int(ak.shape[2]), int(ak.shape[2]))
+            start = max(actual_prompt_seq - base_seq, 0)
+            end = min(start + base_seq, int(ak.shape[2]))
+            seg_len = max(end - start, 1)
+
+            bk_seg = bk[:, :, :seg_len, :]
+            bv_seg = bv[:, :, :seg_len, :]
+            ak_seg = ak[:, :, start:end, :]
+            av_seg = av[:, :, start:end, :]
+
+            pos_shift = max(actual_prompt_seq - base_seq, 0)
+            ak_aligned = self._rope_shift_k(ak_seg, shift=-pos_shift, theta=rope_theta)
+
+            delta_k.append((ak_aligned - bk_seg).cpu())
+            delta_v.append((av_seg - bv_seg).cpu())
 
         emb = self._embed(hidden_states)
 
@@ -105,6 +120,8 @@ class AnchorTable:
         agent_id: str,
         query_hidden: torch.Tensor,   # (1, seq, hidden) last-layer hidden states
         device: str = "cuda",
+        target_prompt_len: Optional[int] = None,
+        rope_theta: float = 1_000_000.0,
     ) -> Optional[Tuple[Tuple, float]]:
         """
         Returns (corrected_kv_tuple, confidence) if a usable anchor is found,
@@ -160,7 +177,12 @@ class AnchorTable:
             dv = delta_v_interp[layer_idx].to(device)
             # Sequence length: use base length (shortest safe overlap)
             seq = bk.shape[2]
-            corrected.append((bk + dk[:, :, :seq, :], bv + dv[:, :, :seq, :]))
+            k_corr = bk + dk[:, :, :seq, :]
+            v_corr = bv + dv[:, :, :seq, :]
+            if target_prompt_len is not None:
+                target_shift = max(int(target_prompt_len) - seq, 0)
+                k_corr = self._rope_shift_k(k_corr, shift=target_shift, theta=rope_theta)
+            corrected.append((k_corr, v_corr))
 
         self._log_hit(question_key, agent_id, confidence, len(candidates))
         return tuple(corrected), confidence
@@ -202,6 +224,28 @@ class AnchorTable:
             torch.dist(query_emb, c.embedding, p=2) for c in candidates
         ])
         return torch.softmax(-dists, dim=0)
+
+    @staticmethod
+    def _rope_shift_k(k: torch.Tensor, shift: int, theta: float = 1_000_000.0) -> torch.Tensor:
+        """Apply a constant RoPE shift to key tensor along the rotary dimension."""
+        if shift == 0:
+            return k
+        d = k.shape[-1]
+        if d % 2 != 0:
+            return k
+
+        kf = k.float()
+        half = d // 2
+        inv_freq = 1.0 / (theta ** (torch.arange(0, half, device=k.device, dtype=torch.float32) / half))
+        angle = float(shift) * inv_freq
+        cos = torch.cos(angle).view(1, 1, 1, half)
+        sin = torch.sin(angle).view(1, 1, 1, half)
+
+        x1 = kf[..., :half]
+        x2 = kf[..., half:]
+        y1 = x1 * cos - x2 * sin
+        y2 = x1 * sin + x2 * cos
+        return torch.cat([y1, y2], dim=-1).to(k.dtype)
 
     def _log_hit(self, key, agent_id, confidence, n_candidates):
         self._hit_log.append({

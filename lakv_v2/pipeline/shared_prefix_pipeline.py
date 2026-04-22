@@ -234,6 +234,13 @@ class SharedPrefixPipeline:
             print(f"  [Solver] reasoning: {solver_reasoning[:120]}...")
 
         # ── Phase 3 & 4: Either KV injection OR text concatenation ────────
+        # Defaults for the text-only path (overwritten by KV injection path)
+        transferred_cache_seq_len = 0
+        original_mb = 0.0
+        compressed_mb = 0.0
+        compression_ratio = 0.0
+        n_transferred = 0
+
         if self.config.use_kv_injection:
             # LAKV Transfer
             kv_to_transfer, transferred_cache_seq_len = self._build_transfer_kv(

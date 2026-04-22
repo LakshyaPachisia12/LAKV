@@ -40,6 +40,8 @@ def run_sanity(args):
 
     print(f"[sanity] Loading model: {args.model} ...")
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         torch_dtype=torch.bfloat16,
@@ -53,7 +55,7 @@ def run_sanity(args):
     configs_to_test = [
         ("v2_TEXT_ONLY (text concatenation baseline)", SharedPrefixConfig(
             use_kv_injection=False,
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=256,
             print_raw_outputs=True,
             verbose=True,
         )),
@@ -61,7 +63,7 @@ def run_sanity(args):
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=256,
             print_raw_outputs=True,
             verbose=True,
         )),
@@ -69,7 +71,7 @@ def run_sanity(args):
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=64,
+            solver_max_new_tokens=256,
             print_raw_outputs=True,
             verbose=True,
         )),
@@ -83,7 +85,7 @@ def run_sanity(args):
                 compression_mode="none",
                 reconstruction_strategy="zeros",
                 profile_path=args.profile_path,
-                solver_max_new_tokens=64,
+                solver_max_new_tokens=256,
                 print_raw_outputs=True,
                 verbose=True,
             ))

@@ -34,12 +34,15 @@ def test_baseline_solver(model, tokenizer, device):
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"].to(device)
 
     with torch.no_grad():
         outputs = model.generate(
             input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=64,
             num_beams=1,
+            do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
 
@@ -187,6 +190,8 @@ def main():
 
     print(f"[diagnostic] Loading model: {args.model} ...")
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         torch_dtype=torch.bfloat16,
