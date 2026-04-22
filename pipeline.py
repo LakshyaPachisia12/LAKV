@@ -210,8 +210,7 @@ class LAKVPipeline:
                         if self.config.n_agents == 2 else f"agent_{agent_idx}"
                     )
                     self.anchor_table.update(
-                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
-                        prompt_seq_len=int(input_ids.shape[1]))
+                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden)
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
