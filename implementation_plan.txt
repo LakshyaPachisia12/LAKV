@@ -1,0 +1,318 @@
+LAKV Forensic Audit — Full Architecture + Execution Plan
+Context
+The lakshya/tests branch shows suspicious benchmark results: v1_A_legacy=0%, v2_A_full=0%, v2_D_full=0%, while single_agent=40% and v2_C_full=20%. The user suspects implementation/wiring issues rather than genuine model failure. This plan documents the true architecture, all confirmed bugs, and the minimum patch set to restore trustworthy benchmarking.
+
+A. Repo Architecture Map
+Pure v1 (root-level, old 3-agent relay)
+File	Role
+run.py	Entry: --mode calibrate|sanity|experiment
+pipeline.py	LAKVPipeline — 3-agent KV relay with position_offset
+evaluator.py	Eval harness with PRESETS (A/B/C/D/E), run_experiment()
+run_best.py	Staged benchmark runner (3 stages), TextTwoAgentPipeline
+offset_corrector.py	Anchor-table-based position correction (off by default)
+anchor_table.py	RoPE-aware KV delta caching (recently completed Apr 22)
+calibration_profiler.py	Layer profiling, LayerProfile dataclass
+Pure v2 (lakv_v2/)
+File	Role
+lakv_v2/benchmark.py	New benchmark — all suspicious scores come from here
+lakv_v2/pipeline/shared_prefix_pipeline.py	SharedPrefixPipeline — 2-agent shared-prefix relay
+lakv_v2/pipeline/single_agent.py	SingleAgentPipeline
+lakv_v2/pipeline/two_agent.py	TwoAgentPipeline (text relay, legacy)
+lakv_v2/sanity_test.py	3-sample pre-benchmark check
+lakv_v2/diagnostic_test.py	3-stage cache corruption isolator
+lakv_v2/cache/	v2-native cache utilities
+Shared by Both
+File	Consumers
+kv_compressor.py	pipeline.py (v1) + shared_prefix_pipeline.py (v2)
+layer_selector.py	Same
+calibration_profiler.py	Both, when profile_path provided
+Dead / Misleading
+lakv_v2/cache/aligner.py, cache/compressor.py, cache/reconstruct.py, cache/selector.py — duplicates of root-level modules; v2 actually imports from root (kv_compressor.py, layer_selector.py), not from these. They are unreferenced in the live code paths.
+lakv_v2/eval_runner.py — UnifiedEvalRunner wrapping old LAKVPipeline; superseded by benchmark.py.
+B. True Execution Flows
+python run.py --mode experiment ...
+
+run.py:main()
+  → load_model() [Qwen2.5-7B-Instruct, bfloat16, eager attn]
+  → load_gsm8k()
+  → mode_experiment()
+      → evaluator.py:Evaluator.run_experiment()
+          → _build_pipeline(cfg_name) → LAKVPipeline (v1, 3-agent)
+          → pipeline.py:LAKVPipeline.run(question) for each sample
+          → evaluator.py:extract_answer() → score
+Uses v1 exclusively. Does NOT touch lakv_v2/.
+
+python lakv_v2/benchmark.py --phase all
+
+benchmark.py:main()
+  → load model + tokenizer
+  → build_pipeline(row_name) → factory returns (pipeline, pipe_type):
+      "single_agent"  → SingleAgentPipeline   [lakv_v2/pipeline/single_agent.py]
+      "text_2agent"   → TextTwoAgentPipeline  [run_best.py — imports ROOT]
+      "v1_full_kv"    → LAKVPipeline          [pipeline.py — ROOT v1]
+      "v2_*"          → SharedPrefixPipeline  [lakv_v2/pipeline/shared_prefix_pipeline.py]
+  → eval_sample(pipeline, pipe_type, question, gold)
+  → run_stage() → CSV + JSON output
+Mixed: SingleAgent and SharedPrefixPipeline are v2; v1_full_kv runs root pipeline.py.
+
+python lakv_v2/sanity_test.py
+
+sanity_test.py
+  → runs 3 hardcoded GSM8K questions
+  → tests: v2_TEXT_ONLY, v2_full_prefix, v2_layer_select, v2_full_prefix_verify
+  → prints raw solver + finalizer outputs
+  → uses SharedPrefixPipeline throughout
+C. Root Causes of Suspicious Scores
+Cause 1 — Sample Size Is Meaninglessly Small (HIGHEST CONFIDENCE)
+Historical Config A accuracy = 24% (n=200, results/run_20260331_065729/). With n=5:
+
+P(0/5 correct | true_acc=24%) = 0.76^5 = 25% — happens 1 in 4 runs
+P(0/5 correct | true_acc=40%) = 0.60^5 = 7.8%
+The 0% scores for v1_full_kv and v2_full_prefix at small n are statistically plausible even if the code is correct. This is the most likely explanation.
+
+Cause 2 — v1 Greedy Decode Loop Has No position_ids (CONFIRMED BUG)
+pipeline.py:_generate() lines 447–461: after the "prime" forward pass uses explicit position_ids = [receiver_prompt_len, ..., 2*receiver_prompt_len-1], the greedy decode loop calls model() without position_ids. The model auto-increments from _seen_tokens, which after the prime is cache_seq_len + prompt_len. This is numerically reasonable BUT the prime step itself places the receiver's prompt at positions [receiver_prompt_len, 2*receiver_prompt_len) which overlaps with the injected sender KV (positions 0 to cache_seq_len-1, typically 0-319). This positional collision has always existed in v1 and was "working" at ~24% for Config A. Not the cause of 0% but degrades accuracy by design.
+
+Cause 3 — solver_max_new_tokens=128 Too Tight for GSM8K
+All v2 rows use solver_max_new_tokens=128. Qwen2.5-7B typically needs 200–400 tokens for complete multi-step GSM8K reasoning. At 128 tokens the solver often stops mid-sentence (hits token limit before EOS). The finalizer then receives incomplete reasoning and the suffix makes no contextual sense. This degrades v2 accuracy substantially.
+
+Comparison: v1 uses intermediate_max_new_tokens=200 (default in PipelineConfig).
+
+Cause 4 — Finalizer Suffix Ends With ####, Raw Answer Has No ####
+The suffix is processed as continuation tokens. The greedy decode captures only tokens generated AFTER the suffix. So raw_answer = "42\n" — no #### in it. Pattern 1 (####\s*\d+) fails; the parser falls through to Pattern 2 (standalone number) or the last-number fallback.
+
+Cause 5 — v2_A_full vs v2_C_full Discrepancy (Statistical Noise at n=5)
+v2_C_full requires a profile_path (layer selection). If a valid profile exists, it works. The 20% vs 0% gap is within 1 sample at n=5. Not a real signal.
+
+Cause 6 — text_2agent Matches single_agent (Both 40%)
+TextTwoAgentPipeline (run_best.py:65–122) sends only TEXT (not KV) to Agent 2. The finalizer gets solver_reasoning + "\n\nReturn ONLY:\n\n#### number". If the verifier just echoes the reasoning answer, it equals single_agent accuracy. This is expected behavior, not a bug.
+
+Cause 7 — Recent Prompt Standardization May Have Changed v1 Output Format
+Commit 114c62d: refactor: standardize prompt formatting and dtype to bfloat16 changed prompts. If Agent 2's prompt was modified to output a non-standard format (e.g., "The answer is **42**" with markdown), Pattern 3 in extract_answer matches answer\s*is\s*(-?\d+) but not answer is **42** because ** precedes the digit. Fallback would catch it, but markdown artifacts could confuse it.
+
+Cause 8 — _to_dynamic_cache Does Not Set _seen_tokens Explicitly
+pipeline.py:_to_dynamic_cache() uses DynamicCache.from_legacy_cache(kv_tuple) which calls cache.update() for each layer and correctly sets _seen_tokens = kv_shape[-2] for layer 0. This is correct. Not a bug.
+
+Cause 9 — v2 _run_finalizer Position IDs Are Correct (Not a Bug)
+Position IDs for suffix: [cache_seq_len, cache_seq_len+suffix_len). Greedy decode: continues from cache_seq_len+suffix_len. Full continuity maintained. Not a bug.
+
+Cause 10 — Profile Required for v2_C/D But May Not Exist
+If profile_path is None or points to a nonexistent file, LayerSelector init crashes. This would cause v2_C_full to error (not score 0%). The fact that it scored 20% means a profile exists. v2_A_full and v2_D_full scoring 0% vs 20% for v2_C_full is within 1-sample noise.
+
+D. Exact Files to Patch
+Patch 1: lakv_v2/benchmark.py — Increase solver_max_new_tokens
+File: lakv_v2/benchmark.py
+
+Lines to change: 153, 161, 169, 179, 189, 199, 209, 218 (solver_max_new_tokens=128 → solver_max_new_tokens=256)
+
+This is the single highest-impact fix. 128 tokens is too short for reliable GSM8K reasoning.
+
+Patch 2: lakv_v2/pipeline/shared_prefix_pipeline.py — Fix Answer Parsing for v2 Finalizer
+Problem: raw_answer from _run_finalizer() contains only tokens generated AFTER the suffix. No #### in it. Pattern 1 never fires.
+
+Fix — change the suffix in shared_prefix_pipeline.py:70:
+
+
+# BEFORE:
+DEFAULT_FINALIZER_SUFFIX = "\n\nTherefore, the final answer in #### format is: ####"
+# AFTER:
+DEFAULT_FINALIZER_SUFFIX = "\n#### "
+The model generates directly after the ####. raw_answer = "42" or "42.". Pattern 2 (standalone number) or last-number fallback catches it cleanly.
+
+Patch 3: pipeline.py:_generate() — Add position_ids to v1 Greedy Loop
+File: pipeline.py
+
+Lines: 447–461 (greedy loop after prime, no position_ids)
+
+Add explicit position tracking in the v1 greedy loop:
+
+
+cur_gen_pos = cache_seq_len + input_ids.shape[1]  # after prime
+for _ in range(max_new_tokens):
+    next_token = ...
+    position_ids_t = torch.tensor([[cur_gen_pos]], device=self.device, dtype=torch.long)
+    out = self.model(
+        input_ids=next_token,
+        past_key_values=running_cache,
+        position_ids=position_ids_t,
+        use_cache=True,
+    )
+    cur_gen_pos += 1
+Patch 4: lakv_v2/benchmark.py — Add print_raw_outputs=True for First 3 Samples
+Add a debug mode that forces print_raw_outputs=True for the first 3 samples in any row. This lets you see what the model is actually generating before committing to a full 20-sample run.
+
+Patch 5: lakv_v2/benchmark.py — Change v1_full_kv to n_agents=2 (optional)
+The 3-agent v1 pipeline in a v2 benchmark context is hard to compare fairly (different token budgets, different prompt schema). Consider using n_agents=2 for a cleaner comparison.
+
+E. Exact Commands — True v1
+
+# Run v1 sanity check (3 samples, both Config A and Config D)
+python run.py --mode sanity --model Qwen/Qwen2.5-7B-Instruct --device cuda
+
+# Run v1 full experiment (Config A — no selection, no compression)
+python run.py --mode experiment \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --configs A \
+  --n_samples 20 \
+  --output_dir results/v1_debug
+
+# Run v1 full experiment (Config C — layer selection)  
+python run.py --mode experiment \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --configs C \
+  --n_samples 20 \
+  --output_dir results/v1_debug
+F. Exact Commands — True v2
+
+# Run v2 sanity test first (3 samples, shows raw outputs)
+python lakv_v2/sanity_test.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda
+
+# Run v2 diagnostic (isolates cache corruption)
+python lakv_v2/diagnostic_test.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda
+
+# Run v2 benchmark Phase 1 only (baselines, n=20)
+python lakv_v2/benchmark.py \
+  --phase 1 \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda \
+  --n_phase1 20
+
+# Run v2 benchmark Phase 2 (full vs tail KV, n=20)
+python lakv_v2/benchmark.py \
+  --phase 2 \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --n_phase2 20
+
+# Run all phases (n=20 each)
+python lakv_v2/benchmark.py \
+  --phase all \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --n_phase1 20 \
+  --n_phase2 20 \
+  --n_phase3 20 \
+  --n_phase4 20
+G. Clean Benchmark Matrix
+Architectural Boundary — Critical
+V1 and V2 are NOT directly comparable and should not share a flat table row:
+
+Dimension	V1 (LAKVPipeline)	V2 (SharedPrefixPipeline)
+Agents	3 (Solver/Verifier/Finalizer)	2 (Solver/Finalizer)
+Prompt flow	Each agent gets fresh system+question	Shared prefix, finalizer gets suffix only
+Transfer semantics	KV injected with position_offset to fresh prompt	KV is a true continuation (shared prefix identity)
+Token budget	200+200+512	256+32 (after patches)
+Decode	prime-forward + greedy	pure greedy from shared prefix
+Historical V1 results (A=24%, C=49.5%) are prior evidence that selective KV transfer works in principle, not a target to "revert to". Do not frame the benchmark as V1 vs V2.
+
+Run Order Tonight (n=20 minimum)
+Family 1 — Baselines (run first, always)
+
+Step	Row	n	Purpose
+1	single_agent	20	Ceiling — model's unaided accuracy
+2	text_2agent	20	Text relay control — sets benchmark for KV contribution
+Family 2 — V2 Protocol (primary focus)
+
+Step	Row	n	Purpose
+3	v2_full_prefix (after Patches)	20	Full shared-prefix KV
+4	v2_tail_only	20	Reasoning-tail KV only — bandwidth tradeoff
+5	v2_layer_select (needs profile)	20	Tier-based layer drop
+6	v2_compressed (needs profile)	20	Tier + adaptive quantization
+Family 3 — V1 Reference (separate file, separate analysis)
+
+Step	Row	n	Note
+7	v1_full_kv	20	Reference only — 3-agent relay, different architecture
+Rules:
+
+n=5 is statistically worthless. Minimum n=20 for any published number.
+Family 2 and Family 3 go in separate CSV files with explicit architecture notes in headers.
+Do NOT run v2_layer_select or v2_compressed without a valid profile_path.
+Compare rows only within the same family. Cross-family numbers go in a separate "architectural differences" section, not a flat accuracy table.
+Use text_2agent as the KV handoff control signal: if V2 KV rows are not above text_2agent, KV injection is not contributing.
+H. Top 10 Probable Causes (Ranked)
+Sample size n=5 — 0% is probabilistically plausible for a 24-40% system. This accounts for most of the "suspicious" numbers.
+solver_max_new_tokens=128 too low — Incomplete reasoning → finalizer extrapolates from garbage. Affects all v2 rows uniformly.
+Finalizer raw_answer has no #### — Pattern 1 never fires; fallback parsing is less reliable, especially if model generates prose.
+v1 greedy decode no position_ids — After prime, generated tokens get auto-incremented positions. Minor bug but contributes to v1 degradation.
+v1 positional collision in prime step — Receiver prompt at position [receiver_prompt_len, 2*receiver_prompt_len) overlaps injected KV. Explains why Config A is ~24% not ~50%.
+text_2agent = single_agent at 40% — Expected behavior for text relay without KV. Not a bug.
+v2_C_full needs valid profile — If profile is stale or wrong tier counts, layer selection produces garbage reconstruction.
+Recent prompt commits — "standardize prompt formatting" may have changed Agent 2's output format, making it marginally harder to parse. Low impact due to fallback.
+v2_D adaptive compression — Tier-aware quantization with short solver reasoning → double-whammy accuracy loss. Expect 0-20% until Patch 1 applied.
+DynamicCache _seen_tokens — from_legacy_cache sets this correctly. Not a bug.
+Implementation Order — Phased (Low-Risk First)
+Phase A: Low-Risk V2 Patches Only
+Patch 2 (suffix simplification) — shared_prefix_pipeline.py:70
+
+Change DEFAULT_FINALIZER_SUFFIX to "\n#### "
+1-line change, zero risk, eliminates parser ambiguity
+Patch 1 (solver token budget) — benchmark.py
+
+Change all solver_max_new_tokens=128 → solver_max_new_tokens=256 (or 512)
+Also change finalizer_max_new_tokens=32 → finalizer_max_new_tokens=48 (small buffer)
+These are V2 pipeline configs only; does not touch V1
+Rename benchmark rows — benchmark.py:build_pipeline()
+
+Replace legacy-letter row names with protocol-descriptive names per Section G table
+Separate V2 rows and V1 reference into distinct output files
+Freeze pipeline.py (V1) completely at this stage.
+
+Phase B: Run n=20 Benchmarks (before any further code changes)
+Run the full benchmark matrix (Section G) at n=20 per row.
+
+Control signal — use text_2agent as the KV handoff diagnostic:
+
+If text_2agent >> v2_full_prefix: KV handoff is the bottleneck; investigate _run_finalizer and _to_dynamic_cache before proceeding.
+If text_2agent ≈ v2_full_prefix: KV injection is contributing value; the gap is expected overhead.
+If v2_full_prefix > text_2agent: KV transfer is working as intended.
+Do not proceed to Phase C until Phase B data is in hand.
+
+Phase C: Deeper Surgery (only if Phase B data shows need)
+Patch 3 (v1 greedy decode position_ids) — pipeline.py:447-461
+
+Add explicit position_ids to the post-prime greedy loop
+Only do this after V1 reference benchmarks from Phase B establish baseline
+Patch 4 (debug raw outputs mode) — benchmark.py
+
+Force print_raw_outputs=True for the first 3 samples of any failing row
+Only needed if Phase B shows a row still scoring suspiciously low
+Verification
+
+# Before any benchmarking: sanity + diagnostic
+python lakv_v2/sanity_test.py --device cuda
+python lakv_v2/diagnostic_test.py --device cuda
+
+# Phase B: Family 1 baselines (single_agent, text_2agent)
+python lakv_v2/benchmark.py --phase 1 --device cuda --n_phase1 20
+
+# Phase B: Family 2 (V2 protocol — after Patches 1+2 applied)
+python lakv_v2/benchmark.py --phase 2 --phase 3 --phase 4 \
+  --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --n_phase2 20 --n_phase3 20 --n_phase4 20
+
+# Phase B: V1 reference (frozen, no changes to pipeline.py)
+# Run via evaluator.py not benchmark.py to keep clean separation
+python run.py --mode experiment \
+  --model Qwen/Qwen2.5-7B-Instruct --device cuda \
+  --profile profiles/<your_profile>/qwen_gsm8k.json \
+  --configs A C \
+  --n_samples 20 --output_dir results/v1_reference
+Decision criteria after Phase B:
+
+Observation	Interpretation	Next Action
+v2_full_prefix close to text_2agent	KV handoff not adding value	Phase C: inspect _run_finalizer, cache aligner
+v2_full_prefix >> text_2agent	KV injection working	Tune selection/compression
+v2_full_prefix << text_2agent by >15%	KV injection hurting	Deep debug of position_ids, DynamicCache conversion
+Any row still 0% at n=20	Real failure, not noise	Check raw outputs with print_raw_outputs=True
+Keep this plan handy for the remaining phases!

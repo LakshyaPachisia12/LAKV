@@ -24,7 +24,7 @@ _REPO = _HERE.parent
 sys.path.insert(0, str(_REPO))
 
 QUESTIONS = [
-    ("Janet's ducks lay 16 eggs per day. She eats 3 for breakfast every morning and bakes muffins for her friends every day with 4933. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+    ("Janet's ducks lay 16 eggs per day. She eats 3 for breakfast every morning and bakes muffins for her friends every day with 4. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
      "18"),
     ("A robe takes 2 bolts of blue fiber and half that much white fiber. How many bolts in total does it take?",
      "3"),
@@ -52,10 +52,21 @@ def run_sanity(args):
     model.eval()
     print("[sanity] Model loaded.\n")
 
+    from lakv_v2.pipeline.shared_prefix_pipeline import VERIFY_FINALIZER_SUFFIX
+
     configs_to_test = [
         ("v2_TEXT_ONLY (text concatenation baseline)", SharedPrefixConfig(
             use_kv_injection=False,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
+            finalizer_max_new_tokens=48,
+            print_raw_outputs=True,
+            verbose=True,
+        )),
+        ("v2_TEXT_VERIFIER (text baseline + verifier suffix)", SharedPrefixConfig(
+            use_kv_injection=False,
+            finalizer_suffix=VERIFY_FINALIZER_SUFFIX,
+            solver_max_new_tokens=512,
+            finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
         )),
@@ -63,7 +74,8 @@ def run_sanity(args):
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
+            finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
         )),
@@ -71,7 +83,8 @@ def run_sanity(args):
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
+            finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
         )),
