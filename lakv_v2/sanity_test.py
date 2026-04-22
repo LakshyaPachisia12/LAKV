@@ -42,7 +42,7 @@ def run_sanity(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map=args.device,
         attn_implementation="eager",
         trust_remote_code=True,

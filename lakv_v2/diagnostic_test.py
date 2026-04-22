@@ -27,7 +27,11 @@ def test_baseline_solver(model, tokenizer, device):
     print("TEST 1: Baseline Solver (no cache reconstruction)")
     print("="*60)
 
-    prompt = f"<system>You are a math assistant.</system>\n<user>{QUESTION}</user>\n<assistant>"
+    messages = [
+        {"role": "system", "content": "You are a math assistant."},
+        {"role": "user", "content": QUESTION},
+    ]
+    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     input_ids = inputs["input_ids"]
 
@@ -52,7 +56,11 @@ def test_cache_reconstruction(model, tokenizer, device):
     print("TEST 2: Manual greedy loop with proper position_ids (no reconstruction)")
     print("="*60)
 
-    prompt = f"<system>You are a math assistant.</system>\n<user>{QUESTION}</user>\n<assistant>"
+    messages = [
+        {"role": "system", "content": "You are a math assistant."},
+        {"role": "user", "content": QUESTION},
+    ]
+    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     prefix_ids = inputs["input_ids"]
 
@@ -103,7 +111,11 @@ def test_with_cache_tuple_roundtrip(model, tokenizer, device):
     print("TEST 3: Cache tuple roundtrip (convert → reconstruct)")
     print("="*60)
 
-    prompt = f"<system>You are a math assistant.</system>\n<user>{QUESTION}</user>\n<assistant>"
+    messages = [
+        {"role": "system", "content": "You are a math assistant."},
+        {"role": "user", "content": QUESTION},
+    ]
+    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     prefix_ids = inputs["input_ids"]
 
@@ -177,7 +189,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map=args.device,
         attn_implementation="eager",
         trust_remote_code=True,
