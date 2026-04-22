@@ -29,7 +29,6 @@ results/
 profiles/
 
 # ── Research Papers (large PDFs tracked separately) ──────────────────────────
-r-papers/
 
 # ── Model Checkpoints & Cache ────────────────────────────────────────────────
 *.bin

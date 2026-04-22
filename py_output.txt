@@ -1,0 +1,63 @@
+Loading model and tokenizer...
+[run] Loading model: Qwen/Qwen2.5-7B-Instruct …
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:33,  3.60it/s]Loading weights:   4%|▎         | 12/339 [00:00<00:08, 39.63it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:04, 66.43it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:03, 83.13it/s]Loading weights:  19%|█▉        | 64/339 [00:00<00:02, 111.00it/s]Loading weights:  23%|██▎       | 78/339 [00:00<00:02, 113.96it/s]Loading weights:  29%|██▉       | 100/339 [00:01<00:01, 127.93it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:01, 127.41it/s]Loading weights:  40%|████      | 136/339 [00:01<00:01, 142.84it/s]Loading weights:  45%|████▍     | 151/339 [00:01<00:01, 138.67it/s]Loading weights:  51%|█████     | 172/339 [00:01<00:01, 137.10it/s]Loading weights:  57%|█████▋    | 192/339 [00:01<00:00, 151.96it/s]Loading weights:  61%|██████▏   | 208/339 [00:01<00:00, 147.23it/s]Loading weights:  66%|██████▌   | 223/339 [00:01<00:00, 139.66it/s]Loading weights:  72%|███████▏  | 244/339 [00:02<00:00, 146.53it/s]Loading weights:  76%|███████▋  | 259/339 [00:02<00:00, 142.45it/s]Loading weights:  83%|████████▎ | 280/339 [00:02<00:00, 146.41it/s]Loading weights:  87%|████████▋ | 295/339 [00:02<00:00, 139.88it/s]Loading weights:  93%|█████████▎| 316/339 [00:02<00:00, 145.01it/s]Loading weights:  98%|█████████▊| 331/339 [00:02<00:00, 143.61it/s]Loading weights: 100%|██████████| 339/339 [00:02<00:00, 128.35it/s]
+
+--- Running Validation Suite (Text, KV, Cache Handoff) ---
+
+=== LAKV-v2 Validation Suite ===
+1. Cache Handoff Parity Test...
+      Cosine sim: nan | Exact Argmax Match: True
+   -> FAIL
+2. Quantization Roundtrip Test...
+   -> PASS
+3. Layer Drop Sensitivity Test...
+   -> PASS
+================================
+
+
+--- Running Pipeline Comparison (LAKV-v1 vs LAKV-v2 with Layer Selection) ---
+[LAKV-v2] Loaded calibration from profiles/run_20260422_122539/qwen_gsm8k.json
+[LAKV-v2] Selecting 20 layers based on Tier 1 & 2.
+
+[single_agent_baseline] Starting Evaluation...
+single_agent_baseline:   0%|          | 0/3 [00:00<?, ?it/s]The following generation flags are not valid and may be ignored: ['temperature', 'top_k']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+The attention mask is not set and cannot be inferred from input because pad token is same as eos token. As a consequence, you may observe unexpected behavior. Please pass your input's `attention_mask` to obtain reliable results.
+single_agent_baseline:  33%|███▎      | 1/3 [00:22<00:44, 22.14s/it]single_agent_baseline:  67%|██████▋   | 2/3 [00:44<00:22, 22.05s/it]single_agent_baseline: 100%|██████████| 3/3 [01:06<00:00, 22.00s/it]single_agent_baseline: 100%|██████████| 3/3 [01:06<00:00, 22.02s/it]
+[single_agent_baseline] Acc: 0.0% | Latency: 22.02s | KV: 0.00MB (ratio 0.00x) | Layers: 0.0
+
+[old_lakv_A] Starting Evaluation...
+old_lakv_A:   0%|          | 0/3 [00:00<?, ?it/s]old_lakv_A:  33%|███▎      | 1/3 [00:39<01:18, 39.24s/it]old_lakv_A:  67%|██████▋   | 2/3 [01:20<00:40, 40.28s/it]old_lakv_A: 100%|██████████| 3/3 [02:06<00:00, 42.89s/it]old_lakv_A: 100%|██████████| 3/3 [02:06<00:00, 42.08s/it]
+[old_lakv_A] Acc: 0.0% | Latency: 42.08s | KV: 53.50MB (ratio 1.00x) | Layers: 28.0
+
+[lakv_v2_full] Starting Evaluation...
+lakv_v2_full:   0%|          | 0/3 [00:00<?, ?it/s]lakv_v2_full:   0%|          | 0/3 [00:00<?, ?it/s]
+ERROR OCCURRED
+Traceback (most recent call last):
+  File "C:\Capstone\LLMP-Capstone\LAKV\test_pipeline.py", line 35, in main
+    runner.run_eval(dataset, configs, output_dir='results/test_pipeline_run')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Capstone\LLMP-Capstone\LAKV\lakv_v2\eval_runner.py", line 126, in run_eval
+    r = pipe.run(question)
+  File "C:\Capstone\LLMP-Capstone\LAKV\lakv_v2\pipeline\two_agent.py", line 58, in run
+    out_1 = self.model.generate(
+        input_ids=input_ids_1,
+    ...<3 lines>...
+        use_cache=True,
+    )
+  File "C:\Capstone\LLMP-Capstone\LAKV\.venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "C:\Capstone\LLMP-Capstone\LAKV\.venv\Lib\site-packages\transformers\generation\utils.py", line 2543, in generate
+    result = decoding_method(
+        self,
+    ...<5 lines>...
+        **model_kwargs,
+    )
+  File "C:\Capstone\LLMP-Capstone\LAKV\.venv\Lib\site-packages\transformers\generation\utils.py", line 2791, in _sample
+    next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: device-side assert triggered
+Search for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
