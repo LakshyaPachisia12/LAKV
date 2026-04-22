@@ -130,8 +130,9 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
         from run_best import TextTwoAgentPipeline
         return TextTwoAgentPipeline(model, tokenizer, device), "text2agent"
 
-    if row_name == "v1_A_legacy":
-        # Old pipeline, Config A — historical comparison
+    if row_name in ("v1_full_kv", "v1_A_legacy"):
+        # V1 reference: 3-agent relay, full KV, no selection.
+        # Frozen — do not modify pipeline.py for this row.
         from pipeline import LAKVPipeline, PipelineConfig
         cfg = PipelineConfig(
             use_layer_selection=False,
@@ -145,77 +146,127 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
     # ── v2 configs ────────────────────────────────────────────────────────
     selector = None
 
-    if row_name == "v2_A_full":
+    # ── v2 protocol rows (renamed from legacy letters) ────────────────────
+    if row_name == "v2_full_prefix":
         cfg = SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_A_full_96":
+    elif row_name == "v2_tail_only":
+        cfg = SharedPrefixConfig(
+            transfer_mode="tail",
+            use_layer_selection=False,
+            compression_mode="none",
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
+        )
+
+    elif row_name == "v2_layer_select":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=True,
+            compression_mode="none",
+            reconstruction_strategy="nearest",
+            profile_path=profile_path,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
+        )
+
+    elif row_name == "v2_compressed":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=True,
+            compression_mode="adaptive",
+            reconstruction_strategy="nearest",
+            profile_path=profile_path,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
+        )
+
+    elif row_name == "v2_compressed_tail":
+        cfg = SharedPrefixConfig(
+            transfer_mode="tail",
+            use_layer_selection=True,
+            compression_mode="adaptive",
+            reconstruction_strategy="nearest",
+            profile_path=profile_path,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
+        )
+
+    # ── ablations / legacy names (kept for backward compatibility) ─────────
+    elif row_name in ("v2_A_full", "v2_full_prefix_legacy"):
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=False,
+            compression_mode="none",
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
+        )
+
+    elif row_name == "v2_full_prefix_96":
         cfg = SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
             solver_max_new_tokens=96,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_A_tail":
+    elif row_name in ("v2_A_tail",):
         cfg = SharedPrefixConfig(
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_C_full":
+    elif row_name in ("v2_C_full", "v2_layer_select_nearest"):
         cfg = SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=True,
             compression_mode="none",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_C_nearest":
-        cfg = SharedPrefixConfig(
-            transfer_mode="full",
-            use_layer_selection=True,
-            compression_mode="none",
-            reconstruction_strategy="nearest",
-            profile_path=profile_path,
-            solver_max_new_tokens=128,
-        )
-
-    elif row_name == "v2_D_full":
+    elif row_name in ("v2_D_full",):
         cfg = SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=True,
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_D_tail":
+    elif row_name in ("v2_D_tail",):
         cfg = SharedPrefixConfig(
             transfer_mode="tail",
             use_layer_selection=True,
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
-    elif row_name == "v2_A_verify":
+    elif row_name in ("v2_A_verify", "v2_full_prefix_verify"):
         cfg = SharedPrefixConfig(
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
             finalizer_suffix=VERIFY_FINALIZER_SUFFIX,
-            solver_max_new_tokens=128,
+            solver_max_new_tokens=256,
+            finalizer_max_new_tokens=48,
         )
 
     else:
@@ -484,37 +535,43 @@ def load_model(model_name: str, device: str):
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
-PHASE1_ROWS = ["single_agent"]
+# Family 1 — baselines (no profile needed)
+PHASE1_ROWS = ["single_agent", "text_2agent"]
 
-PHASE2_ROWS = ["v2_A_full", "v2_A_tail"]
+# Family 2 — V2 full/tail KV (no profile needed)
+PHASE2_ROWS = ["v2_full_prefix", "v2_tail_only"]
 
-PHASE3_ROWS = ["v2_C_full", "v2_C_nearest"]
+# Family 2b — V2 layer selection (profile required)
+PHASE3_ROWS = ["v2_layer_select"]
 
-PHASE4_ROWS = ["v2_D_full", "v2_D_tail"]
+# Family 2c — V2 selection + compression (profile required)
+PHASE4_ROWS = ["v2_compressed", "v2_compressed_tail"]
 
+# Full comparison matrix (profile required for v2_layer_select / v2_compressed)
 PHASE5_ROWS = [
     "single_agent",
     "text_2agent",
-    "v1_A_legacy",
-    "v2_A_full",
-    "v2_A_tail",
-    "v2_C_full",
-    "v2_D_full",
-    "v2_D_tail",
+    "v2_full_prefix",
+    "v2_tail_only",
+    "v2_layer_select",
+    "v2_compressed",
 ]
+
+# V1 reference — run separately, never mix into PHASE5 accuracy table
+PHASE_V1_ROWS = ["v1_full_kv"]
 
 
 def main():
     parser = argparse.ArgumentParser(description="LAKV-v2 Benchmark")
     parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
-    parser.add_argument("--profile_path", required=True,
-                        help="Path to LayerProfile JSON from calibration")
+    parser.add_argument("--profile_path", default=None,
+                        help="Path to LayerProfile JSON (required for layer_select/compressed rows)")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--output_dir", default=None,
                         help="Output directory (auto-timestamped if omitted)")
     parser.add_argument("--phase", default="all",
-                        choices=["1", "2", "3", "4", "5", "all"],
-                        help="Which phase to run (default: all)")
+                        choices=["1", "2", "3", "4", "5", "all", "v1"],
+                        help="Which phase to run (default: all). Use 'v1' for V1 reference family.")
     parser.add_argument("--n_phase1", type=int, default=20)
     parser.add_argument("--n_phase2", type=int, default=20)
     parser.add_argument("--n_phase3", type=int, default=20)
@@ -549,23 +606,31 @@ def main():
 
     if args.phase in ("1", "all"):
         rows = custom_rows or PHASE1_ROWS
-        _run(f"Phase 1 — Single-Agent Baseline (n={args.n_phase1})", rows, args.n_phase1)
+        _run(f"Phase 1 — Baselines (n={args.n_phase1})", rows, args.n_phase1)
 
     if args.phase in ("2", "all"):
         rows = custom_rows or PHASE2_ROWS
-        _run(f"Phase 2 — v2 Full KV No Selection (n={args.n_phase2})", rows, args.n_phase2)
+        _run(f"Phase 2 — V2 Full/Tail KV (n={args.n_phase2})", rows, args.n_phase2)
 
     if args.phase in ("3", "all"):
         rows = custom_rows or PHASE3_ROWS
-        _run(f"Phase 3 — v2 Layer Selection (n={args.n_phase3})", rows, args.n_phase3)
+        _run(f"Phase 3 — V2 Layer Selection (n={args.n_phase3})", rows, args.n_phase3)
 
     if args.phase in ("4", "all"):
         rows = custom_rows or PHASE4_ROWS
-        _run(f"Phase 4 — v2 Selection + Compression (n={args.n_phase4})", rows, args.n_phase4)
+        _run(f"Phase 4 — V2 Selection + Compression (n={args.n_phase4})", rows, args.n_phase4)
 
     if args.phase in ("5", "all"):
         rows = custom_rows or PHASE5_ROWS
-        _run(f"Phase 5 — Full Benchmark (n={args.n_phase5})", rows, args.n_phase5)
+        _run(f"Phase 5 — Full V2 Benchmark (n={args.n_phase5})", rows, args.n_phase5)
+
+    if args.phase == "v1":
+        # V1 reference family — separate output, not mixed with V2 results
+        rows = custom_rows or PHASE_V1_ROWS
+        n = args.n_phase1
+        _run(f"V1 Reference — {rows} (n={n})", rows, n)
+        print("\n[NOTE] V1 reference results are for architectural comparison only.")
+        print("       Do not mix these numbers with V2 Family accuracy tables.")
 
     _print_summary_table(all_stages)
     _save_json(out / "all_summaries.json", all_stages)

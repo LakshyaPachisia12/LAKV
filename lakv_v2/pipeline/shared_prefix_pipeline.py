@@ -67,10 +67,10 @@ SHARED_SYSTEM_PROMPT = (
 # Default short continuation suffix for the Finalizer.
 # This is appended as raw tokens directly after the Solver's KV cache —
 # it does NOT repeat the question or system prompt.
-DEFAULT_FINALIZER_SUFFIX = "\n\nTherefore, the final answer in #### format is: ####"
+DEFAULT_FINALIZER_SUFFIX = "\n\nFinal answer: "
 
-# Alternative slightly richer suffix for ablation
-VERIFY_FINALIZER_SUFFIX = "\nCheck the reasoning above. Final answer: ####"
+# Alternative suffix for ablation
+VERIFY_FINALIZER_SUFFIX = "\nCheck the reasoning above. Final answer: "
 
 
 # ── config ────────────────────────────────────────────────────────────────────
