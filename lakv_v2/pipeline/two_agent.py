@@ -72,7 +72,13 @@ class TwoAgentPipeline:
             from anchor_table import question_key as make_key
             q_key = make_key(question)
             self.config.anchor_table.update(
-                q_key, "agent_0", base_kv, raw_kv_tuple, base_hidden)
+                q_key,
+                "agent_0",
+                base_kv,
+                raw_kv_tuple,
+                base_hidden,
+                prompt_seq_len=int(input_ids_1.shape[1]),
+            )
 
         # ---------------------------------------------
         # 2. KV MANIPULATION (Selection & Compression)
@@ -94,12 +100,27 @@ class TwoAgentPipeline:
         if self.config.selector:
             processed_kv = self.config.selector.reconstruct(processed_kv, mask)
 
+        # Prepare finalizer prompt early (used by anchor correction for target RoPE shift)
+        prompt_2 = self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": self.config.finalizer_prompt},
+             {"role": "user", "content": question}],
+            tokenize=False, add_generation_prompt=True,
+        )
+        input_ids_2 = self.tokenizer(
+            prompt_2, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
+
         # Anchor table correction: try to improve processed_kv for the finalizer
         if self.config.anchor_table is not None and base_hidden is not None:
             from anchor_table import question_key as make_key
             q_key = make_key(question)
             result = self.config.anchor_table.query_correction(
-                q_key, "agent_1", base_hidden, device=self.device)
+                q_key,
+                "agent_1",
+                base_hidden,
+                device=self.device,
+                target_prompt_len=int(input_ids_2.shape[1]),
+            )
             if result is not None:
                 corrected_kv, conf = result
                 processed_kv = corrected_kv
@@ -111,15 +132,6 @@ class TwoAgentPipeline:
         # ---------------------------------------------
         # 3. FINALIZER AGENT (Consumes KV Memory)
         # ---------------------------------------------
-        prompt_2 = self.tokenizer.apply_chat_template(
-            [{"role": "system", "content": self.config.finalizer_prompt},
-             {"role": "user", "content": question}],
-            tokenize=False, add_generation_prompt=True,
-        )
-        input_ids_2 = self.tokenizer(
-            prompt_2, return_tensors="pt", add_special_tokens=False
-        )["input_ids"].to(self.device)
-        
         dynamic_cache = self.aligner.prepare_handoff_cache(processed_kv)
         # Extending attention mask and generating explicitly mapped position IDs
         attn_mask = self.aligner.build_attention_mask(processed_kv, input_ids_2)
