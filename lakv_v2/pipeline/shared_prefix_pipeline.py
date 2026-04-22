@@ -200,20 +200,24 @@ class SharedPrefixPipeline:
         eos_id = self.tokenizer.eos_token_id
         generated_ids: List[int] = []
 
+        cur_pos = prefix_len
         for _ in range(self.config.solver_max_new_tokens):
             next_token = next_logits.argmax(-1, keepdim=True)  # (1,1)
             tok_id = next_token.item()
             if tok_id == eos_id:
                 break
             generated_ids.append(tok_id)
+            position_ids_t = torch.tensor([[cur_pos]], device=self.device, dtype=torch.long)
             with torch.no_grad():
                 out = self.model(
                     input_ids=next_token,
                     past_key_values=running_cache,
+                    position_ids=position_ids_t,
                     use_cache=True,
                 )
             running_cache = out.past_key_values
             next_logits = out.logits[:, -1, :]
+            cur_pos += 1
 
         solver_reasoning = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
         solver_gen_len = len(generated_ids)
@@ -419,20 +423,24 @@ class SharedPrefixPipeline:
         eos_id = self.tokenizer.eos_token_id
         generated: List[int] = []
 
+        fin_pos = cache_seq_len + suffix_len
         for _ in range(self.config.finalizer_max_new_tokens):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
             if tok_id == eos_id:
                 break
             generated.append(tok_id)
+            position_ids_t = torch.tensor([[fin_pos]], device=self.device, dtype=torch.long)
             with torch.no_grad():
                 out = self.model(
                     input_ids=next_token,
                     past_key_values=running_cache,
+                    position_ids=position_ids_t,
                     use_cache=True,
                 )
             running_cache = out.past_key_values
             next_logits = out.logits[:, -1, :]
+            fin_pos += 1
 
         return self.tokenizer.decode(generated, skip_special_tokens=True)
 
