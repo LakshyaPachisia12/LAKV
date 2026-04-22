@@ -34,14 +34,15 @@ class SingleAgentPipeline:
             prompt_text, return_tensors="pt", add_special_tokens=False
         )["input_ids"].to(self.device)
         
+        attention_mask = torch.ones_like(input_ids)
         with torch.no_grad():
             output_ids = self.model.generate(
                 input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=512,
                 do_sample=False,
-                temperature=0.0,
-                top_p=1.0,
                 num_beams=1,
+                pad_token_id=self.tokenizer.eos_token_id,
             )
             
         new_tokens = output_ids[0, input_ids.shape[1]:]

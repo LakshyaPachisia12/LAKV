@@ -194,7 +194,7 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map=args.device,
         attn_implementation="eager",
         trust_remote_code=True,

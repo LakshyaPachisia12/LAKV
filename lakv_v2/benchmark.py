@@ -152,7 +152,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -161,7 +161,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -172,7 +172,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="none",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -183,7 +183,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -194,7 +194,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -204,7 +204,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="full",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -222,7 +222,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             transfer_mode="tail",
             use_layer_selection=False,
             compression_mode="none",
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -233,7 +233,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="none",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -244,7 +244,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -255,7 +255,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             compression_mode="adaptive",
             reconstruction_strategy="nearest",
             profile_path=profile_path,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -265,7 +265,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
             use_layer_selection=False,
             compression_mode="none",
             finalizer_suffix=VERIFY_FINALIZER_SUFFIX,
-            solver_max_new_tokens=256,
+            solver_max_new_tokens=512,
             finalizer_max_new_tokens=48,
         )
 
@@ -524,7 +524,7 @@ def load_model(model_name: str, device: str):
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map=device,
         attn_implementation="eager",
         trust_remote_code=True,
