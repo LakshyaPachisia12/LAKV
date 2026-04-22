@@ -102,20 +102,24 @@ class KVCompressor:
         if self.mode == 'uniform_int4':
             return 4
         
-        # adaptive
+        # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
+        #           Tier 2 → INT4 (medium-importance, save bandwidth)
+        #           Tier 3 → INT8 (fallback; these layers should be dropped
+        #                          by LayerSelector before reaching compressor,
+        #                          but guard here just in case)
         if tier_info and layer_idx in tier_info:
             tier = tier_info[layer_idx]
         elif self.profile:
             tier = self.profile.tier_assignment[layer_idx]
         else:
-            tier = 2 # fallback
+            tier = 2  # fallback
 
         if tier == 1:
-            return 8
+            return 8   # INT8 — preserve high-importance layers
         elif tier == 2:
-            return 8  # INT4 disabled / gracefully fall back to INT8 per user spec
+            return 4   # INT4 — compress medium-importance layers
         else:
-            return 8
+            return 8   # INT8 fallback for any stray Tier-3 layers
 
     def compress(
         self,
@@ -216,7 +220,7 @@ class KVCompressor:
         dummy_v = torch.randn(1, 4, 512, 128, dtype=torch.float16).to(device)
         dummy_kv = ((dummy_k, dummy_v),)
 
-        for mode in ['none', 'uniform_int8']:
+        for mode in ['none', 'uniform_int8', 'uniform_int4']:
             comp = KVCompressor(mode=mode)
             msg = comp.compress(dummy_kv)
             recon = comp.decompress(msg, device=device)

@@ -151,7 +151,10 @@ class LayerSelector:
         idx: int, kv_map: Dict[int, Tuple[torch.Tensor, torch.Tensor]]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         best = min(kv_map.keys(), key=lambda k: abs(k - idx))
-        return kv_map[best]
+        k, v = kv_map[best]
+        # Clone to avoid aliasing — multiple dropped layers near the same kept layer
+        # would otherwise share the same tensor object (mutation risk).
+        return k.clone(), v.clone()
 
     @staticmethod
     def _interpolate(

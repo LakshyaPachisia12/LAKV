@@ -1,0 +1,576 @@
+"""
+LAKV-v2 Benchmark Runner
+========================
+
+Implements the 5-phase evaluation plan:
+
+  Phase 1: Single-agent baseline (n=20) — establish ceiling
+  Phase 2: v2 Config A_full  (full KV, no selection, no compression)
+  Phase 3: v2 Config C_full  (layer selection, no compression)
+  Phase 4: v2 Config D_full  (layer selection + adaptive compression)
+  Phase 5: Full benchmark (n=100) on best configs + baselines
+
+Rows evaluated:
+
+  single_agent        — SingleAgentPipeline (ceiling)
+  text_2agent         — TextTwoAgentPipeline (text relay, no KV)
+  v1_A_legacy         — Old pipeline Config A (historical comparison)
+  v2_A_full           — v2, full KV, no selection, no compression
+  v2_A_tail           — v2, tail KV, no selection, no compression
+  v2_C_full           — v2, full KV, layer selection, no compression
+  v2_D_full           — v2, full KV, layer selection, adaptive compression
+  v2_D_tail           — v2, tail KV, layer selection, adaptive compression
+
+Usage:
+  python lakv_v2/benchmark.py \\
+      --profile_path profiles/run_<ts>/qwen_gsm8k.json \\
+      --output_dir results/v2_run_<ts> \\
+      --phase all
+
+  # Or step by step:
+  python lakv_v2/benchmark.py --profile_path ... --phase 1
+  python lakv_v2/benchmark.py --profile_path ... --phase 2 --output_dir results/v2_run_<ts>
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import copy
+import json
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import torch
+
+# ── path setup ─────────────────────────────────────────────────────────────────
+_HERE = Path(__file__).parent
+_REPO = _HERE.parent
+sys.path.insert(0, str(_REPO))
+
+from lakv_v2.pipeline.shared_prefix_pipeline import (
+    SharedPrefixConfig,
+    SharedPrefixPipeline,
+    SharedPrefixResult,
+    DEFAULT_FINALIZER_SUFFIX,
+    VERIFY_FINALIZER_SUFFIX,
+)
+from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
+
+
+# ── answer parsing ─────────────────────────────────────────────────────────────
+
+def extract_answer(text: str) -> Optional[str]:
+    """Extract numeric answer. Prefer #### format; fall back progressively."""
+    if not text:
+        return None
+    cleaned = re.sub(r"(?<=\d)[^\d,.\-]+(?=\d)", "", text)
+    for candidate in (text, cleaned):
+        m = re.search(r"####\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if m:
+            return m.group(1).replace(",", "").rstrip(".")
+    for candidate in (text, cleaned):
+        m = re.search(r"(?im)^\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\.?\s*$", candidate)
+        if m:
+            return m.group(1).replace(",", "").rstrip(".")
+    for candidate in (text, cleaned):
+        m = re.search(r"(?i)answer\s*(?:is|=|:)?\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        if m:
+            return m.group(1).replace(",", "").rstrip(".")
+    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", cleaned)
+    return numbers[-1].replace(",", "").rstrip(".") if numbers else None
+
+
+def is_malformed(text: str) -> bool:
+    if not text:
+        return True
+    if re.search(r"[!?.]{4,}", text):
+        return True
+    if re.search(r"(?<=\d)[^\d,.\-\s]+(?=\d)", text):
+        return True
+    # Detect long runs of a single non-space character (digit spam / symbol spam)
+    if re.search(r"(.)\1{5,}", text):
+        return True
+    return False
+
+
+# ── pipeline factories ─────────────────────────────────────────────────────────
+
+def _load_profile(profile_path: str):
+    from calibration_profiler import LayerProfile
+    return LayerProfile.load(profile_path)
+
+
+def _build_selector(profile_path: str):
+    from layer_selector import LayerSelector
+    profile = _load_profile(profile_path)
+    return LayerSelector(profile)
+
+
+def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: str):
+    """
+    Factory: returns (pipeline, pipe_type).
+
+    pipe_type is one of: 'single' | 'text2agent' | 'v1' | 'v2'
+    """
+    if row_name == "single_agent":
+        cfg = SingleAgentPipelineConfig(
+            system_prompt=(
+                "You are a mathematical reasoning assistant. "
+                "Solve carefully and return the final answer as #### [number]."
+            ),
+        )
+        return SingleAgentPipeline(model, tokenizer, cfg, device), "single"
+
+    if row_name == "text_2agent":
+        from run_best import TextTwoAgentPipeline
+        return TextTwoAgentPipeline(model, tokenizer, device), "text2agent"
+
+    if row_name == "v1_A_legacy":
+        # Old pipeline, Config A — historical comparison
+        from pipeline import LAKVPipeline, PipelineConfig
+        cfg = PipelineConfig(
+            use_layer_selection=False,
+            compression_mode="none",
+            use_offset_correction=False,
+            reconstruction_strategy="zeros",
+            n_agents=3,
+        )
+        return LAKVPipeline(model, tokenizer, cfg, device), "v1"
+
+    # ── v2 configs ────────────────────────────────────────────────────────
+    selector = None
+
+    if row_name == "v2_A_full":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=False,
+            compression_mode="none",
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_A_full_96":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=False,
+            compression_mode="none",
+            solver_max_new_tokens=96,
+        )
+
+    elif row_name == "v2_A_tail":
+        cfg = SharedPrefixConfig(
+            transfer_mode="tail",
+            use_layer_selection=False,
+            compression_mode="none",
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_C_full":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=True,
+            compression_mode="none",
+            reconstruction_strategy="zeros",
+            profile_path=profile_path,
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_C_nearest":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=True,
+            compression_mode="none",
+            reconstruction_strategy="nearest",
+            profile_path=profile_path,
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_D_full":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=True,
+            compression_mode="adaptive",
+            reconstruction_strategy="zeros",
+            profile_path=profile_path,
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_D_tail":
+        cfg = SharedPrefixConfig(
+            transfer_mode="tail",
+            use_layer_selection=True,
+            compression_mode="adaptive",
+            reconstruction_strategy="zeros",
+            profile_path=profile_path,
+            solver_max_new_tokens=64,
+        )
+
+    elif row_name == "v2_A_verify":
+        cfg = SharedPrefixConfig(
+            transfer_mode="full",
+            use_layer_selection=False,
+            compression_mode="none",
+            finalizer_suffix=VERIFY_FINALIZER_SUFFIX,
+            solver_max_new_tokens=64,
+        )
+
+    else:
+        raise ValueError(f"Unknown row: {row_name!r}")
+
+    return SharedPrefixPipeline(model, tokenizer, cfg, device), "v2"
+
+
+# ── single sample evaluation ───────────────────────────────────────────────────
+
+def eval_sample(
+    pipeline, pipe_type: str, question: str, gold: str, tokenizer
+) -> dict:
+    t0 = time.time()
+
+    if pipe_type == "single":
+        raw_answer = pipeline.run(question)
+        latency = time.time() - t0
+        return _make_record(
+            question, gold, raw_answer, latency, tokenizer,
+            transfer_mode="-", compression_ratio=0.0,
+            n_layers_transferred=0, original_mb=0.0, compressed_mb=0.0,
+            prefix_len=0, solver_gen_len=0,
+        )
+
+    if pipe_type == "text2agent":
+        out = pipeline.run(question)
+        raw_answer = out["answer"]
+        latency = time.time() - t0
+        return _make_record(
+            question, gold, raw_answer, latency, tokenizer,
+            transfer_mode="text", compression_ratio=0.0,
+            n_layers_transferred=0, original_mb=0.0, compressed_mb=0.0,
+            prefix_len=0, solver_gen_len=0,
+        )
+
+    if pipe_type == "v1":
+        r = pipeline.run(question)
+        latency = time.time() - t0
+        n_hops = max(len(r.hop_stats), 1)
+        return _make_record(
+            question, gold, r.answer, latency, tokenizer,
+            transfer_mode="v1_full", compression_ratio=r.overall_compression_ratio,
+            n_layers_transferred=sum(h.n_layers_transmitted for h in r.hop_stats) // n_hops,
+            original_mb=r.total_original_mb, compressed_mb=r.total_compressed_mb,
+            prefix_len=0, solver_gen_len=0,
+        )
+
+    # v2
+    r: SharedPrefixResult = pipeline.run(question)
+    latency = time.time() - t0
+    return _make_record(
+        question, gold, r.answer, latency, tokenizer,
+        transfer_mode=r.transfer_mode,
+        compression_ratio=r.compression_ratio,
+        n_layers_transferred=r.n_layers_transferred,
+        original_mb=r.original_mb,
+        compressed_mb=r.compressed_mb,
+        prefix_len=r.prefix_len,
+        solver_gen_len=r.solver_gen_len,
+        solver_reasoning=r.solver_reasoning,
+    )
+
+
+def _make_record(
+    question, gold, raw_answer, latency, tokenizer,
+    transfer_mode, compression_ratio, n_layers_transferred,
+    original_mb, compressed_mb, prefix_len, solver_gen_len,
+    solver_reasoning="",
+) -> dict:
+    pred = extract_answer(raw_answer)
+    correct = pred is not None and pred.strip() == gold.strip()
+    malformed = is_malformed(raw_answer)
+    gen_tokens = len(tokenizer(raw_answer or "", add_special_tokens=False)["input_ids"])
+    return {
+        "question": question,
+        "gold": gold,
+        "raw_answer": raw_answer,
+        "predicted": pred,
+        "correct": correct,
+        "parse_failed": pred is None,
+        "malformed": malformed,
+        "latency_s": round(latency, 3),
+        "transfer_mode": transfer_mode,
+        "compression_ratio": round(compression_ratio, 4),
+        "n_layers_transferred": n_layers_transferred,
+        "original_mb": round(original_mb, 4),
+        "compressed_mb": round(compressed_mb, 4),
+        "prefix_len": prefix_len,
+        "solver_gen_len": solver_gen_len,
+        "generated_tokens": gen_tokens,
+        "solver_reasoning": solver_reasoning,
+    }
+
+
+# ── row evaluation ─────────────────────────────────────────────────────────────
+
+def eval_row(
+    row_name: str,
+    pipeline,
+    pipe_type: str,
+    dataset: List[dict],
+    tokenizer,
+    print_raw: bool = False,
+) -> Tuple[dict, List[dict]]:
+    records = []
+    for sample in dataset:
+        rec = eval_sample(pipeline, pipe_type, sample["question"], sample["answer"], tokenizer)
+        records.append(rec)
+        if print_raw:
+            print(f"  Q: {sample['question'][:60]}...")
+            print(f"  Raw: {rec['raw_answer'][:120]}")
+            print(f"  Pred={rec['predicted']} Gold={sample['answer']} ✓={rec['correct']}")
+            print()
+
+    n = len(records)
+    summary = {
+        "config": row_name,
+        "n_samples": n,
+        "accuracy": sum(r["correct"] for r in records) / n if n else 0.0,
+        "parse_failures": sum(r["parse_failed"] for r in records),
+        "malformed_rate": sum(r["malformed"] for r in records) / n if n else 0.0,
+        "mean_latency_s": sum(r["latency_s"] for r in records) / n if n else 0.0,
+        "mean_compression_ratio": sum(r["compression_ratio"] for r in records) / n if n else 0.0,
+        "mean_layers_transferred": sum(r["n_layers_transferred"] for r in records) / n if n else 0.0,
+        "mean_original_mb": sum(r["original_mb"] for r in records) / n if n else 0.0,
+        "mean_compressed_mb": sum(r["compressed_mb"] for r in records) / n if n else 0.0,
+        "mean_generated_tokens": sum(r["generated_tokens"] for r in records) / n if n else 0.0,
+        "mean_solver_gen_len": sum(r["solver_gen_len"] for r in records) / n if n else 0.0,
+    }
+    return summary, records
+
+
+# ── stage runner ───────────────────────────────────────────────────────────────
+
+def run_stage(
+    stage_name: str,
+    row_names: List[str],
+    dataset: List[dict],
+    model,
+    tokenizer,
+    profile_path: str,
+    device: str,
+    output_dir: Path,
+    print_raw: bool = False,
+) -> Dict[str, dict]:
+    print(f"\n{'='*64}")
+    print(f"  {stage_name}  (n={len(dataset)})")
+    print(f"{'='*64}")
+
+    all_summaries = {}
+    all_records = {}
+
+    for row_name in row_names:
+        print(f"\n[{row_name}] Building pipeline...")
+        try:
+            pipeline, pipe_type = build_pipeline(
+                row_name, model, tokenizer, profile_path, device
+            )
+        except Exception as e:
+            print(f"  ✗ Failed to build pipeline: {e}")
+            continue
+
+        print(f"[{row_name}] Running {len(dataset)} samples...")
+        try:
+            summary, records = eval_row(
+                row_name, pipeline, pipe_type, dataset, tokenizer, print_raw
+            )
+        except Exception as e:
+            import traceback
+            print(f"  ✗ Pipeline error: {e}")
+            traceback.print_exc()
+            continue
+
+        all_summaries[row_name] = summary
+        all_records[row_name] = records
+        _print_row(summary)
+
+    # Save stage results
+    stage_key = stage_name.lower().replace(" ", "_").replace("(", "").replace(")", "")
+    _save_json(output_dir / f"{stage_key}_summaries.json", all_summaries)
+    _save_json(output_dir / f"{stage_key}_records.json", all_records)
+    _save_csv(output_dir / f"{stage_key}_table.csv", all_summaries)
+
+    print(f"\n[Saved] {output_dir / stage_key}_*.json/.csv")
+    return all_summaries
+
+
+# ── printing / saving ──────────────────────────────────────────────────────────
+
+def _print_row(s: dict) -> None:
+    acc_str = f"{s['accuracy']*100:5.1f}%"
+    pf_str  = f"PF={s['parse_failures']:3d}"
+    mf_str  = f"Mal={s['malformed_rate']*100:4.1f}%"
+    lat_str = f"Lat={s['mean_latency_s']:5.1f}s"
+    ly_str  = f"Ly={s['mean_layers_transferred']:4.0f}/28"
+    cr_str  = f"CR={s['mean_compression_ratio']:5.2f}x"
+    print(f"  {s['config']:<22} | {acc_str} | {pf_str} | {mf_str} | {lat_str} | {ly_str} | {cr_str}")
+
+
+def _print_summary_table(all_stages: Dict[str, Dict[str, dict]]) -> None:
+    print(f"\n{'='*80}")
+    print("  FINAL SUMMARY")
+    print(f"{'='*80}")
+    hdr = f"{'Config':<22} | {'n':>4} | {'Acc':>6} | {'PFail':>5} | {'Malform':>7} | {'Lat(s)':>6} | {'Ly/28':>5} | {'Comp':>5}"
+    print(hdr)
+    print("-" * len(hdr))
+    seen = {}
+    for stage_name, summaries in all_stages.items():
+        for row_name, s in summaries.items():
+            if row_name not in seen:
+                seen[row_name] = s
+                print(f"  {s['config']:<22} | {s['n_samples']:>4} | "
+                      f"{s['accuracy']*100:>5.1f}% | {s['parse_failures']:>5} | "
+                      f"{s['malformed_rate']*100:>6.1f}% | {s['mean_latency_s']:>6.1f} | "
+                      f"{s['mean_layers_transferred']:>5.0f} | {s['mean_compression_ratio']:>5.2f}x")
+
+
+def _save_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+
+
+def _save_csv(path: Path, summaries: Dict[str, dict]) -> None:
+    if not summaries:
+        return
+    fields = [
+        "config", "n_samples", "accuracy", "parse_failures", "malformed_rate",
+        "mean_latency_s", "mean_compression_ratio", "mean_layers_transferred",
+        "mean_original_mb", "mean_compressed_mb", "mean_generated_tokens", "mean_solver_gen_len",
+    ]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(fields)
+        for s in summaries.values():
+            w.writerow([s.get(field, "") for field in fields])
+
+
+# ── dataset loader ─────────────────────────────────────────────────────────────
+
+def load_gsm8k(n: int = None) -> List[dict]:
+    from datasets import load_dataset
+    ds = load_dataset("gsm8k", "main")
+    data = []
+    for item in ds["test"]:
+        answer = item["answer"].split("####")[-1].strip()
+        data.append({"question": item["question"], "answer": answer})
+    return data[:n] if n is not None else data
+
+
+def load_model(model_name: str, device: str):
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    print(f"[benchmark] Loading model: {model_name} ...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float16,
+        device_map=device,
+        attn_implementation="eager",
+        trust_remote_code=True,
+    )
+    model.eval()
+    return model, tokenizer
+
+
+# ── main ───────────────────────────────────────────────────────────────────────
+
+PHASE1_ROWS = ["single_agent"]
+
+PHASE2_ROWS = ["v2_A_full", "v2_A_tail"]
+
+PHASE3_ROWS = ["v2_C_full", "v2_C_nearest"]
+
+PHASE4_ROWS = ["v2_D_full", "v2_D_tail"]
+
+PHASE5_ROWS = [
+    "single_agent",
+    "text_2agent",
+    "v1_A_legacy",
+    "v2_A_full",
+    "v2_A_tail",
+    "v2_C_full",
+    "v2_D_full",
+    "v2_D_tail",
+]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="LAKV-v2 Benchmark")
+    parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--profile_path", required=True,
+                        help="Path to LayerProfile JSON from calibration")
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--output_dir", default=None,
+                        help="Output directory (auto-timestamped if omitted)")
+    parser.add_argument("--phase", default="all",
+                        choices=["1", "2", "3", "4", "5", "all"],
+                        help="Which phase to run (default: all)")
+    parser.add_argument("--n_phase1", type=int, default=20)
+    parser.add_argument("--n_phase2", type=int, default=20)
+    parser.add_argument("--n_phase3", type=int, default=20)
+    parser.add_argument("--n_phase4", type=int, default=20)
+    parser.add_argument("--n_phase5", type=int, default=100)
+    parser.add_argument("--print_raw", action="store_true",
+                        help="Print raw model outputs for each sample")
+    parser.add_argument("--rows", nargs="+", default=None,
+                        help="Override row list for a custom run")
+    args = parser.parse_args()
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = Path(args.output_dir or f"results/v2_run_{ts}")
+    out.mkdir(parents=True, exist_ok=True)
+    print(f"[benchmark] Output dir: {out}")
+
+    model, tokenizer = load_model(args.model, args.device)
+    dataset = load_gsm8k(n=args.n_phase5)
+
+    all_stages = {}
+
+    def _run(stage_name, rows, n):
+        summaries = run_stage(
+            stage_name, rows, dataset[:n],
+            model, tokenizer, args.profile_path, args.device,
+            out, print_raw=args.print_raw,
+        )
+        all_stages[stage_name] = summaries
+        return summaries
+
+    custom_rows = args.rows
+
+    if args.phase in ("1", "all"):
+        rows = custom_rows or PHASE1_ROWS
+        _run(f"Phase 1 — Single-Agent Baseline (n={args.n_phase1})", rows, args.n_phase1)
+
+    if args.phase in ("2", "all"):
+        rows = custom_rows or PHASE2_ROWS
+        _run(f"Phase 2 — v2 Full KV No Selection (n={args.n_phase2})", rows, args.n_phase2)
+
+    if args.phase in ("3", "all"):
+        rows = custom_rows or PHASE3_ROWS
+        _run(f"Phase 3 — v2 Layer Selection (n={args.n_phase3})", rows, args.n_phase3)
+
+    if args.phase in ("4", "all"):
+        rows = custom_rows or PHASE4_ROWS
+        _run(f"Phase 4 — v2 Selection + Compression (n={args.n_phase4})", rows, args.n_phase4)
+
+    if args.phase in ("5", "all"):
+        rows = custom_rows or PHASE5_ROWS
+        _run(f"Phase 5 — Full Benchmark (n={args.n_phase5})", rows, args.n_phase5)
+
+    _print_summary_table(all_stages)
+    _save_json(out / "all_summaries.json", all_stages)
+    print(f"\n[benchmark] Complete. All results in: {out}/")
+
+
+if __name__ == "__main__":
+    main()
