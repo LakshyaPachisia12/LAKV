@@ -26,7 +26,7 @@ from lakv_v2.eval_runner import UnifiedEvalRunner
 from run import load_model, load_gsm8k
 
 # Initialize model
-model, tokenizer = load_model('Qwen/Qwen2.5-7B-Instruct', 'cuda')
+model, tokenizer = load_model('Qwen/Qwen2.5-Coder-7B', 'cuda')
 
 # Fetch your dataset
 dataset = load_gsm8k('test', n=100)

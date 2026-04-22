@@ -25,7 +25,7 @@ def _timestamp() -> str:
 
 
 def load_model(model_name: str, device: str):
-    """Load Qwen2.5-7B in float16 with eager attention for calibration support."""
+    """Load a Qwen2.5 model in float16 with eager attention for calibration support."""
     print(f"[run] Loading model: {model_name} …")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
@@ -133,7 +133,7 @@ def mode_experiment(args):
 
 def main():
     parser = argparse.ArgumentParser(description="LAKV — KV Cache Compression Pipeline")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B")
     parser.add_argument("--task", default="gsm8k")
     parser.add_argument("--mode", choices=["calibrate", "sanity", "experiment"],
                         default="calibrate")

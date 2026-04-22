@@ -506,7 +506,7 @@ PHASE5_ROWS = [
 
 def main():
     parser = argparse.ArgumentParser(description="LAKV-v2 Benchmark")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B")
     parser.add_argument("--profile_path", required=True,
                         help="Path to LayerProfile JSON from calibration")
     parser.add_argument("--device", default="cuda")

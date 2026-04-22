@@ -372,7 +372,7 @@ def choose_stage3_rows(stage2: Dict[str, dict]) -> List[str]:
 
 def main():
     parser = argparse.ArgumentParser(description="Run staged LAKV v1.5 benchmark")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B")
     parser.add_argument("--profile_path", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--output_dir", default="results/best_run")

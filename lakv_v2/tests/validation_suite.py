@@ -122,5 +122,5 @@ class ValidationSuite:
 
 if __name__ == "__main__":
     from run import load_model # reuse root logic to get model
-    m, t = load_model("Qwen/Qwen2.5-7B-Instruct", "cuda")
+    m, t = load_model("Qwen/Qwen2.5-Coder-7B", "cuda")
     ValidationSuite(m, t).run_all()

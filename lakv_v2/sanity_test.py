@@ -134,7 +134,7 @@ def run_sanity(args):
 
 def main():
     parser = argparse.ArgumentParser(description="LAKV-v2 sanity test")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B")
     parser.add_argument("--profile_path", default=None)
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
