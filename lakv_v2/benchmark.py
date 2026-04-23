@@ -68,7 +68,9 @@ def extract_answer(text: str) -> Optional[str]:
     """Extract numeric answer. Prefer #### format; fall back progressively."""
     if not text:
         return None
-    cleaned = re.sub(r"(?<=\d)[^\d,.\-]+(?=\d)", "", text)
+    # Strip non-numeric chars between digits (e.g. LaTeX braces) but NOT spaces —
+    # stripping spaces causes "4 × 7" → "47" which breaks extraction.
+    cleaned = re.sub(r"(?<=\d)[^\d,.\-\s]+(?=\d)", "", text)
     for candidate in (text, cleaned):
         m = re.search(r"####\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
         if m:
