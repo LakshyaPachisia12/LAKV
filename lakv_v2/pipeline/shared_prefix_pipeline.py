@@ -65,11 +65,11 @@ SHARED_SYSTEM_PROMPT = (
 )
 
 # Default suffix for the Finalizer — signals end of reasoning, extract answer only.
-# Appended as raw tokens directly after the Solver's KV cache.
-DEFAULT_FINALIZER_SUFFIX = "\n#### "
+# "\n#### " alone gets mis-read as a markdown heading; the explicit phrase anchors it.
+DEFAULT_FINALIZER_SUFFIX = "\n\nThe final answer is: #### "
 
-# Verifier suffix — currently unused; longer suffixes confuse the model.
-VERIFY_FINALIZER_SUFFIX = "\n#### "
+# Verifier suffix — currently unused.
+VERIFY_FINALIZER_SUFFIX = "\n\nThe final answer is: #### "
 
 
 # ── config ────────────────────────────────────────────────────────────────────

@@ -86,7 +86,7 @@ class TextTwoAgentPipeline:
         with torch.no_grad():
             solver_out = self.model.generate(
                 input_ids=solver_ids,
-                max_new_tokens=64,
+                max_new_tokens=512,
                 **DETERMINISTIC_KWARGS,
             )
         solver_new = solver_out[0, solver_ids.shape[1]:]
@@ -110,7 +110,7 @@ class TextTwoAgentPipeline:
         with torch.no_grad():
             final_out = self.model.generate(
                 input_ids=final_ids,
-                max_new_tokens=16,
+                max_new_tokens=64,
                 **DETERMINISTIC_KWARGS,
             )
         final_new = final_out[0, final_ids.shape[1]:]

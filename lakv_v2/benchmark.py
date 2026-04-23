@@ -90,8 +90,6 @@ def is_malformed(text: str) -> bool:
         return True
     if re.search(r"[!?.]{4,}", text):
         return True
-    if re.search(r"(?<=\d)[^\d,.\-\s]+(?=\d)", text):
-        return True
     # Detect long runs of a single non-space character (digit spam / symbol spam)
     if re.search(r"(.)\1{5,}", text):
         return True
