@@ -445,12 +445,19 @@ class SharedPrefixPipeline:
             device=self.device,
         ).unsqueeze(0)  # (1, suffix_len)
 
+        # Attention mask must span the full inherited cache + new suffix tokens
+        attention_mask = torch.ones(
+            (1, cache_seq_len + suffix_len),
+            dtype=torch.long, device=self.device,
+        )
+
         # Forward pass: suffix tokens attending over the full solver KV
         with torch.no_grad():
             out = self.model(
                 input_ids=suffix_ids,
                 past_key_values=cache,
                 position_ids=position_ids,
+                attention_mask=attention_mask,
                 use_cache=True,
             )
 
@@ -511,11 +518,17 @@ class SharedPrefixPipeline:
 
     @staticmethod
     def _to_dynamic_cache(kv_tuple: tuple) -> DynamicCache:
+        """Convert legacy (K,V) tuple → DynamicCache via explicit update() calls.
+
+        This correctly initialises _seen_tokens in all Transformers versions,
+        whereas from_legacy_cache had inconsistent _seen_tokens behaviour across versions.
+        """
         if isinstance(kv_tuple, DynamicCache):
             return kv_tuple
-        if hasattr(DynamicCache, "from_legacy_cache"):
-            return DynamicCache.from_legacy_cache(kv_tuple)
-        return DynamicCache(kv_tuple)
+        cache = DynamicCache()
+        for layer_idx, (k, v) in enumerate(kv_tuple):
+            cache.update(k, v, layer_idx)
+        return cache
 
     # ── profile loader ────────────────────────────────────────────────────
 

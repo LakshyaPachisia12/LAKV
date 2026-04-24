@@ -73,7 +73,14 @@ class AnchorTable:
         prompt_seq_len: Optional[int] = None,
         rope_theta: float = 1_000_000.0,
     ) -> None:
-        """Compute ΔKV and store under (question_key, agent_id)."""
+        """Compute ΔKV and store under (question_key, agent_id).
+
+        New entries are added only when paper Eq. 5 is satisfied:
+          P_anchor(σ) = (L_σ > max_α L_α) AND (H|A > τ log|A|)
+        i.e. the new sequence is longer than all existing anchors AND no
+        sufficiently close match already exists (high entropy of weights).
+        Existing entries are always updated (agent offset refresh).
+        """
         n_layers = len(base_kv)
 
         delta_k = []
@@ -100,11 +107,14 @@ class AnchorTable:
             delta_v.append((av_seg - bv_seg).cpu())
 
         emb = self._embed(hidden_states)
+        base_seq_len = base_kv[0][0].shape[2]
 
         if question_key in self._pool:
+            # Always refresh the offset for this agent on an existing entry
             entry = self._pool[question_key]
             entry.agent_offsets[agent_id] = AgentOffsets(delta_k=delta_k, delta_v=delta_v)
-        else:
+        elif self._should_add_new_anchor(base_seq_len, emb):
+            # Paper Eq. 5: only add if longer than all existing AND no good match
             self.evict_if_full()
             self._pool[question_key] = AnchorEntry(
                 placeholder_key=question_key,
@@ -113,6 +123,8 @@ class AnchorTable:
                 embedding=emb,
                 agent_offsets={agent_id: AgentOffsets(delta_k=delta_k, delta_v=delta_v)},
             )
+        # If Eq. 5 not satisfied the entry is skipped — existing anchors are
+        # close enough that adding a near-duplicate would not improve retrieval.
 
     def query_correction(
         self,
@@ -246,6 +258,28 @@ class AnchorTable:
         y1 = x1 * cos - x2 * sin
         y2 = x1 * sin + x2 * cos
         return torch.cat([y1, y2], dim=-1).to(k.dtype)
+
+    def _should_add_new_anchor(self, seq_len: int, emb: torch.Tensor) -> bool:
+        """Paper Eq. 5: add new anchor only when BOTH conditions hold.
+
+        1. Length criterion: the sequence is longer than all existing anchors
+           (adds genuinely new information to the pool).
+        2. Entropy criterion: no existing anchor is a close match (high entropy
+           of softmax similarity weights means no single dominant match).
+        """
+        if not self._pool:
+            return True
+        existing = list(self._pool.values())
+        # Condition 1 — length
+        max_existing_len = max(e.base_k[0].shape[2] for e in existing)
+        if seq_len <= max_existing_len:
+            return False
+        # Condition 2 — entropy
+        weights = self._similarity_weights(emb, existing)
+        entropy = -(weights * (weights + 1e-9).log()).sum().item()
+        n = len(existing)
+        max_entropy = self.entropy_threshold * (torch.tensor(float(n)).log().item() if n > 1 else 1.0)
+        return entropy > max(max_entropy, 0.01)
 
     def _log_hit(self, key, agent_id, confidence, n_candidates):
         self._hit_log.append({

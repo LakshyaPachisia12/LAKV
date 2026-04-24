@@ -342,15 +342,17 @@ class LAKVPipeline:
 
     @staticmethod
     def _to_dynamic_cache(kv_tuple: tuple) -> DynamicCache:
-        """Wrap plain (K, V) tuple → DynamicCache for Transformers injection."""
+        """Wrap plain (K, V) tuple → DynamicCache for Transformers injection.
+
+        Uses explicit per-layer update() — works in all Transformers versions and
+        correctly initialises _seen_tokens to the actual sequence length.
+        """
         if isinstance(kv_tuple, DynamicCache):
             return kv_tuple
-
-        if hasattr(DynamicCache, "from_legacy_cache"):
-            return DynamicCache.from_legacy_cache(kv_tuple)
-
-        # Newer transformers versions accept legacy tuples directly.
-        return DynamicCache(kv_tuple)
+        cache = DynamicCache()
+        for layer_idx, (k, v) in enumerate(kv_tuple):
+            cache.update(k, v, layer_idx)
+        return cache
 
     # ── forward / generate ────────────────────────────────────────────────
 
@@ -367,16 +369,19 @@ class LAKVPipeline:
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
-            position_start = (
-                (receiver_prompt_len + position_offset)
-                if receiver_prompt_len is not None
-                else (cache_seq_len + position_offset)
-            )
+            # Position MUST start after the injected KV, not at receiver_prompt_len.
+            # Using receiver_prompt_len caused positions to overlap with the injected
+            # cache tokens → RoPE collision → "!!!!" spam outputs.
+            position_start = cache_seq_len + position_offset
             kwargs["past_key_values"] = cache
             kwargs["position_ids"] = torch.arange(
                 position_start, position_start + input_ids.shape[1],
                 device=self.device,
             ).unsqueeze(0)
+            kwargs["attention_mask"] = torch.ones(
+                (1, cache_seq_len + input_ids.shape[1]),
+                dtype=torch.long, device=self.device,
+            )
 
         with torch.no_grad():
             outputs = self.model(**kwargs)
@@ -421,15 +426,17 @@ class LAKVPipeline:
         # ── KV injection: forward-prime then manual greedy decode ─────
         cache = self._to_dynamic_cache(injected_kv_tuple)
         cache_seq_len = injected_kv_tuple[0][0].shape[2]
-        position_start = (
-            (receiver_prompt_len + position_offset)
-            if receiver_prompt_len is not None
-            else (cache_seq_len + position_offset)
-        )
+        # Receiver prompt must start AFTER the injected cache (not at receiver_prompt_len).
+        position_start = cache_seq_len + position_offset
+        prompt_len = input_ids.shape[1]
         position_ids = torch.arange(
-            position_start, position_start + input_ids.shape[1],
+            position_start, position_start + prompt_len,
             device=self.device,
         ).unsqueeze(0)
+        attention_mask = torch.ones(
+            (1, cache_seq_len + prompt_len),
+            dtype=torch.long, device=self.device,
+        )
 
         # Step 1 — Prime: forward pass with injected KV + full prompt
         with torch.no_grad():
@@ -437,13 +444,15 @@ class LAKVPipeline:
                 input_ids=input_ids,
                 past_key_values=cache,
                 position_ids=position_ids,
+                attention_mask=attention_mask,
                 use_cache=True,
             )
         running_cache = out.past_key_values          # natural DynamicCache
         next_logits   = out.logits[:, -1, :]         # logits for the next token
 
-        # Step 2 — Greedy decode one token at a time
+        # Step 2 — Greedy decode one token at a time with explicit position tracking
         generated: List[int] = []
+        cur_pos = position_start + prompt_len
         for _ in range(max_new_tokens):
             next_token = next_logits.argmax(-1, keepdim=True)  # (1, 1)
             tok_id = next_token.item()
@@ -454,10 +463,12 @@ class LAKVPipeline:
                 out = self.model(
                     input_ids=next_token,
                     past_key_values=running_cache,
+                    position_ids=torch.tensor([[cur_pos]], device=self.device),
                     use_cache=True,
                 )
             running_cache = out.past_key_values
             next_logits   = out.logits[:, -1, :]
+            cur_pos += 1
 
         return self.tokenizer.decode(generated, skip_special_tokens=True)
 
@@ -483,29 +494,34 @@ class LAKVPipeline:
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
-            position_start = (
-                (receiver_prompt_len + position_offset)
-                if receiver_prompt_len is not None
-                else (cache_seq_len + position_offset)
-            )
+            position_start = cache_seq_len + position_offset
+            prompt_len = input_ids.shape[1]
             position_ids = torch.arange(
-                position_start, position_start + input_ids.shape[1],
+                position_start, position_start + prompt_len,
                 device=self.device,
             ).unsqueeze(0)
+            attention_mask = torch.ones(
+                (1, cache_seq_len + prompt_len),
+                dtype=torch.long, device=self.device,
+            )
             with torch.no_grad():
                 out = self.model(
                     input_ids=input_ids,
                     past_key_values=cache,
                     position_ids=position_ids,
+                    attention_mask=attention_mask,
                     use_cache=True,
                 )
         else:
             with torch.no_grad():
                 out = self.model(input_ids=input_ids, use_cache=True)
+            position_start = 0
+            prompt_len = input_ids.shape[1]
 
         running_cache = out.past_key_values
         next_logits = out.logits[:, -1, :]
 
+        cur_pos = position_start + prompt_len
         for _ in range(max_new):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
@@ -515,10 +531,12 @@ class LAKVPipeline:
                 out = self.model(
                     input_ids=next_token,
                     past_key_values=running_cache,
+                    position_ids=torch.tensor([[cur_pos]], device=self.device),
                     use_cache=True,
                 )
             running_cache = out.past_key_values
             next_logits = out.logits[:, -1, :]
+            cur_pos += 1
 
         return self._to_tuple(running_cache)
 
@@ -538,20 +556,22 @@ class LAKVPipeline:
         if injected_kv_tuple is not None:
             cache = self._to_dynamic_cache(injected_kv_tuple)
             cache_seq_len = injected_kv_tuple[0][0].shape[2]
-            position_start = (
-                (receiver_prompt_len + position_offset)
-                if receiver_prompt_len is not None
-                else (cache_seq_len + position_offset)
-            )
+            position_start = cache_seq_len + position_offset
+            prompt_len = input_ids.shape[1]
             position_ids = torch.arange(
-                position_start, position_start + input_ids.shape[1],
+                position_start, position_start + prompt_len,
                 device=self.device,
             ).unsqueeze(0)
+            attention_mask = torch.ones(
+                (1, cache_seq_len + prompt_len),
+                dtype=torch.long, device=self.device,
+            )
             with torch.no_grad():
                 out = self.model(
                     input_ids=input_ids,
                     past_key_values=cache,
                     position_ids=position_ids,
+                    attention_mask=attention_mask,
                     use_cache=True,
                     output_hidden_states=True,
                 )
@@ -559,11 +579,14 @@ class LAKVPipeline:
             with torch.no_grad():
                 out = self.model(input_ids=input_ids, use_cache=True,
                                  output_hidden_states=True)
+            position_start = 0
+            prompt_len = input_ids.shape[1]
 
         last_hidden = out.hidden_states[-1]  # (1, seq, hidden)
         running_cache = out.past_key_values
         next_logits = out.logits[:, -1, :]
 
+        cur_pos = position_start + prompt_len
         for _ in range(max_new):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
@@ -573,10 +596,12 @@ class LAKVPipeline:
                 out = self.model(
                     input_ids=next_token,
                     past_key_values=running_cache,
+                    position_ids=torch.tensor([[cur_pos]], device=self.device),
                     use_cache=True,
                 )
             running_cache = out.past_key_values
             next_logits = out.logits[:, -1, :]
+            cur_pos += 1
 
         return self._to_tuple(running_cache), last_hidden
 
