@@ -104,9 +104,13 @@ class SharedPrefixConfig:
     # Profile path — required for adaptive compression / layer selection
     profile_path: Optional[str] = None
 
+    # Anchor table — optional AnchorTable instance for cross-question KV correction
+    anchor_table: Optional[object] = None
+
     # Logging
     print_raw_outputs: bool = False
     verbose: bool = False
+    debug: bool = False
 
 
 # ── result ────────────────────────────────────────────────────────────────────
@@ -130,6 +134,12 @@ class SharedPrefixResult:
     original_mb: float = 0.0
     compressed_mb: float = 0.0
     compression_ratio: float = 1.0
+
+    # Anchor table diagnostics
+    anchor_hit: bool = False
+    anchor_confidence: float = 0.0
+    anchor_pool_size: int = 0
+    anchor_cumulative_hit_rate: float = 0.0
 
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
@@ -190,6 +200,14 @@ class SharedPrefixPipeline:
         )["input_ids"].to(self.device)
         prefix_len = prefix_ids.shape[1]
 
+        # ── Anchor table: question-only base KV (no system prefix) ────────
+        base_kv = None
+        base_hidden = None
+        if self.config.anchor_table is not None:
+            from anchor_table import compute_base_kv, question_key as make_key
+            base_kv, base_hidden = compute_base_kv(
+                self.model, self.tokenizer, question, self.device)
+
         # ── Phase 2: Solver forward pass on prefix → then greedy decode ───
         with torch.no_grad():
             prefix_out = self.model(
@@ -227,6 +245,14 @@ class SharedPrefixPipeline:
         # Full KV = prefix + reasoning tokens
         full_kv_tuple = self._to_tuple(running_cache)
         # full_kv_tuple[layer][0].shape == (1, n_kv_heads, prefix_len+solver_gen_len, head_dim)
+
+        # ── Anchor table: store solver's KV delta for this question ───────
+        if self.config.anchor_table is not None and base_kv is not None:
+            from anchor_table import question_key as make_key
+            q_key = make_key(question)
+            self.config.anchor_table.update(
+                q_key, "solver_to_finalizer", base_kv, full_kv_tuple, base_hidden,
+                prompt_seq_len=prefix_len)
 
         if self.config.verbose:
             print(f"  [Solver] prefix_len={prefix_len} | generated={solver_gen_len} tokens")
@@ -284,6 +310,19 @@ class SharedPrefixPipeline:
                     strategy=self.config.reconstruction_strategy,
                 )
 
+            # ── Anchor table: query correction before injecting into finalizer
+            anchor_hit = False
+            anchor_confidence = 0.0
+            if self.config.anchor_table is not None and base_hidden is not None:
+                from anchor_table import question_key as make_key
+                q_key = make_key(question)
+                result = self.config.anchor_table.query_correction(
+                    q_key, "solver_to_finalizer", base_hidden,
+                    device=self.device, target_prompt_len=prefix_len)
+                if result is not None:
+                    decompressed, anchor_confidence = result
+                    anchor_hit = True
+
             # Finalizer with KV injection
             answer = self._run_finalizer(
                 decompressed,
@@ -296,6 +335,8 @@ class SharedPrefixPipeline:
             # Text-only mode: concatenate solver reasoning + suffix and process as fresh prompt
             n_transferred = 0
             compression_ratio = 0.0
+            anchor_hit = False
+            anchor_confidence = 0.0
             answer = self._run_finalizer_text_only(solver_reasoning)
 
         if self.config.print_raw_outputs:
@@ -309,6 +350,25 @@ class SharedPrefixPipeline:
             self.config.finalizer_suffix, return_tensors="pt", add_special_tokens=False
         )["input_ids"]
         suffix_len = suffix_ids.shape[1]
+
+        at = self.config.anchor_table
+
+        if self.config.debug:
+            self._print_debug_pipeline(
+                question=question,
+                prefix_len=prefix_len,
+                solver_reasoning=solver_reasoning,
+                solver_gen_len=solver_gen_len,
+                n_layers_transferred=n_transferred,
+                n_layers_total=self.N_LAYERS,
+                original_mb=original_mb,
+                compressed_mb=compressed_mb,
+                compression_ratio=compression_ratio,
+                cache_seq_len=transferred_cache_seq_len,
+                anchor_hit=anchor_hit,
+                anchor_confidence=anchor_confidence,
+                finalizer_answer=answer,
+            )
 
         return SharedPrefixResult(
             answer=answer,
@@ -324,7 +384,49 @@ class SharedPrefixPipeline:
             original_mb=original_mb,
             compressed_mb=compressed_mb,
             compression_ratio=compression_ratio,
+            anchor_hit=anchor_hit,
+            anchor_confidence=anchor_confidence,
+            anchor_pool_size=at.pool_size() if at is not None else 0,
+            anchor_cumulative_hit_rate=at.hit_rate() if at is not None else 0.0,
         )
+
+    # ── debug helpers ─────────────────────────────────────────────────────
+
+    _DEBUG_SEP = "─" * 62
+
+    @staticmethod
+    def _print_debug_pipeline(
+        question: str,
+        prefix_len: int,
+        solver_reasoning: str,
+        solver_gen_len: int,
+        n_layers_transferred: int,
+        n_layers_total: int,
+        original_mb: float,
+        compressed_mb: float,
+        compression_ratio: float,
+        cache_seq_len: int,
+        anchor_hit: bool,
+        anchor_confidence: float,
+        finalizer_answer: str,
+    ) -> None:
+        sep = SharedPrefixPipeline._DEBUG_SEP
+        q_short = question[:80] + ("…" if len(question) > 80 else "")
+        sol = solver_reasoning[:200].replace("\n", " ")
+        if len(solver_reasoning) > 200:
+            sol += "…"
+        anc = f"HIT  conf={anchor_confidence:.3f}" if anchor_hit else "MISS"
+        fin = finalizer_answer.strip()[:100]
+        print(f"\n{sep}")
+        print(f"  Q        : {q_short}")
+        print(f"  Prefix   : {prefix_len} tokens")
+        print(f"  Solver   : [{solver_gen_len} tok] {sol}")
+        print(f"  Relay    : {n_layers_transferred}/{n_layers_total} layers | "
+              f"{original_mb:.2f}→{compressed_mb:.2f} MB ({compression_ratio:.2f}x) | "
+              f"cache_seq={cache_seq_len}")
+        print(f"  Anchor   : {anc}")
+        print(f"  Finalizer: {fin}")
+        # caller is expected to print the verdict line then _DEBUG_SEP
 
     # ── transfer mode helpers ─────────────────────────────────────────────
 

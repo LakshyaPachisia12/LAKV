@@ -111,7 +111,8 @@ def _build_selector(profile_path: str):
     return LayerSelector(profile)
 
 
-def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: str):
+def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: str,
+                   debug: bool = False):
     """
     Factory: returns (pipeline, pipe_type).
 
@@ -272,6 +273,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
     else:
         raise ValueError(f"Unknown row: {row_name!r}")
 
+    cfg.debug = debug
     return SharedPrefixPipeline(model, tokenizer, cfg, device), "v2"
 
 
@@ -328,6 +330,9 @@ def eval_sample(
         prefix_len=r.prefix_len,
         solver_gen_len=r.solver_gen_len,
         solver_reasoning=r.solver_reasoning,
+        cache_seq_len=r.cache_seq_len,
+        anchor_hit=r.anchor_hit,
+        anchor_confidence=r.anchor_confidence,
     )
 
 
@@ -336,6 +341,9 @@ def _make_record(
     transfer_mode, compression_ratio, n_layers_transferred,
     original_mb, compressed_mb, prefix_len, solver_gen_len,
     solver_reasoning="",
+    cache_seq_len: int = 0,
+    anchor_hit: bool = False,
+    anchor_confidence: float = 0.0,
 ) -> dict:
     pred = extract_answer(raw_answer)
     correct = pred is not None and pred.strip() == gold.strip()
@@ -359,7 +367,22 @@ def _make_record(
         "solver_gen_len": solver_gen_len,
         "generated_tokens": gen_tokens,
         "solver_reasoning": solver_reasoning,
+        "cache_seq_len": cache_seq_len,
+        "anchor_hit": anchor_hit,
+        "anchor_confidence": anchor_confidence,
     }
+
+
+_DEBUG_SEP = "─" * 62
+
+
+def _print_debug_block(idx: int, rec: dict) -> None:
+    """Print one-sample debug block. Pipeline has already printed the top half;
+    this function prints the verdict line and closing separator."""
+    mark = "✓" if rec["correct"] else "✗"
+    verdict = "CORRECT" if rec["correct"] else "INCORRECT"
+    print(f"  Parsed   : {rec['predicted']}   Gold: {rec['gold']}   {mark} {verdict}")
+    print(_DEBUG_SEP)
 
 
 # ── row evaluation ─────────────────────────────────────────────────────────────
@@ -371,12 +394,16 @@ def eval_row(
     dataset: List[dict],
     tokenizer,
     print_raw: bool = False,
+    debug: bool = False,
 ) -> Tuple[dict, List[dict]]:
     records = []
-    for sample in dataset:
+    for idx, sample in enumerate(dataset):
         rec = eval_sample(pipeline, pipe_type, sample["question"], sample["answer"], tokenizer)
         records.append(rec)
-        if print_raw:
+        if debug and pipe_type == "v2":
+            # pipeline already printed the top half inside run() when cfg.debug=True
+            _print_debug_block(idx, rec)
+        elif print_raw:
             print(f"  Q: {sample['question'][:60]}...")
             print(f"  Raw: {rec['raw_answer'][:120]}")
             print(f"  Pred={rec['predicted']} Gold={sample['answer']} ✓={rec['correct']}")
@@ -412,6 +439,7 @@ def run_stage(
     device: str,
     output_dir: Path,
     print_raw: bool = False,
+    debug: bool = False,
 ) -> Dict[str, dict]:
     print(f"\n{'='*64}")
     print(f"  {stage_name}  (n={len(dataset)})")
@@ -424,7 +452,7 @@ def run_stage(
         print(f"\n[{row_name}] Building pipeline...")
         try:
             pipeline, pipe_type = build_pipeline(
-                row_name, model, tokenizer, profile_path, device
+                row_name, model, tokenizer, profile_path, device, debug=debug
             )
         except Exception as e:
             print(f"  ✗ Failed to build pipeline: {e}")
@@ -433,7 +461,8 @@ def run_stage(
         print(f"[{row_name}] Running {len(dataset)} samples...")
         try:
             summary, records = eval_row(
-                row_name, pipeline, pipe_type, dataset, tokenizer, print_raw
+                row_name, pipeline, pipe_type, dataset, tokenizer,
+                print_raw=print_raw, debug=debug,
             )
         except Exception as e:
             import traceback
@@ -579,6 +608,8 @@ def main():
     parser.add_argument("--n_phase5", type=int, default=100)
     parser.add_argument("--print_raw", action="store_true",
                         help="Print raw model outputs for each sample")
+    parser.add_argument("--debug", action="store_true",
+                        help="Print per-sample debug block: question, solver, relay stats, anchor, finalizer, verdict")
     parser.add_argument("--rows", nargs="+", default=None,
                         help="Override row list for a custom run")
     args = parser.parse_args()
@@ -597,7 +628,7 @@ def main():
         summaries = run_stage(
             stage_name, rows, dataset[:n],
             model, tokenizer, args.profile_path, args.device,
-            out, print_raw=args.print_raw,
+            out, print_raw=args.print_raw, debug=args.debug,
         )
         all_stages[stage_name] = summaries
         return summaries
