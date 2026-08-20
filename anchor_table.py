@@ -55,11 +55,14 @@ class AnchorTable:
     eval loop only). Evicts least-frequently-used entries when full.
     """
 
-    def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3):
+    def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3,
+                 verbose: bool = False):
         self.max_size = max_size
         self.entropy_threshold = entropy_threshold
+        self.verbose = verbose
         self._pool: Dict[str, AnchorEntry] = {}  # key → AnchorEntry
         self._hit_log: List[dict] = []            # for experiment logging
+        self._admission_log: List[dict] = []      # _should_add_new_anchor call history
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -147,6 +150,8 @@ class AnchorTable:
         candidates = [e for e in self._pool.values() if agent_id in e.agent_offsets]
         if not candidates:
             self._log_miss(question_key, agent_id)
+            if self.verbose:
+                print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} reason=no_candidates")
             return None
 
         query_emb = self._embed(query_hidden)
@@ -157,6 +162,9 @@ class AnchorTable:
         max_entropy = self.entropy_threshold * torch.tensor(len(candidates)).float().log().item()
         if len(candidates) > 1 and entropy > max(max_entropy, 0.01):
             self._log_miss(question_key, agent_id, entropy=entropy, reason="entropy")
+            if self.verbose:
+                print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} "
+                      f"reason=entropy entropy={entropy:.4f} max_entropy={max_entropy:.4f}")
             return None
 
         # Confidence = 1 - normalized_entropy (1.0 for a single perfect match)
@@ -196,7 +204,14 @@ class AnchorTable:
                 k_corr = self._rope_shift_k(k_corr, shift=target_shift, theta=rope_theta)
             corrected.append((k_corr, v_corr))
 
-        self._log_hit(question_key, agent_id, confidence, len(candidates))
+        delta_norm = float(sum(
+            dk.float().norm().item() for dk in delta_k_interp
+        ) / max(len(delta_k_interp), 1))
+        self._log_hit(question_key, agent_id, confidence, len(candidates), delta_norm=delta_norm)
+        if self.verbose:
+            print(f"  [AnchorTable] HIT  key={question_key} agent={agent_id} "
+                  f"conf={confidence:.3f} n_cands={len(candidates)} "
+                  f"mean_delta_k_norm={delta_norm:.4f}")
         return tuple(corrected), confidence
 
     def evict_if_full(self) -> None:
@@ -219,6 +234,21 @@ class AnchorTable:
 
     def hit_log(self) -> List[dict]:
         return list(self._hit_log)
+
+    def admission_log(self) -> List[dict]:
+        return list(self._admission_log)
+
+    def call_counts(self) -> Dict[str, int]:
+        """Summary counters for empirical verification of Claim 2."""
+        return {
+            "admission_calls": len(self._admission_log),
+            "admissions_added": sum(1 for e in self._admission_log if e["decision"]),
+            "admissions_rejected": len(self._admission_log) - sum(
+                1 for e in self._admission_log if e["decision"]),
+            "correction_calls": len(self._hit_log),
+            "corrections_applied": sum(1 for e in self._hit_log if e["hit"]),
+            "corrections_skipped": sum(1 for e in self._hit_log if not e["hit"]),
+        }
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -268,23 +298,41 @@ class AnchorTable:
            of softmax similarity weights means no single dominant match).
         """
         if not self._pool:
+            self._log_admission(seq_len, True, reason="empty_pool")
             return True
         existing = list(self._pool.values())
         # Condition 1 — length
         max_existing_len = max(e.base_k[0].shape[2] for e in existing)
         if seq_len <= max_existing_len:
+            self._log_admission(seq_len, False, reason="length",
+                                 max_existing_len=max_existing_len)
             return False
         # Condition 2 — entropy
         weights = self._similarity_weights(emb, existing)
         entropy = -(weights * (weights + 1e-9).log()).sum().item()
         n = len(existing)
         max_entropy = self.entropy_threshold * (torch.tensor(float(n)).log().item() if n > 1 else 1.0)
-        return entropy > max(max_entropy, 0.01)
+        decision = entropy > max(max_entropy, 0.01)
+        self._log_admission(seq_len, decision, reason="entropy",
+                             max_existing_len=max_existing_len,
+                             entropy=entropy, max_entropy=max_entropy)
+        return decision
 
-    def _log_hit(self, key, agent_id, confidence, n_candidates):
+    def _log_admission(self, seq_len, decision, reason, **extra):
+        entry = {
+            "seq_len": seq_len, "decision": decision, "reason": reason,
+            "pool_size": len(self._pool), **extra,
+        }
+        self._admission_log.append(entry)
+        if self.verbose:
+            print(f"  [AnchorTable] _should_add_new_anchor seq_len={seq_len} "
+                  f"decision={decision} reason={reason} pool_size={len(self._pool)} {extra}")
+
+    def _log_hit(self, key, agent_id, confidence, n_candidates, delta_norm=None):
         self._hit_log.append({
             "hit": True, "key": key, "agent_id": agent_id,
             "confidence": confidence, "n_candidates": n_candidates,
+            "delta_norm": delta_norm,
             "pool_size": len(self._pool),
         })
 

@@ -60,6 +60,7 @@ from lakv_v2.pipeline.shared_prefix_pipeline import (
     VERIFY_FINALIZER_SUFFIX,
 )
 from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
+from anchor_table import AnchorTable
 
 
 # ── answer parsing ─────────────────────────────────────────────────────────────
@@ -112,11 +113,16 @@ def _build_selector(profile_path: str):
 
 
 def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: str,
-                   debug: bool = False):
+                   debug: bool = False, use_offset_correction: bool = False):
     """
     Factory: returns (pipeline, pipe_type).
 
     pipe_type is one of: 'single' | 'text2agent' | 'v1' | 'v2'
+
+    use_offset_correction: mirrors v1 PipelineConfig.use_offset_correction. Off by
+    default so existing behavior (no AnchorTable, no correction) doesn't silently
+    change. Only applies to 'v2' rows — single/text2agent/v1 rows are unaffected
+    (v1's own use_offset_correction stays hardcoded False below; frozen row).
     """
     if row_name == "single_agent":
         cfg = SingleAgentPipelineConfig(
@@ -274,6 +280,11 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
         raise ValueError(f"Unknown row: {row_name!r}")
 
     cfg.debug = debug
+    cfg.use_offset_correction = use_offset_correction
+    if use_offset_correction:
+        # Fresh AnchorTable per row so hit/admission stats are scoped to this
+        # row's dataset pass, not shared across unrelated rows/configs.
+        cfg.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3, verbose=debug)
     return SharedPrefixPipeline(model, tokenizer, cfg, device), "v2"
 
 
@@ -440,6 +451,7 @@ def run_stage(
     output_dir: Path,
     print_raw: bool = False,
     debug: bool = False,
+    use_offset_correction: bool = False,
 ) -> Dict[str, dict]:
     print(f"\n{'='*64}")
     print(f"  {stage_name}  (n={len(dataset)})")
@@ -452,7 +464,8 @@ def run_stage(
         print(f"\n[{row_name}] Building pipeline...")
         try:
             pipeline, pipe_type = build_pipeline(
-                row_name, model, tokenizer, profile_path, device, debug=debug
+                row_name, model, tokenizer, profile_path, device, debug=debug,
+                use_offset_correction=use_offset_correction,
             )
         except Exception as e:
             print(f"  ✗ Failed to build pipeline: {e}")
@@ -473,6 +486,10 @@ def run_stage(
         all_summaries[row_name] = summary
         all_records[row_name] = records
         _print_row(summary)
+
+        anchor_table = getattr(pipeline.config, "anchor_table", None) if hasattr(pipeline, "config") else None
+        if anchor_table is not None:
+            print(f"  [AnchorTable summary for {row_name}] {anchor_table.call_counts()}")
 
     # Save stage results
     stage_key = stage_name.lower().replace(" ", "_").replace("(", "").replace(")", "")
@@ -612,6 +629,9 @@ def main():
                         help="Print per-sample debug block: question, solver, relay stats, anchor, finalizer, verdict")
     parser.add_argument("--rows", nargs="+", default=None,
                         help="Override row list for a custom run")
+    parser.add_argument("--use_offset_correction", action="store_true",
+                        help="Enable AnchorTable cross-question KV correction on v2 rows "
+                             "(off by default; mirrors v1 PipelineConfig.use_offset_correction)")
     args = parser.parse_args()
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -629,6 +649,7 @@ def main():
             stage_name, rows, dataset[:n],
             model, tokenizer, args.profile_path, args.device,
             out, print_raw=args.print_raw, debug=args.debug,
+            use_offset_correction=args.use_offset_correction,
         )
         all_stages[stage_name] = summaries
         return summaries

@@ -54,6 +54,17 @@ def run_sanity(args):
 
     from lakv_v2.pipeline.shared_prefix_pipeline import VERIFY_FINALIZER_SUFFIX
 
+    def _anchor_kwargs():
+        # Fresh AnchorTable per config so hit/admission stats aren't shared
+        # across configs that otherwise test unrelated transfer modes.
+        if not args.use_offset_correction:
+            return {}
+        from anchor_table import AnchorTable
+        return {
+            "use_offset_correction": True,
+            "anchor_table": AnchorTable(max_size=20, entropy_threshold=0.3, verbose=True),
+        }
+
     configs_to_test = [
         ("v2_TEXT_ONLY (text concatenation baseline)", SharedPrefixConfig(
             use_kv_injection=False,
@@ -61,6 +72,7 @@ def run_sanity(args):
             finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
+            **_anchor_kwargs(),
         )),
         ("v2_TEXT_VERIFIER (text baseline + verifier suffix)", SharedPrefixConfig(
             use_kv_injection=False,
@@ -69,6 +81,7 @@ def run_sanity(args):
             finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
+            **_anchor_kwargs(),
         )),
         ("v2_A_full (Phase 2 baseline)", SharedPrefixConfig(
             transfer_mode="full",
@@ -78,6 +91,7 @@ def run_sanity(args):
             finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
+            **_anchor_kwargs(),
         )),
         ("v2_A_tail (tail-only transfer)", SharedPrefixConfig(
             transfer_mode="tail",
@@ -87,6 +101,7 @@ def run_sanity(args):
             finalizer_max_new_tokens=48,
             print_raw_outputs=True,
             verbose=True,
+            **_anchor_kwargs(),
         )),
     ]
 
@@ -101,6 +116,7 @@ def run_sanity(args):
                 solver_max_new_tokens=256,
                 print_raw_outputs=True,
                 verbose=True,
+                **_anchor_kwargs(),
             ))
         )
 
@@ -143,6 +159,10 @@ def run_sanity(args):
                 any_malformed = True
                 print("  ⚠️  MALFORMED OUTPUT DETECTED")
 
+        if args.use_offset_correction and cfg.anchor_table is not None:
+            counts = cfg.anchor_table.call_counts()
+            print(f"  [AnchorTable summary for {cfg_name}] {counts}")
+
     print(f"\n{'='*60}")
     if any_malformed:
         print("  ✗ SANITY FAILED — malformed outputs detected.")
@@ -158,6 +178,9 @@ def main():
     parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--profile_path", default=None)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--use_offset_correction", action="store_true",
+                        help="Enable AnchorTable cross-question KV correction "
+                             "(off by default; mirrors v1 PipelineConfig.use_offset_correction)")
     args = parser.parse_args()
     run_sanity(args)
 

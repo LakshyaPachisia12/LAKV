@@ -107,6 +107,12 @@ class SharedPrefixConfig:
     # Anchor table — optional AnchorTable instance for cross-question KV correction
     anchor_table: Optional[object] = None
 
+    # Mirrors v1 PipelineConfig.use_offset_correction — off by default so existing
+    # behavior (anchor_table=None, no correction applied) doesn't silently change.
+    # This is purely a documentation/parity flag: the actual gate everywhere in
+    # this pipeline is `anchor_table is not None`, set by the caller.
+    use_offset_correction: bool = False
+
     # Logging
     print_raw_outputs: bool = False
     verbose: bool = False
