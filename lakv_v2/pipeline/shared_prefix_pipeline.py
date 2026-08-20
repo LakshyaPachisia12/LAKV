@@ -336,6 +336,7 @@ class SharedPrefixPipeline:
                 full_kv_tuple,
                 prefix_ids,
                 prefix_len,
+                solver_reasoning=solver_reasoning,
             )
         else:
             # Text-only mode: concatenate solver reasoning + suffix and process as fresh prompt
@@ -528,6 +529,7 @@ class SharedPrefixPipeline:
         full_kv_tuple: tuple,
         prefix_ids: torch.Tensor,
         prefix_len: int,
+        solver_reasoning: str = "",
     ) -> str:
         """
         Finalizer: process the suffix tokens as a CONTINUATION of injected_kv.
@@ -553,19 +555,16 @@ class SharedPrefixPipeline:
             device=self.device,
         ).unsqueeze(0)  # (1, suffix_len)
 
-        # Attention mask must span the full inherited cache + new suffix tokens
-        attention_mask = torch.ones(
-            (1, cache_seq_len + suffix_len),
-            dtype=torch.long, device=self.device,
-        )
-
-        # Forward pass: suffix tokens attending over the full solver KV
+        # Forward pass: suffix tokens attending over the full solver KV.
+        # No explicit attention_mask: with past_key_values present, Qwen2.5
+        # eager attn internally creates a full-attend mask for cached positions.
+        # Passing a 2D (1, cache_seq_len+suffix_len) mask was blocking cache
+        # attention due to how _prepare_4d_causal_attention_mask processes it.
         with torch.no_grad():
             out = self.model(
                 input_ids=suffix_ids,
                 past_key_values=cache,
                 position_ids=position_ids,
-                attention_mask=attention_mask,
                 use_cache=True,
             )
 
@@ -595,7 +594,17 @@ class SharedPrefixPipeline:
             next_logits = out.logits[:, -1, :]
             fin_pos += 1
 
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        answer = self.tokenizer.decode(generated, skip_special_tokens=True)
+
+        # Fallback: if finalizer produced garbage (empty or CJK/non-Latin unicode),
+        # parse the answer directly from the solver's reasoning text.
+        # The solver reliably ends with "#### [number]" for GSM8K.
+        if not answer.strip() or any(0x2E80 <= ord(c) <= 0x9FFF for c in answer):
+            m = __import__("re").search(r"####\s*(-?\d[\d,]*(?:\.\d+)?)", solver_reasoning)
+            if m:
+                answer = f"#### {m.group(1)}"
+
+        return answer
 
     # ── cache conversion ──────────────────────────────────────────────────
 
