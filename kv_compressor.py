@@ -50,17 +50,33 @@ class KVMessage:
 
 # ─── quantisation math ────────────────────────────────────────────────────────
 
-def _quantize(tensor: torch.Tensor, bits: int):
+def _quantize(tensor: torch.Tensor, bits: int, clip_percentile: Optional[float] = None):
     """Per-head min-max quantisation.
     tensor shape: (batch, heads, seq, dim)
     Returns: (quantized_uint8, scale_per_head, zero_point_per_head)
+
+    clip_percentile: if set (e.g. 99.5), the per-head min/max used to derive
+    scale/zero_point are computed from the [100-p, p] percentile range instead
+    of the true min/max. This keeps a handful of outlier values from blowing
+    out the quant step size for the whole head. The original (unclipped)
+    tensor is still what gets quantized — values outside the clipped range
+    just saturate to the nearest boundary bin via the existing clamp(0, qmax),
+    same as standard outlier-clipped quantization.
     """
     t = tensor.detach().float()
     qmax = (1 << bits) - 1
 
-    # Reduce over seq and dim dimensions -> per-head min/max
-    t_min = t.amin(dim=(-2, -1), keepdim=True)
-    t_max = t.amax(dim=(-2, -1), keepdim=True)
+    if clip_percentile is not None:
+        b, h, s, d = t.shape
+        flat = t.reshape(b, h, s * d)
+        lo_q = (100.0 - clip_percentile) / 100.0
+        hi_q = clip_percentile / 100.0
+        t_min = torch.quantile(flat, lo_q, dim=-1, keepdim=True).unsqueeze(-1)
+        t_max = torch.quantile(flat, hi_q, dim=-1, keepdim=True).unsqueeze(-1)
+    else:
+        # Reduce over seq and dim dimensions -> per-head min/max
+        t_min = t.amin(dim=(-2, -1), keepdim=True)
+        t_max = t.amax(dim=(-2, -1), keepdim=True)
 
     same = (t_max == t_min)
     scale = torch.where(same, torch.ones_like(t_max), (t_max - t_min) / qmax)
@@ -81,11 +97,21 @@ def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) 
 # ─── compressor ───────────────────────────────────────────────────────────────
 
 class KVCompressor:
-    def __init__(self, mode: str, profile: LayerProfile = None):
+    def __init__(self, mode: str, profile: LayerProfile = None,
+                 outlier_clipping: bool = False, clip_percentile: float = 99.5):
         """
         Args:
             mode: 'none' | 'uniform_int8' | 'uniform_int4' | 'adaptive'
             profile: required only when mode == 'adaptive'
+            outlier_clipping: if True, INT4 quantization derives its per-head
+                scale/zero_point from the [100-clip_percentile, clip_percentile]
+                percentile range instead of the true min/max, so a few outlier
+                values don't blow out the quant step for the whole head.
+                INT8 (and 'none') are unaffected — this only ever applies to
+                4-bit layers, on the theory that INT8's 256 levels already
+                have enough headroom to absorb outliers without clipping.
+            clip_percentile: the percentile to clip to when outlier_clipping
+                is enabled. Default 99.5 (i.e. clip to the 0.5th/99.5th range).
         """
         if mode not in ("none", "uniform_int8", "uniform_int4", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
@@ -93,6 +119,8 @@ class KVCompressor:
             raise ValueError("'adaptive' mode requires a LayerProfile")
         self.mode = mode
         self.profile = profile
+        self.outlier_clipping = outlier_clipping
+        self.clip_percentile = clip_percentile
 
     def _get_bits_for_layer(self, layer_idx: int, tier_info: Optional[Dict[int, int]] = None) -> int:
         if self.mode == 'none':
@@ -158,8 +186,9 @@ class KVCompressor:
                 )
                 compressed_bytes += k.nbytes + v.nbytes
             else:
-                k_q, k_scale, k_zp = _quantize(k, bits)
-                v_q, v_scale, v_zp = _quantize(v, bits)
+                clip_pct = self.clip_percentile if (self.outlier_clipping and bits == 4) else None
+                k_q, k_scale, k_zp = _quantize(k, bits, clip_percentile=clip_pct)
+                v_q, v_scale, v_zp = _quantize(v, bits, clip_percentile=clip_pct)
 
                 cl = CompressedLayer(
                     k_q=k_q.cpu(),
