@@ -37,7 +37,18 @@ TWO_AGENT_BENCH_PROMPTS = [
 
 # ── config presets ────────────────────────────────────────────────────────────
 
-PRESETS: Dict[str, PipelineConfig] = {
+PRESETS: Dict[str, Optional[PipelineConfig]] = {
+    # single_agent is not a PipelineConfig preset — it uses a different
+    # pipeline class (SingleAgentPipeline / SingleAgentPipelineConfig from
+    # lakv_v2.pipeline.single_agent) with no relay, compression, or layer
+    # selection at all. It's listed here (value=None) purely so it shows up
+    # in PRESETS for discoverability/enumeration; _build_pipeline() special-
+    # cases cfg_name == "single_agent" BEFORE ever indexing into PRESETS, so
+    # this entry is never deepcopy'd or passed through _apply_arch(). Do not
+    # replace None with a real PipelineConfig — SingleAgentPipelineConfig has
+    # an incompatible shape (no n_agents/system_prompts/etc.) and would break
+    # here if the special-case above it were ever removed.
+    "single_agent": None,
     "A": PipelineConfig(
         use_layer_selection=False, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",
@@ -72,6 +83,10 @@ PRESETS: Dict[str, PipelineConfig] = {
     ),
     "E": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=True, reconstruction_strategy="zeros",
+    ),
+    "E_int8": PipelineConfig(
+        use_layer_selection=True, compression_mode="uniform_int8",
         use_offset_correction=True, reconstruction_strategy="zeros",
     ),
 }
@@ -191,7 +206,11 @@ class Evaluator:
                        n_samples=100, output_dir="results/", checkpoint_every=5,
                        resume=False, arch: str = "legacy", print_raw_outputs: bool = False):
         if configs_to_run is None:
-            configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D"]
+            # E (layer selection + adaptive compression + anchor-table offset
+            # correction) was defined in PRESETS but missing from this default
+            # list, so a plain `--mode experiment` run with no --configs never
+            # exercised it. Added so it runs head-to-head with the others.
+            configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D", "E", "E_int8"]
 
         samples = dataset[:n_samples]
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
