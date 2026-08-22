@@ -1,0 +1,15 @@
+# Core ML stack
+torch>=2.4.1
+transformers>=4.44.2
+datasets>=4.4.1
+
+# Calibration profiling (plots + stats)
+numpy>=1.26.4
+scipy>=1.14.1
+matplotlib>=3.8
+
+# Progress bars
+tqdm>=4.66.5
+
+# Testing
+pytest>=9.0.1
