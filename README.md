@@ -21,16 +21,25 @@ CUDA GPU for any real (non-trivial) run — see [Hardware requirements](#hardwar
 
 ## Table of contents
 
-- [Repo layout](#repo-layout)
-- [Environment setup](#environment-setup)
-- [Hardware requirements](#hardware-requirements)
-- [Quickstart](#quickstart)
-- [v1 pipeline — full command reference](#v1-pipeline--full-command-reference)
-- [v2 pipeline — full command reference](#v2-pipeline--full-command-reference)
-- [Running the test suite](#running-the-test-suite)
-- [Output locations](#output-locations)
-- [Architecture summary](#architecture-summary-v1-vs-v2)
-- [Troubleshooting](#troubleshooting)
+- [LAKV — Layer-Adaptive KV-cache relay for multi-agent LLM reasoning](#lakv--layer-adaptive-kv-cache-relay-for-multi-agent-llm-reasoning)
+  - [Table of contents](#table-of-contents)
+  - [Repo layout](#repo-layout)
+  - [Environment setup](#environment-setup)
+  - [Hardware requirements](#hardware-requirements)
+  - [Quickstart](#quickstart)
+  - [v1 pipeline — full command reference](#v1-pipeline--full-command-reference)
+    - [1. Calibration (required once, before any layer-selection or compression config)](#1-calibration-required-once-before-any-layer-selection-or-compression-config)
+    - [2. Sanity check](#2-sanity-check)
+    - [3. Full experiment](#3-full-experiment)
+    - [v1 config presets](#v1-config-presets)
+    - [Alternate v1 entry point: `run_best.py`](#alternate-v1-entry-point-run_bestpy)
+  - [v2 pipeline — full command reference](#v2-pipeline--full-command-reference)
+    - [1. Sanity check](#1-sanity-check)
+    - [2. Full benchmark (5 phases)](#2-full-benchmark-5-phases)
+  - [Running the test suite](#running-the-test-suite)
+  - [Output locations](#output-locations)
+  - [Architecture summary: v1 vs v2](#architecture-summary-v1-vs-v2)
+  - [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -224,39 +233,39 @@ python run.py --mode experiment \
 
 Full `run.py` flag reference:
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--model` | `Qwen/Qwen2.5-7B-Instruct` | HF model id |
-| `--task` | `gsm8k` | Dataset tag (used for profile naming) |
-| `--mode` | `calibrate` | `calibrate` \| `sanity` \| `experiment` |
-| `--n_samples` | `100` | GSM8K test questions to evaluate (experiment mode) |
-| `--n_calibration` | `50` | GSM8K train questions used for calibration |
-| `--configs` | `single_agent A B_int8 B_int4 C D E E_int8` | Which presets to run |
-| `--profile_dir` | `profiles` | Base dir for new calibration profiles |
-| `--profile_path` | *(required for sanity/experiment)* | Path to an existing `LayerProfile` JSON |
-| `--output_dir` | `results` | Base dir for experiment results |
-| `--resume_dir` | `None` | Existing run folder to resume |
-| `--device` | `cuda` | `cuda` \| `cpu` |
-| `--arch` | `legacy` | `legacy` (3-agent) \| `two_agent` |
-| `--print_raw_outputs` | off | Print raw generated text per sample |
+| Flag                  | Default                                     | Meaning                                            |
+| --------------------- | ------------------------------------------- | -------------------------------------------------- |
+| `--model`             | `Qwen/Qwen2.5-7B-Instruct`                  | HF model id                                        |
+| `--task`              | `gsm8k`                                     | Dataset tag (used for profile naming)              |
+| `--mode`              | `calibrate`                                 | `calibrate` \| `sanity` \| `experiment`            |
+| `--n_samples`         | `100`                                       | GSM8K test questions to evaluate (experiment mode) |
+| `--n_calibration`     | `50`                                        | GSM8K train questions used for calibration         |
+| `--configs`           | `single_agent A B_int8 B_int4 C D E E_int8` | Which presets to run                               |
+| `--profile_dir`       | `profiles`                                  | Base dir for new calibration profiles              |
+| `--profile_path`      | *(required for sanity/experiment)*          | Path to an existing `LayerProfile` JSON            |
+| `--output_dir`        | `results`                                   | Base dir for experiment results                    |
+| `--resume_dir`        | `None`                                      | Existing run folder to resume                      |
+| `--device`            | `cuda`                                      | `cuda` \| `cpu`                                    |
+| `--arch`              | `legacy`                                    | `legacy` (3-agent) \| `two_agent`                  |
+| `--print_raw_outputs` | off                                         | Print raw generated text per sample                |
 
 ### v1 config presets
 
 Defined in `evaluator.py::PRESETS`:
 
-| Preset | Layer selection | Compression | Offset correction | Reconstruction |
-|---|---|---|---|---|
-| `single_agent` | — | — | — | (baseline: one agent, no relay at all) |
-| `A` | off | none | off | zeros |
-| `B_int8` | off | uniform INT8 | off | zeros |
-| `B_int4` | off | uniform INT4 | off | zeros |
-| `C` | on | none | off | zeros |
-| `C_nearest` | on | none | off | nearest |
-| `C_interpolate` | on | none | off | interpolate |
-| `D` | on | adaptive (Tier1→INT8, Tier2→INT4) | off | zeros |
-| `D_nearest` | on | adaptive | off | nearest |
-| `E` | on | adaptive | **on** | zeros |
-| `E_int8` | on | uniform INT8 | **on** | zeros |
+| Preset          | Layer selection | Compression                       | Offset correction | Reconstruction                         |
+| --------------- | --------------- | --------------------------------- | ----------------- | -------------------------------------- |
+| `single_agent`  | —               | —                                 | —                 | (baseline: one agent, no relay at all) |
+| `A`             | off             | none                              | off               | zeros                                  |
+| `B_int8`        | off             | uniform INT8                      | off               | zeros                                  |
+| `B_int4`        | off             | uniform INT4                      | off               | zeros                                  |
+| `C`             | on              | none                              | off               | zeros                                  |
+| `C_nearest`     | on              | none                              | off               | nearest                                |
+| `C_interpolate` | on              | none                              | off               | interpolate                            |
+| `D`             | on              | adaptive (Tier1→INT8, Tier2→INT4) | off               | zeros                                  |
+| `D_nearest`     | on              | adaptive                          | off               | nearest                                |
+| `E`             | on              | adaptive                          | **on**            | zeros                                  |
+| `E_int8`        | on              | uniform INT8                      | **on**            | zeros                                  |
 
 Configs with layer selection or adaptive compression require `--profile_path`
 from a prior calibration run. `E` / `E_int8` additionally build a real
@@ -319,14 +328,14 @@ python lakv_v2/benchmark.py \
 Phases (each writes its own `*_summaries.json` / `*_records.json` / `*_table.csv`
 into `--output_dir`):
 
-| Phase | Rows | Needs `--profile_path`? |
-|---|---|---|
-| 1 — Baselines | `single_agent`, `text_2agent` | no |
-| 2 — V2 Full/Tail KV | `v2_full_prefix`, `v2_tail_only` | no |
-| 3 — V2 Layer Selection | `v2_layer_select` | yes |
-| 4 — V2 Selection + Compression | `v2_compressed`, `v2_compressed_tail` | yes |
-| 5 — Full comparison matrix | all of the above + more | yes |
-| `v1` (`--phase v1`) | `v1_full_kv` (frozen v1 reference, for comparison only) | no |
+| Phase                          | Rows                                                    | Needs `--profile_path`? |
+| ------------------------------ | ------------------------------------------------------- | ----------------------- |
+| 1 — Baselines                  | `single_agent`, `text_2agent`                           | no                      |
+| 2 — V2 Full/Tail KV            | `v2_full_prefix`, `v2_tail_only`                        | no                      |
+| 3 — V2 Layer Selection         | `v2_layer_select`                                       | yes                     |
+| 4 — V2 Selection + Compression | `v2_compressed`, `v2_compressed_tail`                   | yes                     |
+| 5 — Full comparison matrix     | all of the above + more                                 | yes                     |
+| `v1` (`--phase v1`)            | `v1_full_kv` (frozen v1 reference, for comparison only) | no                      |
 
 Run one phase at a time:
 ```bash
@@ -351,18 +360,18 @@ anchor hit-or-miss / finalizer answer / verdict) as it runs.
 
 Full `lakv_v2/benchmark.py` flag reference:
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--model` | `Qwen/Qwen2.5-7B-Instruct` | HF model id |
-| `--profile_path` | `None` | Required for layer-select/compressed rows |
-| `--device` | `cuda` | `cuda` \| `cpu` |
-| `--output_dir` | `results/v2_run_<timestamp>` | Where results are written |
-| `--phase` | `all` | `1`\|`2`\|`3`\|`4`\|`5`\|`all`\|`v1` |
-| `--n_phase1..5` | `20/20/20/20/100` | Sample counts per phase |
-| `--print_raw` | off | Print raw model outputs per sample |
-| `--debug` | off | Print full per-sample debug block |
-| `--rows` | `None` | Override row list for a custom run |
-| `--use_offset_correction` | off | Enable `AnchorTable` on v2 rows |
+| Flag                      | Default                      | Meaning                                   |
+| ------------------------- | ---------------------------- | ----------------------------------------- |
+| `--model`                 | `Qwen/Qwen2.5-7B-Instruct`   | HF model id                               |
+| `--profile_path`          | `None`                       | Required for layer-select/compressed rows |
+| `--device`                | `cuda`                       | `cuda` \| `cpu`                           |
+| `--output_dir`            | `results/v2_run_<timestamp>` | Where results are written                 |
+| `--phase`                 | `all`                        | `1`\|`2`\|`3`\|`4`\|`5`\|`all`\|`v1`      |
+| `--n_phase1..5`           | `20/20/20/20/100`            | Sample counts per phase                   |
+| `--print_raw`             | off                          | Print raw model outputs per sample        |
+| `--debug`                 | off                          | Print full per-sample debug block         |
+| `--rows`                  | `None`                       | Override row list for a custom run        |
+| `--use_offset_correction` | off                          | Enable `AnchorTable` on v2 rows           |
 
 ---
 
@@ -416,14 +425,14 @@ source):
 
 ## Architecture summary: v1 vs v2
 
-| | v1 (`pipeline.py`) | v2 (`lakv_v2/pipeline/shared_prefix_pipeline.py`) |
-|---|---|---|
-| Agent count | 3 by default (configurable via `n_agents`) | 2, fixed (Solver, Finalizer) |
-| Prompts | Each agent gets its **own distinct** system prompt (reasoner / verifier / aggregator) | **One shared** system prompt/prefix for both agents |
-| Position handling | `OffsetCorrector` corrects for inter-agent prompt-length mismatch (`raw_offset = sender_len - receiver_len`) | No `OffsetCorrector` at all — Finalizer's `position_ids` are an exact continuation from `cache_seq_len`, since both agents share one prefix |
-| Layer selection / quantization | `layer_selector.py` + `kv_compressor.py` | **Same modules**, imported directly — not reimplemented |
-| Calibration | `calibration_profiler.py` | **Same module** |
-| Cross-question KV correction | `anchor_table.py`, gated by `use_offset_correction` | **Same module**, gated the same way — construct an `AnchorTable` and pass it into `SharedPrefixConfig(anchor_table=..., use_offset_correction=True)` |
+|                                | v1 (`pipeline.py`)                                                                                           | v2 (`lakv_v2/pipeline/shared_prefix_pipeline.py`)                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent count                    | 3 by default (configurable via `n_agents`)                                                                   | 2, fixed (Solver, Finalizer)                                                                                                                         |
+| Prompts                        | Each agent gets its **own distinct** system prompt (reasoner / verifier / aggregator)                        | **One shared** system prompt/prefix for both agents                                                                                                  |
+| Position handling              | `OffsetCorrector` corrects for inter-agent prompt-length mismatch (`raw_offset = sender_len - receiver_len`) | No `OffsetCorrector` at all — Finalizer's `position_ids` are an exact continuation from `cache_seq_len`, since both agents share one prefix          |
+| Layer selection / quantization | `layer_selector.py` + `kv_compressor.py`                                                                     | **Same modules**, imported directly — not reimplemented                                                                                              |
+| Calibration                    | `calibration_profiler.py`                                                                                    | **Same module**                                                                                                                                      |
+| Cross-question KV correction   | `anchor_table.py`, gated by `use_offset_correction`                                                          | **Same module**, gated the same way — construct an `AnchorTable` and pass it into `SharedPrefixConfig(anchor_table=..., use_offset_correction=True)` |
 
 v2 is not a bugfixed rewrite of v1 — it's a structurally different experiment
 (fewer, homogeneous-prompt agents) that deliberately reuses v1's compression,

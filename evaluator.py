@@ -60,6 +60,7 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
     "B_int4": PipelineConfig(
         use_layer_selection=False, compression_mode="uniform_int4",
         use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
     ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
@@ -76,14 +77,17 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
     "D": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
         use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
     ),
     "D_nearest": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
         use_offset_correction=False, reconstruction_strategy="nearest",
+        outlier_clipping=True,
     ),
     "E": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
         use_offset_correction=True, reconstruction_strategy="zeros",
+        outlier_clipping=True,
     ),
     "E_int8": PipelineConfig(
         use_layer_selection=True, compression_mode="uniform_int8",

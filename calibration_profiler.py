@@ -64,10 +64,6 @@ class LayerProfile:
 class CalibrationProfiler:
     """Compute per-layer calibration signals for a Qwen2.5-7B model."""
 
-    N_LAYERS = 28
-    N_KV_HEADS = 4
-    HEAD_DIM = 128
-
     SYSTEM_PROMPT = (
         "You are a mathematical reasoning agent. Analyze the problem carefully."
     )
@@ -76,6 +72,9 @@ class CalibrationProfiler:
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
+        self.N_LAYERS = model.config.num_hidden_layers
+        self.N_KV_HEADS = model.config.num_key_value_heads
+        self.HEAD_DIM = model.config.head_dim
 
     # ── public API ────────────────────────────────────────────────────────
 

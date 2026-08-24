@@ -42,6 +42,7 @@ class OffsetCorrector:
         receiver_prompt_len: Optional[int] = None,
         query_hidden: Optional[torch.Tensor] = None,
         device: str = "cuda",
+        rope_theta: float = 1_000_000.0,
     ) -> Tuple[KVMessage, bool]:
         """
         Apply offset correction if possible.
@@ -81,6 +82,7 @@ class OffsetCorrector:
             effective_channel,
             query_hidden,
             device,
+            rope_theta=rope_theta,
         )
         if result is None:
             return kv_message, False

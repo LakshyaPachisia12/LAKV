@@ -33,6 +33,8 @@ class PipelineConfig:
     use_offset_correction: bool     # True for Config E only
     reconstruction_strategy: str    # 'zeros'|'nearest'|'interpolate'
     n_agents: int = 3
+    outlier_clipping: bool = False
+    clip_percentile: float = 99.5
     profile_path: Optional[str] = None
     intermediate_max_new_tokens: int = 200
     final_max_new_tokens: int = 512
@@ -94,14 +96,13 @@ class RunResult:
 class LAKVPipeline:
     """Multi-agent KV-cache relay pipeline for Qwen2.5-7B."""
 
-    N_LAYERS = 28
-
     def __init__(self, model, tokenizer, config: PipelineConfig, device: str = "cuda",
                  custom_layer_indices: Optional[List[int]] = None):
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
         self.device = device
+        self.N_LAYERS = model.config.num_hidden_layers
 
         # load profile if provided
         self.profile: Optional[LayerProfile] = None
@@ -122,6 +123,8 @@ class LAKVPipeline:
         self.compressor = KVCompressor(
             mode=config.compression_mode,
             profile=self.profile if config.compression_mode == "adaptive" else None,
+            outlier_clipping=config.outlier_clipping,
+            clip_percentile=config.clip_percentile,
         )
         self.last_run_offset_logs: List[Dict[str, int]] = []
 
@@ -210,7 +213,8 @@ class LAKVPipeline:
                         if self.config.n_agents == 2 else f"agent_{agent_idx}"
                     )
                     self.anchor_table.update(
-                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden)
+                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
+                        rope_theta=self.model.config.rope_theta)
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
@@ -248,6 +252,7 @@ class LAKVPipeline:
                         channel_key=receiver_id,
                         query_hidden=base_hidden,
                         device=self.device,
+                        rope_theta=self.model.config.rope_theta,
                     )
                     if self.corrector.last_offset_log:
                         self.last_run_offset_logs.append(dict(self.corrector.last_offset_log))
