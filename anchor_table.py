@@ -364,11 +364,26 @@ def compute_base_kv(model, tokenizer, question: str, device: str = "cuda") -> Tu
     with torch.no_grad():
         outputs = model(**inputs, use_cache=True, output_hidden_states=True)
 
-    # past_key_values may be DynamicCache — convert to tuple
+    # past_key_values may be DynamicCache — convert to tuple. The transformers
+    # internal cache API has changed across versions, so try each in order:
+    # 1. to_legacy_cache() (older stable API)
+    # 2. key_cache/value_cache attributes (some intermediate versions)
+    # 3. .layers attribute exposing per-layer (keys, values) objects (newer API)
     from transformers import DynamicCache
     pkv = outputs.past_key_values
     if isinstance(pkv, DynamicCache):
-        pkv = pkv.to_legacy_cache()
+        if hasattr(pkv, "to_legacy_cache"):
+            pkv = pkv.to_legacy_cache()
+        elif hasattr(pkv, "key_cache") and hasattr(pkv, "value_cache"):
+            pkv = tuple(zip(pkv.key_cache, pkv.value_cache))
+        elif hasattr(pkv, "layers"):
+            pkv = tuple((layer.keys, layer.values) for layer in pkv.layers)
+        else:
+            raise AttributeError(
+                "DynamicCache exposes none of to_legacy_cache(), "
+                "key_cache/value_cache, or .layers — unsupported transformers "
+                "version's cache API."
+            )
 
     # last hidden state for embedding
     last_hidden = outputs.hidden_states[-1]  # (1, seq, hidden)
