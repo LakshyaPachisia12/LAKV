@@ -74,7 +74,8 @@ class CalibrationProfiler:
         self.device = device
         self.N_LAYERS = model.config.num_hidden_layers
         self.N_KV_HEADS = model.config.num_key_value_heads
-        self.HEAD_DIM = model.config.head_dim
+        self.HEAD_DIM = getattr(model.config, 'head_dim',
+                                 model.config.hidden_size // model.config.num_attention_heads)
 
     # ── public API ────────────────────────────────────────────────────────
 
