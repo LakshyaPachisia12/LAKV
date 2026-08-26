@@ -214,7 +214,7 @@ class LAKVPipeline:
                     )
                     self.anchor_table.update(
                         q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
-                        rope_theta=self.model.config.rope_theta)
+                        rope_theta=self._get_rope_theta())
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
@@ -252,7 +252,7 @@ class LAKVPipeline:
                         channel_key=receiver_id,
                         query_hidden=base_hidden,
                         device=self.device,
-                        rope_theta=self.model.config.rope_theta,
+                        rope_theta=self._get_rope_theta(),
                     )
                     if self.corrector.last_offset_log:
                         self.last_run_offset_logs.append(dict(self.corrector.last_offset_log))
@@ -303,6 +303,15 @@ class LAKVPipeline:
             prompt_text, return_tensors="pt", add_special_tokens=False
         )["input_ids"]
         return int(prompt_ids.shape[1])
+
+    def _get_rope_theta(self) -> float:
+        """Read rope_theta from model.config, handling the newer configs that
+        nest it under a rope_parameters dict instead of exposing it directly."""
+        if hasattr(self.model.config, 'rope_theta'):
+            return self.model.config.rope_theta
+        if hasattr(self.model.config, 'rope_parameters'):
+            return self.model.config.rope_parameters.get('rope_theta', 1_000_000.0)
+        return 1_000_000.0
 
     # ── cache conversion helpers ──────────────────────────────────────────
 
