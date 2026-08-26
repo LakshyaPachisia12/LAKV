@@ -513,6 +513,7 @@ class SharedPrefixPipeline:
             outputs = self.model.generate(
                 inputs["input_ids"],
                 max_new_tokens=self.config.finalizer_max_new_tokens,
+                do_sample=False,
                 num_beams=1,
                 pad_token_id=self.tokenizer.eos_token_id,
             )

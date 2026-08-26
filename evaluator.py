@@ -152,6 +152,38 @@ def extract_answer(text: str) -> Optional[str]:
     return numbers[-1].replace(",", "").rstrip(".") if numbers else None
 
 
+def extract_numbers(text: str) -> List[str]:
+    """Extract every number in text, normalized (commas stripped) for comparison."""
+    if not text:
+        return []
+    return [n.replace(",", "") for n in re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)]
+
+
+def has_numeric_grounding(question: str, reasoning_text: str, early_fraction: float = 0.3) -> bool:
+    """Cheap regex sanity check: does the model's early reasoning reference at
+    least one number actually mentioned in the question?
+
+    This is a pipeline-health signal, not a correctness check. It is designed
+    to catch gross misreads cheaply — wrong question reaching the model,
+    garbled/corrupted generation, a KV relay hop handing over the wrong
+    context — the kind of bug that otherwise takes hours of manual JSON
+    archaeology to spot. It deliberately does NOT try to be a precise
+    verifier: a question with no numbers, or reasoning that references a real
+    question number in different shorthand (e.g. "50k" for "50,000"), is not
+    flagged — false positives would make the signal useless to act on.
+    """
+    q_numbers = set(extract_numbers(question))
+    if not q_numbers:
+        return True  # nothing to ground against — don't flag
+
+    if not reasoning_text:
+        return False
+
+    cutoff = max(1, int(len(reasoning_text) * early_fraction))
+    early_numbers = set(extract_numbers(reasoning_text[:cutoff]))
+    return bool(q_numbers & early_numbers)
+
+
 def is_malformed(text: str) -> bool:
     if not text:
         return True
@@ -263,6 +295,7 @@ class Evaluator:
                     "mean_latency_seconds": 0.0,
                     "parse_failures": 0,
                     "malformed_output_rate": 0.0,
+                    "numeric_grounding_failures": 0,
                     "n_correct": 0,
                     "n_samples": 0,
                     "n_expected": len(samples),
@@ -276,6 +309,7 @@ class Evaluator:
             mean_ratio = sum(x["compression_ratio"] for x in per_sample) / n_done
             parse_failures = sum(1 for x in per_sample if x["predicted"] is None)
             malformed_rate = sum(1 for x in per_sample if x["is_malformed"]) / n_done
+            grounding_failures = sum(1 for x in per_sample if x.get("numeric_grounding_failure"))
 
             layers_vals = []
             for x in per_sample:
@@ -293,6 +327,7 @@ class Evaluator:
                 "mean_latency_seconds": mean_latency,
                 "parse_failures": parse_failures,
                 "malformed_output_rate": malformed_rate,
+                "numeric_grounding_failures": grounding_failures,
                 "n_correct": correct,
                 "n_samples": n_done,
                 "n_expected": len(samples),
@@ -346,6 +381,7 @@ class Evaluator:
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                             "predicted":pred,"raw_answer":raw_answer,"correct":ok,
                             "is_malformed":is_malformed(raw_answer),
+                            "numeric_grounding_failure": not has_numeric_grounding(s["question"], raw_answer),
                             "compressed_mb":0.0,"original_mb":0.0,
                             "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
                         tot_lat += elapsed
@@ -357,9 +393,17 @@ class Evaluator:
                         ok = pred is not None and pred.strip() == gold
                         if ok: correct += 1
                         nh = max(len(r.hop_stats), 1)
+                        # NOTE: r.answer is only the last (Aggregator) agent's terse
+                        # output ("The answer is N.") for multi-agent configs — the
+                        # intermediate Reasoner's actual CoT text isn't captured in
+                        # RunResult today, so this check has much less to grab onto
+                        # here than in the single_agent path. Still worth recording:
+                        # a wrong-question/garbled-relay failure will usually still
+                        # surface as a grounding failure even in the terse output.
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                             "predicted":pred,"raw_answer":r.answer,"correct":ok,
                             "is_malformed":is_malformed(r.answer),
+                            "numeric_grounding_failure": not has_numeric_grounding(s["question"], r.answer),
                             "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
                             "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                             "hop_stats":[asdict(h) for h in r.hop_stats]})
@@ -381,6 +425,7 @@ class Evaluator:
                     "mean_latency_seconds":tot_lat/n if n else 0,
                     "parse_failures":sum(1 for x in per_sample if x["predicted"] is None),
                     "malformed_output_rate":sum(1 for x in per_sample if x["is_malformed"])/n if n else 0,
+                    "numeric_grounding_failures":sum(1 for x in per_sample if x.get("numeric_grounding_failure")),
                     "n_correct":correct,"n_samples":n,
                     "n_expected":n,
                     "status":"completed"}
@@ -420,9 +465,11 @@ class Evaluator:
             for i,s in enumerate(samples):
                 r = pipe.run(s["question"])
                 pred = extract_answer(r.answer)
+                grounding_failed = not has_numeric_grounding(s["question"], r.answer)
                 print(f"  Q{i}: {s['question']}")
                 print(f"  → answer: {r.answer[:200]}...")
                 print(f"  → extracted: {pred}  |  gold: {s['answer']}")
+                print(f"  → numeric grounding: {'FAILED — check for misread/corruption' if grounding_failed else 'ok'}")
                 print(f"  → KV: {r.total_compressed_mb:.2f} MB (ratio {r.overall_compression_ratio:.2f}x)\n")
 
     @staticmethod
@@ -437,15 +484,21 @@ class Evaluator:
             layer_str = "   —      " if is_single else f"{s['mean_layers_transmitted']:>5.0f}/28    "
             print(f"{c:<22}| {s['accuracy']*100:>7.1f}% | {comp_str} | "
                   f"{ratio_str} | {layer_str} | {s['mean_latency_seconds']:>8.1f}s")
+            n = s.get("n_samples", 0)
+            gf = s.get("numeric_grounding_failures", 0)
+            if n:
+                print(f"{'':<22}  numeric grounding: {gf}/{n} flagged ({gf/n*100:.1f}%)")
 
     @staticmethod
     def _save_csv(all_results, path):
         with open(path,"w",newline="") as f:
             w=csv.writer(f)
             w.writerow(["config","accuracy","mean_compressed_mb","mean_compression_ratio",
-                "mean_layers_transmitted","mean_latency_seconds","parse_failures","malformed_output_rate","n_correct","n_samples"])
+                "mean_layers_transmitted","mean_latency_seconds","parse_failures","malformed_output_rate",
+                "numeric_grounding_failures","n_correct","n_samples"])
             for c,d in all_results.items():
                 s=d["summary"]
                 w.writerow([c,f"{s['accuracy']:.4f}",f"{s['mean_compressed_mb']:.4f}",
                     f"{s['mean_compression_ratio']:.4f}",f"{s['mean_layers_transmitted']:.1f}",
-                    f"{s['mean_latency_seconds']:.2f}",s["parse_failures"],f"{s['malformed_output_rate']:.4f}",s["n_correct"],s["n_samples"]])
+                    f"{s['mean_latency_seconds']:.2f}",s["parse_failures"],f"{s['malformed_output_rate']:.4f}",
+                    s.get("numeric_grounding_failures", 0),s["n_correct"],s["n_samples"]])
