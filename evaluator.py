@@ -108,12 +108,25 @@ ABLATION_CONFIGS = {
 
 
 def extract_answer(text: str) -> Optional[str]:
-    """Extract numeric answer, preferring #### format with robust fallbacks."""
+    """Extract numeric answer, preferring explicit final-answer markers with robust fallbacks.
+
+    Priority order: #### N  >  \\boxed{N}  >  "answer is/=/: N"  >  a bare-number
+    line  >  last number in the text. The first three patterns anchor on an
+    explicit "this is the final answer" marker, so they are checked (in that
+    order) BEFORE any digit-repair cleanup runs — this prevents unrelated
+    numbers elsewhere in the reasoning from ever outranking a clearly marked
+    final answer.
+    """
     if not text:
         return None
 
-    # Repair split-digit artifacts like "1!2!0" before fallback parsing.
-    cleaned = re.sub(r"(?<=\d)[^\d,\.\-]+(?=\d)", "", text)
+    # Repair split-digit corruption like "1!2!0" -> "120": only merge digits
+    # separated by punctuation/symbols with NO whitespace and NO letters in
+    # between. This intentionally does NOT merge two distinct numbers that
+    # appear in ordinary prose (e.g. "4 apples and 7 oranges"), since that gap
+    # contains letters/spaces and won't match — merging those was the bug that
+    # turned "\boxed{7}" plus an earlier "4" into a spurious "47".
+    cleaned = re.sub(r"(?<=\d)[^\w\s.,\-]+(?=\d)", "", text)
 
     for candidate in (text, cleaned):
         match = re.search(r"####\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
@@ -121,12 +134,17 @@ def extract_answer(text: str) -> Optional[str]:
             return match.group(1).replace(",", "").rstrip(".")
 
     for candidate in (text, cleaned):
-        match = re.search(r"(?im)^\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\.?\s*$", candidate)
+        match = list(re.finditer(r"\\boxed\{\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\}", candidate))
+        if match:
+            return match[-1].group(1).replace(",", "").rstrip(".")
+
+    for candidate in (text, cleaned):
+        match = re.search(r"(?i)answer\s*(?:is|=|:)?\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
         if match:
             return match.group(1).replace(",", "").rstrip(".")
 
     for candidate in (text, cleaned):
-        match = re.search(r"(?i)answer\s*(?:is|=|:)?\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)", candidate)
+        match = re.search(r"(?im)^\s*\$?\s*(-?\d[\d,]*(?:\.\d+)?)\s*\.?\s*$", candidate)
         if match:
             return match.group(1).replace(",", "").rstrip(".")
 
