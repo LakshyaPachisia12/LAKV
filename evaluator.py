@@ -393,17 +393,17 @@ class Evaluator:
                         ok = pred is not None and pred.strip() == gold
                         if ok: correct += 1
                         nh = max(len(r.hop_stats), 1)
-                        # NOTE: r.answer is only the last (Aggregator) agent's terse
-                        # output ("The answer is N.") for multi-agent configs — the
-                        # intermediate Reasoner's actual CoT text isn't captured in
-                        # RunResult today, so this check has much less to grab onto
-                        # here than in the single_agent path. Still worth recording:
-                        # a wrong-question/garbled-relay failure will usually still
-                        # surface as a grounding failure even in the terse output.
+                        # r.hop_texts[0] is the Reasoner's full raw decoded text (hop 1),
+                        # now captured separately from the Aggregator's terse final answer
+                        # (r.answer) — grounding checks against reasoning text instead of
+                        # a one-line "The answer is N." string.
+                        reasoner_text = r.hop_texts[0] if r.hop_texts else None
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                             "predicted":pred,"raw_answer":r.answer,"correct":ok,
                             "is_malformed":is_malformed(r.answer),
-                            "numeric_grounding_failure": not has_numeric_grounding(s["question"], r.answer),
+                            "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
+                            "numeric_grounding_failure": not has_numeric_grounding(
+                                s["question"], reasoner_text if reasoner_text else r.answer),
                             "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
                             "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                             "hop_stats":[asdict(h) for h in r.hop_stats]})

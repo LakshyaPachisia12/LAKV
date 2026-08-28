@@ -89,6 +89,7 @@ class RunResult:
     total_compressed_mb: float
     total_original_mb: float
     overall_compression_ratio: float
+    hop_texts: List[str]            # decoded text per intermediate hop; hop_texts[0] is the Reasoner
 
 
 # ─── pipeline ─────────────────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ class LAKVPipeline:
         self.anchor_table: Optional[AnchorTable] = None
         self.corrector: Optional[OffsetCorrector] = None
         if config.use_offset_correction:
-            self.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3)
+            self.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3, min_confidence=0.5)
             self.corrector = OffsetCorrector(anchor_table=self.anchor_table)
 
     # ── public API ────────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ class LAKVPipeline:
     def run(self, question: str) -> RunResult:
         """Execute the 3-agent pipeline and return the final answer."""
         hop_stats: List[HopStat] = []
+        hop_texts: List[str] = []
         kv_message: Optional[KVMessage] = None
         selection_mask: Optional[SelectionMask] = None
         pending_position_offset = 0
@@ -197,13 +199,14 @@ class LAKVPipeline:
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
-                raw_kv_tuple, agent_hidden = self._generate_intermediate_with_hidden(
+                raw_kv_tuple, agent_hidden, hop_text = self._generate_intermediate_with_hidden(
                     input_ids,
                     injected_kv_tuple,
                     max_new=self.config.intermediate_max_new_tokens,
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
                 )
+                hop_texts.append(hop_text)
                 pending_position_offset = 0
 
                 # Populate anchor table with this agent's observation
@@ -286,6 +289,7 @@ class LAKVPipeline:
             total_compressed_mb=total_comp,
             total_original_mb=total_orig,
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
+            hop_texts=hop_texts,
         )
 
     def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
@@ -601,11 +605,13 @@ class LAKVPipeline:
         next_logits = out.logits[:, -1, :]
 
         cur_pos = position_start + prompt_len
+        generated_ids: List[int] = []
         for _ in range(max_new):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
             if tok_id == eos_id:
                 break
+            generated_ids.append(tok_id)
             with torch.no_grad():
                 out = self.model(
                     input_ids=next_token,
@@ -617,7 +623,8 @@ class LAKVPipeline:
             next_logits = out.logits[:, -1, :]
             cur_pos += 1
 
-        return self._to_tuple(running_cache), last_hidden
+        generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return self._to_tuple(running_cache), last_hidden, generated_text
 
     def _build_prompt(self, question: str, system_prompt: str) -> str:
         messages = [
