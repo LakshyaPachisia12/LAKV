@@ -82,6 +82,7 @@ class OffsetCorrector:
             effective_channel,
             query_hidden,
             device,
+            target_prompt_len=receiver_len,
             rope_theta=rope_theta,
         )
         if result is None:

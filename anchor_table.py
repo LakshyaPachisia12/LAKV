@@ -56,9 +56,10 @@ class AnchorTable:
     """
 
     def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3,
-                 verbose: bool = False):
+                 min_confidence: float = 0.5, verbose: bool = False):
         self.max_size = max_size
         self.entropy_threshold = entropy_threshold
+        self.min_confidence = min_confidence
         self.verbose = verbose
         self._pool: Dict[str, AnchorEntry] = {}  # key → AnchorEntry
         self._hit_log: List[dict] = []            # for experiment logging
@@ -170,6 +171,17 @@ class AnchorTable:
         # Confidence = 1 - normalized_entropy (1.0 for a single perfect match)
         norm_entropy = entropy / max(torch.tensor(len(candidates)).float().log().item(), 1e-9)
         confidence = float(1.0 - norm_entropy)
+
+        # Confidence floor: a borderline match that squeaks past the entropy gate
+        # can still be a poor-quality anchor. Skip correction (fall back to the
+        # transmitted KV as-is) rather than apply a low-confidence correction.
+        if confidence < self.min_confidence:
+            self._log_miss(question_key, agent_id, entropy=entropy, reason="low_confidence")
+            if self.verbose:
+                print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} "
+                      f"reason=low_confidence confidence={confidence:.4f} "
+                      f"min_confidence={self.min_confidence:.4f}")
+            return None
 
         # Interpolate delta across candidates
         n_layers = len(candidates[0].agent_offsets[agent_id].delta_k)
