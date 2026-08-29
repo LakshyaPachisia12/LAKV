@@ -135,6 +135,25 @@ class LAKVPipeline:
             self.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3, min_confidence=0.5)
             self.corrector = OffsetCorrector(anchor_table=self.anchor_table)
 
+        self._eos_ids = self._get_stop_token_ids()
+
+    def _get_stop_token_ids(self) -> set:
+        """All valid end-of-turn token ids for this model.
+
+        The manual greedy-decode loops below can't use model.generate(), which
+        normally reads model.generation_config.eos_token_id (often a list, e.g.
+        Qwen's chat end token <|im_end|> alongside <|endoftext|>) automatically.
+        Checking only tokenizer.eos_token_id misses those, so decoding runs past
+        the model's real stop point and starts hallucinating a new chat turn.
+        """
+        ids = set()
+        gen_eos = getattr(getattr(self.model, "generation_config", None), "eos_token_id", None)
+        if gen_eos is not None:
+            ids.update(gen_eos if isinstance(gen_eos, (list, tuple, set)) else [gen_eos])
+        if self.tokenizer.eos_token_id is not None:
+            ids.add(self.tokenizer.eos_token_id)
+        return ids
+
     # ── public API ────────────────────────────────────────────────────────
 
     def run(self, question: str) -> RunResult:
@@ -426,7 +445,7 @@ class LAKVPipeline:
         manual greedy decode loop (one token at a time) using the primed cache.
         When there is no KV to inject, fall back to model.generate() normally.
         """
-        eos_id = self.tokenizer.eos_token_id
+        eos_ids = self._eos_ids
         if max_new_tokens is None:
             max_new_tokens = self.config.final_max_new_tokens
 
@@ -474,7 +493,7 @@ class LAKVPipeline:
         for _ in range(max_new_tokens):
             next_token = next_logits.argmax(-1, keepdim=True)  # (1, 1)
             tok_id = next_token.item()
-            if tok_id == eos_id:
+            if tok_id in eos_ids:
                 break
             generated.append(tok_id)
             with torch.no_grad():
@@ -505,7 +524,7 @@ class LAKVPipeline:
         Returns the full KV tuple INCLUDING the generated tokens,
         so the next agent's context contains this agent's reasoning.
         """
-        eos_id = self.tokenizer.eos_token_id
+        eos_ids = self._eos_ids
         if max_new is None:
             max_new = self.config.intermediate_max_new_tokens
 
@@ -543,7 +562,7 @@ class LAKVPipeline:
         for _ in range(max_new):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
-            if tok_id == eos_id:
+            if tok_id in eos_ids:
                 break
             with torch.no_grad():
                 out = self.model(
@@ -567,7 +586,7 @@ class LAKVPipeline:
         receiver_prompt_len: Optional[int] = None,
     ) -> tuple:
         """Like _generate_intermediate but also returns last hidden states for anchor embedding."""
-        eos_id = self.tokenizer.eos_token_id
+        eos_ids = self._eos_ids
         if max_new is None:
             max_new = self.config.intermediate_max_new_tokens
 
@@ -609,7 +628,7 @@ class LAKVPipeline:
         for _ in range(max_new):
             next_token = next_logits.argmax(-1, keepdim=True)
             tok_id = next_token.item()
-            if tok_id == eos_id:
+            if tok_id in eos_ids:
                 break
             generated_ids.append(tok_id)
             with torch.no_grad():
