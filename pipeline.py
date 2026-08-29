@@ -49,11 +49,9 @@ class PipelineConfig:
     _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
     system_prompts: List[str] = field(default_factory=lambda: [
         (
-            "You are a precise mathematical reasoning agent. "
-            "When given a problem, break it into clear numbered steps. "
-            "Show every arithmetic operation explicitly — do not skip steps. "
-            "Compute intermediate values at each step. "
-            "Work through the entire problem to completion."
+            "You are a mathematical reasoning assistant. Solve the problem step "
+            "by step, showing each calculation explicitly. Continue until you "
+            "reach the final answer."
         ),
         (
             "You are a critical verification agent. "
