@@ -49,6 +49,11 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
     # an incompatible shape (no n_agents/system_prompts/etc.) and would break
     # here if the special-case above it were ever removed.
     "single_agent": None,
+    # text_agent: same 3-agent role structure/prompts as Config A, but agents
+    # communicate via literal decoded text instead of KV injection - see
+    # lakv_v2.pipeline.text_agent.TextAgentPipeline. Also not a PipelineConfig;
+    # _build_pipeline special-cases it the same way as single_agent above.
+    "text_agent": None,
     "A": PipelineConfig(
         use_layer_selection=False, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",
@@ -225,6 +230,11 @@ class Evaluator:
             return SingleAgentPipeline(self.model, self.tokenizer,
                                        SingleAgentPipelineConfig(), self.device), "single"
 
+        if cfg_name == "text_agent":
+            from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
+            return TextAgentPipeline(self.model, self.tokenizer,
+                                      TextAgentPipelineConfig(), self.device), "text"
+
         if cfg_name in ABLATION_CONFIGS:
             spec = ABLATION_CONFIGS[cfg_name]
             if spec["type"] == "random_select":
@@ -384,6 +394,36 @@ class Evaluator:
                             "numeric_grounding_failure": not has_numeric_grounding(s["question"], raw_answer),
                             "compressed_mb":0.0,"original_mb":0.0,
                             "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
+                        tot_lat += elapsed
+                    elif pipe_type == "text":
+                        r = pipe.run(s["question"])
+                        elapsed = time.time() - t0
+                        pred = extract_answer(r.answer)
+                        gold = str(s["answer"]).strip()
+                        ok = pred is not None and pred.strip() == gold
+                        if ok: correct += 1
+                        reasoner_text = r.hop_texts[0] if r.hop_texts else None
+                        # Reuse the KV-config fields (compressed_mb/original_mb/
+                        # compression_ratio) to carry the text payload size, so
+                        # the existing summary table/CSV need no schema changes
+                        # and text_agent's payload shows up directly comparable
+                        # to A-E's KV/hop MB in the same column. total_bytes is
+                        # the sum of both inter-agent handoffs (Reasoner->
+                        # Verifier, Verifier->Finalizer); mb below is per-hop
+                        # mean to match how KV configs report per-hop MB.
+                        nh = max(len(r.hop_bytes), 1)
+                        total_mb = r.total_bytes / 1e6
+                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                            "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                            "is_malformed":is_malformed(r.answer),
+                            "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
+                            "numeric_grounding_failure": not has_numeric_grounding(
+                                s["question"], reasoner_text if reasoner_text else r.answer),
+                            "compressed_mb":total_mb,"original_mb":total_mb,
+                            "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[]})
+                        tot_comp += total_mb/nh
+                        tot_orig += total_mb/nh
+                        tot_ratio += 1.0
                         tot_lat += elapsed
                     else:
                         r = pipe.run(s["question"])
