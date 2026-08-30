@@ -24,6 +24,25 @@ from offset_corrector import OffsetCorrector
 from anchor_table import AnchorTable, question_key as make_key, compute_base_kv
 
 
+# Synthetic (non-eval) few-shot exemplar for the Reasoner: demonstrates
+# restating each given number before using it, to counter the model's
+# tendency to misread numbers it copies later in its own reasoning.
+_REASONER_EXEMPLAR_QUESTION = (
+    "A bakery bakes 45 loaves of bread each morning. It sells 12 loaves to a "
+    "cafe and donates 8 loaves to a shelter. It sells the rest at $3 per "
+    "loaf. How much money does the bakery make from the remaining loaves?"
+)
+_REASONER_EXEMPLAR_SOLUTION = (
+    "Step 1: The bakery bakes 45 loaves (given: 45 loaves baked).\n"
+    "Step 2: It sells 12 loaves to a cafe (given: 12 loaves to cafe).\n"
+    "Step 3: It donates 8 loaves to a shelter (given: 8 loaves donated).\n"
+    "Step 4: Loaves remaining = 45 - 12 - 8 = 25.\n"
+    "Step 5: Price per loaf is $3 (given: $3 per loaf).\n"
+    "Step 6: Revenue = 25 * 3 = 75.\n"
+    "#### 75"
+)
+
+
 # ─── config / result dataclasses ──────────────────────────────────────────────
 
 @dataclass
@@ -47,6 +66,10 @@ class PipelineConfig:
     print_raw_outputs: bool = False
     anchor_channel_key: str = "solver_to_finalizer"
     _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
+    use_reasoner_few_shot: bool = True
+    reasoner_few_shot_example: Tuple[str, str] = (
+        _REASONER_EXEMPLAR_QUESTION, _REASONER_EXEMPLAR_SOLUTION
+    )
     system_prompts: List[str] = field(default_factory=lambda: [
         (
             "You are a mathematical reasoning assistant. Solve the problem step "
@@ -178,10 +201,12 @@ class LAKVPipeline:
 
         for agent_idx in range(n_agents):
             system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ]
+            messages = [{"role": "system", "content": system_prompt}]
+            if agent_idx == 0 and self.config.use_reasoner_few_shot:
+                exemplar_q, exemplar_a = self.config.reasoner_few_shot_example
+                messages.append({"role": "user", "content": exemplar_q})
+                messages.append({"role": "assistant", "content": exemplar_a})
+            messages.append({"role": "user", "content": question})
             prompt_text = self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
