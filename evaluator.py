@@ -381,76 +381,93 @@ class Evaluator:
                     i = start_idx + i_rel
                     t0 = time.time()
 
-                    if pipe_type == "single":
-                        raw_answer = pipe.run(s["question"])
+                    try:
+                        if pipe_type == "single":
+                            raw_answer = pipe.run(s["question"])
+                            elapsed = time.time() - t0
+                            pred = extract_answer(raw_answer)
+                            gold = str(s["answer"]).strip()
+                            ok = pred is not None and pred.strip() == gold
+                            if ok: correct += 1
+                            per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                                "predicted":pred,"raw_answer":raw_answer,"correct":ok,
+                                "is_malformed":is_malformed(raw_answer),
+                                "numeric_grounding_failure": not has_numeric_grounding(s["question"], raw_answer),
+                                "compressed_mb":0.0,"original_mb":0.0,
+                                "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
+                            tot_lat += elapsed
+                        elif pipe_type == "text":
+                            r = pipe.run(s["question"])
+                            elapsed = time.time() - t0
+                            pred = extract_answer(r.answer)
+                            gold = str(s["answer"]).strip()
+                            ok = pred is not None and pred.strip() == gold
+                            if ok: correct += 1
+                            reasoner_text = r.hop_texts[0] if r.hop_texts else None
+                            # Reuse the KV-config fields (compressed_mb/original_mb/
+                            # compression_ratio) to carry the text payload size, so
+                            # the existing summary table/CSV need no schema changes
+                            # and text_agent's payload shows up directly comparable
+                            # to A-E's KV/hop MB in the same column. total_bytes is
+                            # the sum of both inter-agent handoffs (Reasoner->
+                            # Verifier, Verifier->Finalizer); mb below is per-hop
+                            # mean to match how KV configs report per-hop MB.
+                            nh = max(len(r.hop_bytes), 1)
+                            total_mb = r.total_bytes / 1e6
+                            per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                                "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                                "is_malformed":is_malformed(r.answer),
+                                "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
+                                "numeric_grounding_failure": not has_numeric_grounding(
+                                    s["question"], reasoner_text if reasoner_text else r.answer),
+                                "compressed_mb":total_mb,"original_mb":total_mb,
+                                "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[]})
+                            tot_comp += total_mb/nh
+                            tot_orig += total_mb/nh
+                            tot_ratio += 1.0
+                            tot_lat += elapsed
+                        else:
+                            r = pipe.run(s["question"])
+                            elapsed = time.time() - t0
+                            pred = extract_answer(r.answer)
+                            gold = str(s["answer"]).strip()
+                            ok = pred is not None and pred.strip() == gold
+                            if ok: correct += 1
+                            nh = max(len(r.hop_stats), 1)
+                            # r.hop_texts[0] is the Reasoner's full raw decoded text (hop 1),
+                            # now captured separately from the Aggregator's terse final answer
+                            # (r.answer) — grounding checks against reasoning text instead of
+                            # a one-line "The answer is N." string.
+                            reasoner_text = r.hop_texts[0] if r.hop_texts else None
+                            per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                                "predicted":pred,"raw_answer":r.answer,"correct":ok,
+                                "is_malformed":is_malformed(r.answer),
+                                "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
+                                "numeric_grounding_failure": not has_numeric_grounding(
+                                    s["question"], reasoner_text if reasoner_text else r.answer),
+                                "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
+                                "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
+                                "hop_stats":[asdict(h) for h in r.hop_stats]})
+                            tot_comp += r.total_compressed_mb/nh
+                            tot_orig += r.total_original_mb/nh
+                            tot_ratio += r.overall_compression_ratio
+                            tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
+                            tot_lat += elapsed
+                    except (torch.OutOfMemoryError, RuntimeError) as e:
+                        if isinstance(e, RuntimeError) and not isinstance(e, torch.OutOfMemoryError) \
+                                and "out of memory" not in str(e).lower():
+                            raise
                         elapsed = time.time() - t0
-                        pred = extract_answer(raw_answer)
+                        torch.cuda.empty_cache()
                         gold = str(s["answer"]).strip()
-                        ok = pred is not None and pred.strip() == gold
-                        if ok: correct += 1
+                        print(f"  [OOM] Config {cfg_name} sample {i} skipped (out of memory), "
+                              f"continuing with next sample: {e}")
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                            "predicted":pred,"raw_answer":raw_answer,"correct":ok,
-                            "is_malformed":is_malformed(raw_answer),
-                            "numeric_grounding_failure": not has_numeric_grounding(s["question"], raw_answer),
+                            "predicted":None,"raw_answer":None,"correct":False,
+                            "is_malformed":True,"numeric_grounding_failure":True,
                             "compressed_mb":0.0,"original_mb":0.0,
-                            "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
-                        tot_lat += elapsed
-                    elif pipe_type == "text":
-                        r = pipe.run(s["question"])
-                        elapsed = time.time() - t0
-                        pred = extract_answer(r.answer)
-                        gold = str(s["answer"]).strip()
-                        ok = pred is not None and pred.strip() == gold
-                        if ok: correct += 1
-                        reasoner_text = r.hop_texts[0] if r.hop_texts else None
-                        # Reuse the KV-config fields (compressed_mb/original_mb/
-                        # compression_ratio) to carry the text payload size, so
-                        # the existing summary table/CSV need no schema changes
-                        # and text_agent's payload shows up directly comparable
-                        # to A-E's KV/hop MB in the same column. total_bytes is
-                        # the sum of both inter-agent handoffs (Reasoner->
-                        # Verifier, Verifier->Finalizer); mb below is per-hop
-                        # mean to match how KV configs report per-hop MB.
-                        nh = max(len(r.hop_bytes), 1)
-                        total_mb = r.total_bytes / 1e6
-                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                            "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                            "is_malformed":is_malformed(r.answer),
-                            "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
-                            "numeric_grounding_failure": not has_numeric_grounding(
-                                s["question"], reasoner_text if reasoner_text else r.answer),
-                            "compressed_mb":total_mb,"original_mb":total_mb,
-                            "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[]})
-                        tot_comp += total_mb/nh
-                        tot_orig += total_mb/nh
-                        tot_ratio += 1.0
-                        tot_lat += elapsed
-                    else:
-                        r = pipe.run(s["question"])
-                        elapsed = time.time() - t0
-                        pred = extract_answer(r.answer)
-                        gold = str(s["answer"]).strip()
-                        ok = pred is not None and pred.strip() == gold
-                        if ok: correct += 1
-                        nh = max(len(r.hop_stats), 1)
-                        # r.hop_texts[0] is the Reasoner's full raw decoded text (hop 1),
-                        # now captured separately from the Aggregator's terse final answer
-                        # (r.answer) — grounding checks against reasoning text instead of
-                        # a one-line "The answer is N." string.
-                        reasoner_text = r.hop_texts[0] if r.hop_texts else None
-                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                            "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                            "is_malformed":is_malformed(r.answer),
-                            "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
-                            "numeric_grounding_failure": not has_numeric_grounding(
-                                s["question"], reasoner_text if reasoner_text else r.answer),
-                            "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
-                            "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
-                            "hop_stats":[asdict(h) for h in r.hop_stats]})
-                        tot_comp += r.total_compressed_mb/nh
-                        tot_orig += r.total_original_mb/nh
-                        tot_ratio += r.overall_compression_ratio
-                        tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
+                            "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[],
+                            "oom_skipped":True})
                         tot_lat += elapsed
 
                     if checkpoint_every and ((i + 1) % checkpoint_every == 0):
