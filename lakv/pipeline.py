@@ -355,7 +355,25 @@ class LAKVPipeline:
                     )
                     if self.corrector.last_offset_log:
                         self.last_run_offset_logs.append(dict(self.corrector.last_offset_log))
-                        pending_position_offset = self.corrector.last_offset_log.get("applied_offset", 0)
+                    if was_corrected:
+                        # Must match anchor_table.py's own target_shift exactly
+                        # (target_prompt_len - corrected_seq_len): that's the
+                        # amount the corrected cache's RoPE encoding was
+                        # shifted by, so it's also the amount the receiver's
+                        # NEW tokens need to continue from. The old code used
+                        # last_offset_log["applied_offset"] here instead — a
+                        # completely different quantity (sender_seq_len -
+                        # receiver_prompt_len, computed before the anchor
+                        # lookup even ran) that was also applied on cache
+                        # MISSES (was_corrected=False), silently shifting an
+                        # otherwise-uncorrected, correctly-positioned cache.
+                        # This double inconsistency (wrong formula + applied
+                        # even without a correction) is the likely cause of
+                        # Config E's collapse to near-random accuracy despite
+                        # the RoPE-forwarding and reject-gate fixes already
+                        # applied this session.
+                        corrected_seq_len = kv_message.layers[0].shape[2]
+                        pending_position_offset = max(receiver_prompt_len - corrected_seq_len, 0)
 
                 total_bytes += kv_message.compressed_bytes
                 if self.verbose:

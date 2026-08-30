@@ -62,6 +62,14 @@ class OffsetCorrector:
         sender_len = sender_seq_len if sender_seq_len is not None else sender_suffix_len
         receiver_len = receiver_prompt_len if receiver_prompt_len is not None else receiver_suffix_len
         raw_offset = int(sender_len - receiver_len)
+        # NOTE: "applied_offset" below is diagnostic-only (logged for
+        # inspection, not consumed by evaluator.py) and, despite the name,
+        # is NOT what pipeline.py uses to position the receiver's new tokens
+        # — that value is computed separately in pipeline.py from
+        # target_prompt_len - corrected_seq_len (matching anchor_table.py's
+        # own RoPE target_shift) and only when a correction actually hit.
+        # This field predates that fix and is a different, sender-length-
+        # based quantity; kept for backwards-compatible logging only.
         applied_offset = max(0, raw_offset)
         self.last_offset_log = {
             "sender_len": int(sender_len),
