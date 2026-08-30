@@ -56,11 +56,11 @@ class PipelineConfig:
     clip_percentile: float = 99.5
     profile_path: Optional[str] = None
     intermediate_max_new_tokens: int = 200
-    final_max_new_tokens: int = 512
+    final_max_new_tokens: int = 1536
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
-        "do_sample": False,
-        "temperature": 0.0,
-        "top_p": 1.0,
+        "do_sample": True,
+        "temperature": 0.6,
+        "top_p": 0.95,
         "num_beams": 1,
     })
     print_raw_outputs: bool = False

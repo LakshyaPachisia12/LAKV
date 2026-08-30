@@ -56,11 +56,22 @@ class AnchorTable:
     """
 
     def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3,
-                 min_confidence: float = 0.5, verbose: bool = False):
+                 min_confidence: float = 0.5, verbose: bool = False,
+                 graceful_degradation: bool = True):
         self.max_size = max_size
         self.entropy_threshold = entropy_threshold
         self.min_confidence = min_confidence
         self.verbose = verbose
+        # When True (KVCOMM-style): an ambiguous/low-confidence match still
+        # gets a blended correction applied rather than being rejected
+        # outright. Rejecting means the caller falls back to completely
+        # uncorrected KV (see OffsetCorrector.correct on a None result) —
+        # the same "wrong position, no RoPE correction" failure mode that
+        # collapsed Config E before the target_prompt_len fix. A low-
+        # confidence blended correction is expected to usually be closer to
+        # right than applying no correction at all. Set False to restore
+        # the old strict all-or-nothing gate for ablation/comparison.
+        self.graceful_degradation = graceful_degradation
         self._pool: Dict[str, AnchorEntry] = {}  # key → AnchorEntry
         self._hit_log: List[dict] = []            # for experiment logging
         self._admission_log: List[dict] = []      # _should_add_new_anchor call history
@@ -158,10 +169,15 @@ class AnchorTable:
         query_emb = self._embed(query_hidden)
         weights = self._similarity_weights(query_emb, candidates)  # [n_cands]
 
-        # Entropy gate: if weights are too spread (ambiguous), fall back
+        # Entropy gate: if weights are too spread (ambiguous), the match is
+        # low-quality. With graceful_degradation=False (old behavior) this
+        # rejects outright; with graceful_degradation=True (default) we keep
+        # going and still apply a blended correction — see __init__ docstring
+        # on why "no correction" is worse than "uncertain correction" here.
         entropy = -(weights * (weights + 1e-9).log()).sum().item()
         max_entropy = self.entropy_threshold * torch.tensor(len(candidates)).float().log().item()
-        if len(candidates) > 1 and entropy > max(max_entropy, 0.01):
+        entropy_ambiguous = len(candidates) > 1 and entropy > max(max_entropy, 0.01)
+        if entropy_ambiguous and not self.graceful_degradation:
             self._log_miss(question_key, agent_id, entropy=entropy, reason="entropy")
             if self.verbose:
                 print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} "
@@ -173,9 +189,14 @@ class AnchorTable:
         confidence = float(1.0 - norm_entropy)
 
         # Confidence floor: a borderline match that squeaks past the entropy gate
-        # can still be a poor-quality anchor. Skip correction (fall back to the
-        # transmitted KV as-is) rather than apply a low-confidence correction.
-        if confidence < self.min_confidence:
+        # can still be a poor-quality anchor. With graceful_degradation=False
+        # (old behavior) this skips correction entirely, falling back to the
+        # transmitted KV as-is (uncorrected, wrong position). With
+        # graceful_degradation=True we still apply the blended correction —
+        # a low-confidence correction is expected to usually beat no
+        # correction at all, since "no correction" means the receiver gets
+        # KV at the sender's raw position with no RoPE adjustment.
+        if confidence < self.min_confidence and not self.graceful_degradation:
             self._log_miss(question_key, agent_id, entropy=entropy, reason="low_confidence")
             if self.verbose:
                 print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} "
@@ -183,34 +204,66 @@ class AnchorTable:
                       f"min_confidence={self.min_confidence:.4f}")
             return None
 
-        # Interpolate delta across candidates
+        # Interpolate delta across candidates. Different candidates (different
+        # questions) can have different stored delta sequence lengths, so
+        # truncate to the shortest common length before summing — a plain
+        # sum() of mismatched shapes raises regardless of how small a
+        # candidate's weight is, and this path is reached more often now
+        # that graceful_degradation no longer rejects ambiguous (i.e.
+        # genuinely multi-candidate) matches before we get here.
         n_layers = len(candidates[0].agent_offsets[agent_id].delta_k)
+        min_delta_seq = min(
+            candidates[ci].agent_offsets[agent_id].delta_k[0].shape[2]
+            for ci in range(len(candidates))
+        )
         delta_k_interp = []
         delta_v_interp = []
         for layer_idx in range(n_layers):
-            dk = sum(weights[ci].item() * candidates[ci].agent_offsets[agent_id].delta_k[layer_idx]
+            dk = sum(weights[ci].item() * candidates[ci].agent_offsets[agent_id].delta_k[layer_idx][:, :, :min_delta_seq, :]
                      for ci in range(len(candidates)))
-            dv = sum(weights[ci].item() * candidates[ci].agent_offsets[agent_id].delta_v[layer_idx]
+            dv = sum(weights[ci].item() * candidates[ci].agent_offsets[agent_id].delta_v[layer_idx][:, :, :min_delta_seq, :]
                      for ci in range(len(candidates)))
             delta_k_interp.append(dk)
             delta_v_interp.append(dv)
 
-        # Apply correction: corrected = base + Δ
-        # Use the best-matching candidate's base KV
+        # Blend base KV with the SAME weights used for the delta, so the
+        # base and delta are drawn from a consistent mixture of anchors
+        # instead of "delta blended across all candidates, base taken from
+        # only the single best-matching one" (the previous behavior — an
+        # inconsistency that matters most exactly when confidence is low,
+        # i.e. when weight mass is spread across multiple candidates whose
+        # base KVs may differ substantially, since they come from different
+        # questions). All candidate base_k/base_v are truncated/left as-is;
+        # sequence-length alignment happens per-layer below using the
+        # blended base's own length.
+        base_seq_lens = [c.base_k[0].shape[2] for c in candidates]
+        min_base_seq = min(base_seq_lens)
+        base_k_interp = []
+        base_v_interp = []
+        for layer_idx in range(n_layers):
+            bk = sum(weights[ci].item() * candidates[ci].base_k[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
+                     for ci in range(len(candidates)))
+            bv = sum(weights[ci].item() * candidates[ci].base_v[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
+                     for ci in range(len(candidates)))
+            base_k_interp.append(bk.to(candidates[0].base_k[layer_idx].dtype))
+            base_v_interp.append(bv.to(candidates[0].base_v[layer_idx].dtype))
+
         best_idx = int(weights.argmax().item())
-        best_entry = candidates[best_idx]
-        best_entry.access_count += 1
+        candidates[best_idx].access_count += 1
 
         corrected = []
         for layer_idx in range(n_layers):
-            bk = best_entry.base_k[layer_idx].to(device)
-            bv = best_entry.base_v[layer_idx].to(device)
+            bk = base_k_interp[layer_idx].to(device)
+            bv = base_v_interp[layer_idx].to(device)
             dk = delta_k_interp[layer_idx].to(device)
             dv = delta_v_interp[layer_idx].to(device)
-            # Sequence length: use base length (shortest safe overlap)
-            seq = bk.shape[2]
-            k_corr = bk + dk[:, :, :seq, :]
-            v_corr = bv + dv[:, :, :seq, :]
+            # Sequence length: base and delta blends can have different
+            # lengths (min_base_seq vs min_delta_seq computed separately
+            # above) — use the shorter of the two so the add below can
+            # never mismatch shapes.
+            seq = min(bk.shape[2], dk.shape[2])
+            k_corr = bk[:, :, :seq, :] + dk[:, :, :seq, :]
+            v_corr = bv[:, :, :seq, :] + dv[:, :, :seq, :]
             if target_prompt_len is not None:
                 target_shift = max(int(target_prompt_len) - seq, 0)
                 k_corr = self._rope_shift_k(k_corr, shift=target_shift, theta=rope_theta)

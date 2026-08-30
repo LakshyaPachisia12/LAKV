@@ -14,6 +14,10 @@ class SingleAgentPipelineConfig:
         "Solve carefully and return final answer as #### [number]"
     )
     print_raw_outputs: bool = False
+    max_new_tokens: int = 1536
+    do_sample: bool = True
+    temperature: float = 0.6
+    top_p: float = 0.95
 
 class SingleAgentPipeline:
     def __init__(self, model, tokenizer, config: SingleAgentPipelineConfig = None, device: str = "cuda"):
@@ -35,15 +39,19 @@ class SingleAgentPipeline:
         )["input_ids"].to(self.device)
         
         attention_mask = torch.ones_like(input_ids)
+        gen_kwargs = dict(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=self.config.max_new_tokens,
+            do_sample=self.config.do_sample,
+            num_beams=1,
+            pad_token_id=self.tokenizer.eos_token_id,
+        )
+        if self.config.do_sample:
+            gen_kwargs["temperature"] = self.config.temperature
+            gen_kwargs["top_p"] = self.config.top_p
         with torch.no_grad():
-            output_ids = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=512,
-                do_sample=False,
-                num_beams=1,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
+            output_ids = self.model.generate(**gen_kwargs)
             
         new_tokens = output_ids[0, input_ids.shape[1]:]
         answer = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
