@@ -58,15 +58,14 @@ class PipelineConfig:
     intermediate_max_new_tokens: int = 200
     # Kept at 512 (not bumped to single_agent's 1536) deliberately: every
     # existing preset's final hop always goes through the manual KV-injection
-    # decode loop (_generate's injection branch), never the no-injection
-    # model.generate() branch below — that loop hardcodes greedy argmax and
-    # ignores generation_kwargs entirely, so a larger budget here buys zero
-    # accuracy benefit (no sampling to exploit it) while directly growing
-    # peak GPU memory (a longer-lived KV cache on top of the *uncompressed*
-    # injected cache for configs like A) and latency. Bumping this to 1536
-    # OOM'd Config A on this GPU (~14.56GB, near-zero headroom) after 4
-    # samples. Only single_agent's own SingleAgentPipelineConfig.max_new_tokens
-    # should use the larger budget, since it actually runs model.generate()
+    # decode loop (_generate's injection branch), which now samples via
+    # _sample_next_token when generation_kwargs["do_sample"] is True — but a
+    # longer budget still directly grows peak GPU memory (a longer-lived KV
+    # cache on top of the *uncompressed* injected cache for configs like A)
+    # and latency regardless of sampling. Bumping this to 1536 OOM'd Config A
+    # on this GPU (~14.56GB, near-zero headroom) after 4 samples. Only
+    # single_agent's own SingleAgentPipelineConfig.max_new_tokens should use
+    # the larger budget, since it never carries an injected cache forward
     # with real sampling.
     final_max_new_tokens: int = 512
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
@@ -460,6 +459,41 @@ class LAKVPipeline:
 
         return self._to_tuple(outputs.past_key_values)
 
+    def _sample_next_token(self, logits: torch.Tensor) -> torch.Tensor:
+        """Pick the next token respecting self.config.generation_kwargs
+        (do_sample/temperature/top_p), or greedy argmax when do_sample is
+        False. The manual KV-injection decode loops below can't use
+        model.generate()'s built-in sampling (they inject cache from a
+        different agent's prompt, which generate() can't accept - see the
+        docstring on _generate) — this reproduces the same top-p nucleus
+        sampling behavior manually so those loops aren't stuck on pure
+        greedy regardless of config. Confirmed via hop_texts inspection this
+        session: hop 0 (the Reasoner) goes through this same manual loop even
+        though it injects nothing, so being permanently greedy here was
+        costing accuracy independent of anything about KV relay itself.
+        """
+        kwargs = self.config.generation_kwargs
+        if not kwargs.get("do_sample", False):
+            return logits.argmax(-1, keepdim=True)
+
+        temperature = max(float(kwargs.get("temperature", 1.0)), 1e-5)
+        top_p = float(kwargs.get("top_p", 1.0))
+
+        probs = torch.softmax(logits.float() / temperature, dim=-1)
+
+        if top_p < 1.0:
+            sorted_probs, sorted_idx = torch.sort(probs, descending=True, dim=-1)
+            cumulative = torch.cumsum(sorted_probs, dim=-1)
+            # Drop tokens once the cumulative mass *before* them already
+            # exceeds top_p, so the token that crosses the threshold is kept.
+            drop_mask = (cumulative - sorted_probs) > top_p
+            sorted_probs = sorted_probs.masked_fill(drop_mask, 0.0)
+            sorted_probs = sorted_probs / sorted_probs.sum(dim=-1, keepdim=True)
+            sampled_sorted_idx = torch.multinomial(sorted_probs, num_samples=1)
+            return torch.gather(sorted_idx, -1, sampled_sorted_idx)
+
+        return torch.multinomial(probs, num_samples=1)
+
     def _generate(
         self,
         input_ids: torch.Tensor,
@@ -526,7 +560,7 @@ class LAKVPipeline:
         generated: List[int] = []
         cur_pos = position_start + prompt_len
         for _ in range(max_new_tokens):
-            next_token = next_logits.argmax(-1, keepdim=True)  # (1, 1)
+            next_token = self._sample_next_token(next_logits)  # (1, 1)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
@@ -595,7 +629,7 @@ class LAKVPipeline:
 
         cur_pos = position_start + prompt_len
         for _ in range(max_new):
-            next_token = next_logits.argmax(-1, keepdim=True)
+            next_token = self._sample_next_token(next_logits)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
@@ -661,7 +695,7 @@ class LAKVPipeline:
         cur_pos = position_start + prompt_len
         generated_ids: List[int] = []
         for _ in range(max_new):
-            next_token = next_logits.argmax(-1, keepdim=True)
+            next_token = self._sample_next_token(next_logits)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
