@@ -56,7 +56,19 @@ class PipelineConfig:
     clip_percentile: float = 99.5
     profile_path: Optional[str] = None
     intermediate_max_new_tokens: int = 200
-    final_max_new_tokens: int = 1536
+    # Kept at 512 (not bumped to single_agent's 1536) deliberately: every
+    # existing preset's final hop always goes through the manual KV-injection
+    # decode loop (_generate's injection branch), never the no-injection
+    # model.generate() branch below — that loop hardcodes greedy argmax and
+    # ignores generation_kwargs entirely, so a larger budget here buys zero
+    # accuracy benefit (no sampling to exploit it) while directly growing
+    # peak GPU memory (a longer-lived KV cache on top of the *uncompressed*
+    # injected cache for configs like A) and latency. Bumping this to 1536
+    # OOM'd Config A on this GPU (~14.56GB, near-zero headroom) after 4
+    # samples. Only single_agent's own SingleAgentPipelineConfig.max_new_tokens
+    # should use the larger budget, since it actually runs model.generate()
+    # with real sampling.
+    final_max_new_tokens: int = 512
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
         "do_sample": True,
         "temperature": 0.6,
