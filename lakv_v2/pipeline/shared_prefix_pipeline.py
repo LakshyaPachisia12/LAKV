@@ -50,11 +50,12 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import DynamicCache
 
-# Reuse existing compression / selection modules (no changes needed there)
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from kv_compressor import KVCompressor, KVMessage
-from layer_selector import LayerSelector, SelectionMask
+# Reuse existing compression / selection modules (no changes needed there).
+# No sys.path insert needed here: this module is only ever imported (never
+# run directly) by entry-point scripts (benchmark.py, sanity_test.py,
+# diagnostic_test.py) that already put the repo root on sys.path first.
+from lakv.kv_compressor import KVCompressor, KVMessage
+from lakv.layer_selector import LayerSelector, SelectionMask
 
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ class SharedPrefixPipeline:
         # Selector injected externally (or built from profile_path)
         self.selector = selector
         if selector is None and config.use_layer_selection and config.profile_path:
-            from calibration_profiler import LayerProfile
+            from lakv.calibration_profiler import LayerProfile
             profile = LayerProfile.load(config.profile_path)
             self.selector = LayerSelector(profile)
 
@@ -210,7 +211,7 @@ class SharedPrefixPipeline:
         base_kv = None
         base_hidden = None
         if self.config.anchor_table is not None:
-            from anchor_table import compute_base_kv, question_key as make_key
+            from lakv.anchor_table import compute_base_kv, question_key as make_key
             base_kv, base_hidden = compute_base_kv(
                 self.model, self.tokenizer, question, self.device)
 
@@ -254,7 +255,7 @@ class SharedPrefixPipeline:
 
         # ── Anchor table: store solver's KV delta for this question ───────
         if self.config.anchor_table is not None and base_kv is not None:
-            from anchor_table import question_key as make_key
+            from lakv.anchor_table import question_key as make_key
             q_key = make_key(question)
             self.config.anchor_table.update(
                 q_key, "solver_to_finalizer", base_kv, full_kv_tuple, base_hidden,
@@ -320,7 +321,7 @@ class SharedPrefixPipeline:
             anchor_hit = False
             anchor_confidence = 0.0
             if self.config.anchor_table is not None and base_hidden is not None:
-                from anchor_table import question_key as make_key
+                from lakv.anchor_table import question_key as make_key
                 q_key = make_key(question)
                 result = self.config.anchor_table.query_correction(
                     q_key, "solver_to_finalizer", base_hidden,
@@ -653,5 +654,5 @@ class SharedPrefixPipeline:
     def _load_profile(self):
         if not self.config.profile_path:
             raise ValueError("profile_path required for adaptive compression")
-        from calibration_profiler import LayerProfile
+        from lakv.calibration_profiler import LayerProfile
         return LayerProfile.load(self.config.profile_path)

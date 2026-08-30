@@ -17,22 +17,39 @@ from typing import Dict, List, Optional
 import torch
 from tqdm import tqdm
 
-from pipeline import LAKVPipeline, PipelineConfig, RunResult
+from lakv.pipeline import LAKVPipeline, PipelineConfig, PROMPT_SETS, RunResult
+from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 
 
-TWO_AGENT_BENCH_PROMPTS = [
-    (
-        "You are a careful mathematical reasoning agent.\n"
-        "Solve step-by-step internally.\n"
-        "Be accurate."
-    ),
-    (
-        "You have access to previous reasoning memory.\n"
-        "Use it to solve the problem.\n\n"
-        "Return ONLY:\n\n"
-        "#### number"
-    ),
-]
+TWO_AGENT_BENCH_PROMPTS = {
+    "gsm8k": [
+        (
+            "You are a careful mathematical reasoning agent.\n"
+            "Solve step-by-step internally.\n"
+            "Be accurate."
+        ),
+        (
+            "You have access to previous reasoning memory.\n"
+            "Use it to solve the problem.\n\n"
+            "Return ONLY:\n\n"
+            "#### number"
+        ),
+    ],
+    "hotpotqa": [
+        (
+            "You are a careful reading-comprehension agent.\n"
+            "Read the given context passages and answer the question "
+            "internally.\n"
+            "Be accurate and use only the given context."
+        ),
+        (
+            "You have access to previous reasoning memory.\n"
+            "Use it to answer the question.\n\n"
+            "Return ONLY:\n\n"
+            "The answer is: <short answer>"
+        ),
+    ],
+}
 
 
 # ── config presets ────────────────────────────────────────────────────────────
@@ -189,6 +206,27 @@ def has_numeric_grounding(question: str, reasoning_text: str, early_fraction: fl
     return bool(q_numbers & early_numbers)
 
 
+def score_sample(dataset_name: str, raw_text: str, gold) -> tuple:
+    """Dispatch to the right extraction/comparison for this dataset.
+
+    GSM8K: numeric extract_answer() + strict string equality (unchanged
+    behavior). HotpotQA (or any non-gsm8k dataset): text-span
+    extract_qa_answer() + normalized exact-match, plus token-F1 as a partial-
+    credit signal that GSM8K's numeric answers have no equivalent for.
+    Returns (predicted, correct, f1_or_none).
+    """
+    gold_s = str(gold).strip()
+    if dataset_name == "gsm8k":
+        pred = extract_answer(raw_text)
+        ok = pred is not None and pred.strip() == gold_s
+        return pred, ok, None
+
+    pred = extract_qa_answer(raw_text)
+    ok = exact_match_score(pred, gold_s)
+    f1 = f1_score(pred, gold_s)
+    return pred, ok, f1
+
+
 def is_malformed(text: str) -> bool:
     if not text:
         return True
@@ -217,23 +255,24 @@ class Evaluator:
             raise ValueError(f"Unknown arch: {arch}")
 
         preset.n_agents = 2
-        preset.system_prompts = list(TWO_AGENT_BENCH_PROMPTS)
+        preset.system_prompts = list(TWO_AGENT_BENCH_PROMPTS[preset.dataset])
         preset.intermediate_max_new_tokens = 64
         preset.final_max_new_tokens = 16
 
-    def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy"):
+    def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy",
+                        dataset: str = "gsm8k"):
         """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent."""
         import random as _random
 
         if cfg_name == "single_agent":
             from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
             return SingleAgentPipeline(self.model, self.tokenizer,
-                                       SingleAgentPipelineConfig(), self.device), "single"
+                                       SingleAgentPipelineConfig(dataset=dataset), self.device), "single"
 
         if cfg_name == "text_agent":
             from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
             return TextAgentPipeline(self.model, self.tokenizer,
-                                      TextAgentPipelineConfig(), self.device), "text"
+                                      TextAgentPipelineConfig(dataset=dataset), self.device), "text"
 
         if cfg_name in ABLATION_CONFIGS:
             spec = ABLATION_CONFIGS[cfg_name]
@@ -252,14 +291,20 @@ class Evaluator:
                 reconstruction_strategy="zeros",
                 profile_path=profile_path,
                 _custom_layer_indices=indices,
+                dataset=dataset,
             )
             self._apply_arch(preset, arch)
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
                                 custom_layer_indices=indices)
             return pipe, "multi"
 
-        # Standard preset
+        # Standard preset. PRESETS entries were built at module-load time with
+        # the gsm8k default, so system_prompts is already populated by
+        # PipelineConfig.__post_init__ — reassign directly rather than
+        # clearing it back to None, since __post_init__ only fills a None.
         preset = copy.deepcopy(PRESETS[cfg_name])
+        preset.dataset = dataset
+        preset.system_prompts = list(PROMPT_SETS[dataset])
         self._apply_arch(preset, arch)
         if preset.use_layer_selection or preset.compression_mode == "adaptive":
             preset.profile_path = profile_path
@@ -268,7 +313,8 @@ class Evaluator:
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/", checkpoint_every=5,
-                       resume=False, arch: str = "legacy", print_raw_outputs: bool = False):
+                       resume=False, arch: str = "legacy", print_raw_outputs: bool = False,
+                       dataset_name: str = "gsm8k"):
         if configs_to_run is None:
             # E (layer selection + adaptive compression + anchor-table offset
             # correction) was defined in PRESETS but missing from this default
@@ -306,6 +352,7 @@ class Evaluator:
                     "parse_failures": 0,
                     "malformed_output_rate": 0.0,
                     "numeric_grounding_failures": 0,
+                    "mean_f1": None,
                     "n_correct": 0,
                     "n_samples": 0,
                     "n_expected": len(samples),
@@ -320,6 +367,8 @@ class Evaluator:
             parse_failures = sum(1 for x in per_sample if x["predicted"] is None)
             malformed_rate = sum(1 for x in per_sample if x["is_malformed"]) / n_done
             grounding_failures = sum(1 for x in per_sample if x.get("numeric_grounding_failure"))
+            f1_vals = [x["f1"] for x in per_sample if x.get("f1") is not None]
+            mean_f1 = (sum(f1_vals) / len(f1_vals)) if f1_vals else None
 
             layers_vals = []
             for x in per_sample:
@@ -338,6 +387,7 @@ class Evaluator:
                 "parse_failures": parse_failures,
                 "malformed_output_rate": malformed_rate,
                 "numeric_grounding_failures": grounding_failures,
+                "mean_f1": mean_f1,
                 "n_correct": correct,
                 "n_samples": n_done,
                 "n_expected": len(samples),
@@ -352,7 +402,7 @@ class Evaluator:
                     print(f"[Evaluator] Skipping {cfg_name} (already completed)")
                     continue
 
-                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch)
+                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch, dataset=dataset_name)
                 pipe.config.print_raw_outputs = print_raw_outputs
                 print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
@@ -382,26 +432,25 @@ class Evaluator:
                     t0 = time.time()
 
                     try:
+                        is_gsm8k = dataset_name == "gsm8k"
                         if pipe_type == "single":
                             raw_answer = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred = extract_answer(raw_answer)
+                            pred, ok, f1 = score_sample(dataset_name, raw_answer, s["answer"])
                             gold = str(s["answer"]).strip()
-                            ok = pred is not None and pred.strip() == gold
                             if ok: correct += 1
                             per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                                "predicted":pred,"raw_answer":raw_answer,"correct":ok,
-                                "is_malformed":is_malformed(raw_answer),
-                                "numeric_grounding_failure": not has_numeric_grounding(s["question"], raw_answer),
+                                "predicted":pred,"raw_answer":raw_answer,"correct":ok,"f1":f1,
+                                "is_malformed":is_malformed(raw_answer) if is_gsm8k else False,
+                                "numeric_grounding_failure": (not has_numeric_grounding(s["question"], raw_answer)) if is_gsm8k else False,
                                 "compressed_mb":0.0,"original_mb":0.0,
                                 "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[]})
                             tot_lat += elapsed
                         elif pipe_type == "text":
                             r = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred = extract_answer(r.answer)
+                            pred, ok, f1 = score_sample(dataset_name, r.answer, s["answer"])
                             gold = str(s["answer"]).strip()
-                            ok = pred is not None and pred.strip() == gold
                             if ok: correct += 1
                             reasoner_text = r.hop_texts[0] if r.hop_texts else None
                             # Reuse the KV-config fields (compressed_mb/original_mb/
@@ -415,11 +464,11 @@ class Evaluator:
                             nh = max(len(r.hop_bytes), 1)
                             total_mb = r.total_bytes / 1e6
                             per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                                "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                                "is_malformed":is_malformed(r.answer),
+                                "predicted":pred,"raw_answer":r.answer,"correct":ok,"f1":f1,
+                                "is_malformed":is_malformed(r.answer) if is_gsm8k else False,
                                 "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
-                                "numeric_grounding_failure": not has_numeric_grounding(
-                                    s["question"], reasoner_text if reasoner_text else r.answer),
+                                "numeric_grounding_failure": (not has_numeric_grounding(
+                                    s["question"], reasoner_text if reasoner_text else r.answer)) if is_gsm8k else False,
                                 "compressed_mb":total_mb,"original_mb":total_mb,
                                 "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[]})
                             tot_comp += total_mb/nh
@@ -429,9 +478,8 @@ class Evaluator:
                         else:
                             r = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred = extract_answer(r.answer)
+                            pred, ok, f1 = score_sample(dataset_name, r.answer, s["answer"])
                             gold = str(s["answer"]).strip()
-                            ok = pred is not None and pred.strip() == gold
                             if ok: correct += 1
                             nh = max(len(r.hop_stats), 1)
                             # r.hop_texts[0] is the Reasoner's full raw decoded text (hop 1),
@@ -440,11 +488,11 @@ class Evaluator:
                             # a one-line "The answer is N." string.
                             reasoner_text = r.hop_texts[0] if r.hop_texts else None
                             per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                                "predicted":pred,"raw_answer":r.answer,"correct":ok,
-                                "is_malformed":is_malformed(r.answer),
+                                "predicted":pred,"raw_answer":r.answer,"correct":ok,"f1":f1,
+                                "is_malformed":is_malformed(r.answer) if is_gsm8k else False,
                                 "reasoner_text":reasoner_text,"hop_texts":r.hop_texts,
-                                "numeric_grounding_failure": not has_numeric_grounding(
-                                    s["question"], reasoner_text if reasoner_text else r.answer),
+                                "numeric_grounding_failure": (not has_numeric_grounding(
+                                    s["question"], reasoner_text if reasoner_text else r.answer)) if is_gsm8k else False,
                                 "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
                                 "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                                 "hop_stats":[asdict(h) for h in r.hop_stats]})
@@ -463,7 +511,7 @@ class Evaluator:
                         print(f"  [OOM] Config {cfg_name} sample {i} skipped (out of memory), "
                               f"continuing with next sample: {e}")
                         per_sample.append({"idx":i,"question":s["question"],"gold":gold,
-                            "predicted":None,"raw_answer":None,"correct":False,
+                            "predicted":None,"raw_answer":None,"correct":False,"f1":0.0 if dataset_name != "gsm8k" else None,
                             "is_malformed":True,"numeric_grounding_failure":True,
                             "compressed_mb":0.0,"original_mb":0.0,
                             "compression_ratio":0.0,"latency_s":elapsed,"hop_stats":[],
@@ -475,6 +523,7 @@ class Evaluator:
                         _write_partial_file()
 
                 n = len(samples)
+                f1_vals = [x["f1"] for x in per_sample if x.get("f1") is not None]
                 summary = {"config":cfg_name,"accuracy":correct/n if n else 0,
                     "mean_compressed_mb":tot_comp/n if n else 0,
                     "mean_compression_ratio":tot_ratio/n if n else 0,
@@ -483,6 +532,7 @@ class Evaluator:
                     "parse_failures":sum(1 for x in per_sample if x["predicted"] is None),
                     "malformed_output_rate":sum(1 for x in per_sample if x["is_malformed"])/n if n else 0,
                     "numeric_grounding_failures":sum(1 for x in per_sample if x.get("numeric_grounding_failure")),
+                    "mean_f1": (sum(f1_vals)/len(f1_vals)) if f1_vals else None,
                     "n_correct":correct,"n_samples":n,
                     "n_expected":n,
                     "status":"completed"}
@@ -505,7 +555,8 @@ class Evaluator:
         print(f"\n[Evaluator] Results saved to {out}/")
         return all_results
 
-    def run_sanity_check(self, profile_path, dataset=None, n_samples=3, arch: str = "legacy", print_raw_outputs: bool = False):
+    def run_sanity_check(self, profile_path, dataset=None, n_samples=3, arch: str = "legacy",
+                         print_raw_outputs: bool = False, dataset_name: str = "gsm8k"):
         if dataset is None:
             dataset = [{"question":"What is 15 + 27?","answer":"42"},
                 {"question":"A train travels 60 miles in 2 hours. Speed in mph?","answer":"30"},
@@ -513,6 +564,8 @@ class Evaluator:
         samples = dataset[:n_samples]
         for cfg_name in ("A","D"):
             preset = copy.deepcopy(PRESETS[cfg_name])
+            preset.dataset = dataset_name
+            preset.system_prompts = list(PROMPT_SETS[dataset_name])
             self._apply_arch(preset, arch)
             if preset.use_layer_selection or preset.compression_mode == "adaptive":
                 preset.profile_path = profile_path
@@ -521,12 +574,14 @@ class Evaluator:
             print(f"\n{'='*60}\nSanity Check — Config {cfg_name}\n{'='*60}")
             for i,s in enumerate(samples):
                 r = pipe.run(s["question"])
-                pred = extract_answer(r.answer)
-                grounding_failed = not has_numeric_grounding(s["question"], r.answer)
+                pred, ok, f1 = score_sample(dataset_name, r.answer, s["answer"])
                 print(f"  Q{i}: {s['question']}")
                 print(f"  → answer: {r.answer[:200]}...")
-                print(f"  → extracted: {pred}  |  gold: {s['answer']}")
-                print(f"  → numeric grounding: {'FAILED — check for misread/corruption' if grounding_failed else 'ok'}")
+                print(f"  → extracted: {pred}  |  gold: {s['answer']}  |  correct: {ok}"
+                      + (f"  |  f1: {f1:.2f}" if f1 is not None else ""))
+                if dataset_name == "gsm8k":
+                    grounding_failed = not has_numeric_grounding(s["question"], r.answer)
+                    print(f"  → numeric grounding: {'FAILED — check for misread/corruption' if grounding_failed else 'ok'}")
                 print(f"  → KV: {r.total_compressed_mb:.2f} MB (ratio {r.overall_compression_ratio:.2f}x)\n")
 
     @staticmethod
@@ -542,8 +597,11 @@ class Evaluator:
             print(f"{c:<22}| {s['accuracy']*100:>7.1f}% | {comp_str} | "
                   f"{ratio_str} | {layer_str} | {s['mean_latency_seconds']:>8.1f}s")
             n = s.get("n_samples", 0)
+            mean_f1 = s.get("mean_f1")
+            if mean_f1 is not None:
+                print(f"{'':<22}  mean F1: {mean_f1*100:.1f}%")
             gf = s.get("numeric_grounding_failures", 0)
-            if n:
+            if n and mean_f1 is None:
                 print(f"{'':<22}  numeric grounding: {gf}/{n} flagged ({gf/n*100:.1f}%)")
 
     @staticmethod
@@ -552,10 +610,13 @@ class Evaluator:
             w=csv.writer(f)
             w.writerow(["config","accuracy","mean_compressed_mb","mean_compression_ratio",
                 "mean_layers_transmitted","mean_latency_seconds","parse_failures","malformed_output_rate",
-                "numeric_grounding_failures","n_correct","n_samples"])
+                "numeric_grounding_failures","mean_f1","n_correct","n_samples"])
             for c,d in all_results.items():
                 s=d["summary"]
+                mean_f1 = s.get("mean_f1")
                 w.writerow([c,f"{s['accuracy']:.4f}",f"{s['mean_compressed_mb']:.4f}",
                     f"{s['mean_compression_ratio']:.4f}",f"{s['mean_layers_transmitted']:.1f}",
                     f"{s['mean_latency_seconds']:.2f}",s["parse_failures"],f"{s['malformed_output_rate']:.4f}",
-                    s.get("numeric_grounding_failures", 0),s["n_correct"],s["n_samples"]])
+                    s.get("numeric_grounding_failures", 0),
+                    f"{mean_f1:.4f}" if mean_f1 is not None else "",
+                    s["n_correct"],s["n_samples"]])

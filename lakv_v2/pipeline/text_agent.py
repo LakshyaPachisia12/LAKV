@@ -13,26 +13,28 @@ project has produced so far could not answer: does relaying KV actually beat
 the much simpler, much cheaper (in bytes) alternative of just relaying text?
 """
 
-from dataclasses import dataclass, field
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 
 import torch
 
-from pipeline import PipelineConfig
+from lakv.pipeline import PipelineConfig
 
 
-def _default_system_prompts() -> List[str]:
+def _default_system_prompts(dataset: str = "gsm8k") -> List[str]:
     # Matches Config A's PipelineConfig exactly (see evaluator.py PRESETS["A"])
     # so the only variable between text_agent and A is the comms channel.
     return PipelineConfig(
         use_layer_selection=False, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",
+        dataset=dataset,
     ).system_prompts
 
 
 @dataclass
 class TextAgentPipelineConfig:
-    system_prompts: List[str] = field(default_factory=_default_system_prompts)
+    dataset: str = "gsm8k"
+    system_prompts: Optional[List[str]] = None
     n_agents: int = 3
     intermediate_max_new_tokens: int = 200
     final_max_new_tokens: int = 1536
@@ -40,6 +42,10 @@ class TextAgentPipelineConfig:
     temperature: float = 0.6
     top_p: float = 0.95
     print_raw_outputs: bool = False
+
+    def __post_init__(self):
+        if self.system_prompts is None:
+            self.system_prompts = _default_system_prompts(self.dataset)
 
 
 @dataclass

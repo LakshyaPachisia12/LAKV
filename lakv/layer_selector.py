@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
-from calibration_profiler import LayerProfile
+from lakv.calibration_profiler import LayerProfile
 
 
 # ─── dataclass ────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ class LayerSelector:
         # Minimal stub profile — only tier_assignment and n_layers are used by select()
         from dataclasses import fields
         dummy_floats = [0.0] * n_layers
-        from calibration_profiler import LayerProfile
+        from lakv.calibration_profiler import LayerProfile
         dummy = LayerProfile(
             model_name="custom", dataset_name="custom",
             n_calibration_examples=0, n_layers=n_layers,

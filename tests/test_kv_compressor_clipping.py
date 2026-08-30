@@ -1,20 +1,24 @@
 """
-Standalone test for outlier-aware INT4 clipping in kv_compressor.py.
+Standalone test for outlier-aware INT4 clipping in lakv/kv_compressor.py.
 
 No model / GPU required — uses synthetic tensors (normal distribution + a
 handful of injected outlier values, the kind of thing real KV activations
 produce that blows out pure min-max quantization).
 
 Run directly for a before/after printout:
-    python test_kv_compressor_clipping.py
+    python tests/test_kv_compressor_clipping.py
 
-Or via pytest:
-    pytest test_kv_compressor_clipping.py -v -s
+Or via pytest (from repo root):
+    pytest tests/test_kv_compressor_clipping.py -v -s
 """
+
+import sys
+from pathlib import Path
 
 import torch
 
-from kv_compressor import KVCompressor, _quantize, _dequantize
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lakv.kv_compressor import KVCompressor, _quantize, _dequantize
 
 
 def _make_synthetic_kv(seed: int = 0, n_outliers: int = 6) -> torch.Tensor:

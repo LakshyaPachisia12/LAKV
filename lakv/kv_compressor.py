@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from calibration_profiler import LayerProfile
+from lakv.calibration_profiler import LayerProfile
 
 
 # ─── dataclasses ──────────────────────────────────────────────────────────────

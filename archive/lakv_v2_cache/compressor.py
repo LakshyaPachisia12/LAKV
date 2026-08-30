@@ -1,11 +1,16 @@
 """
 LAKV-v2 Module: Compressor V2
 Explicit precision policies leveraging existing quantization routines.
+
+ARCHIVED during the folder reorg: implementation_plan.txt already flagged
+this as a duplicate of the root lakv/kv_compressor.py, unreferenced by the
+live v2 path (lakv_v2/pipeline/shared_prefix_pipeline.py imports the root
+module directly instead). Kept for reference only.
 """
 
 import torch
 from typing import Tuple, Dict, Optional
-from kv_compressor import _quantize, _dequantize, CompressedLayer, KVMessage
+from lakv.kv_compressor import _quantize, _dequantize, CompressedLayer, KVMessage
 
 class CompressorV2:
     def __init__(self, mode: str = "none", explicit_policy: Optional[Dict[int, int]] = None):

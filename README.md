@@ -5,10 +5,11 @@ relay between cooperating agents on a math-reasoning task (GSM8K) before accurac
 degrades — and whether a learned "anchor table" of KV corrections can recover some
 of that lost accuracy. The repo contains **two pipeline generations**:
 
-- **v1** (root-level files: `pipeline.py`, `evaluator.py`, `run.py`, …) — a
-  heterogeneous **3-agent relay** (Reasoner → Verifier → Aggregator by default),
-  each with its own system prompt, KV cache passed hop-to-hop through layer
-  selection + quantization + anchor-table offset correction.
+- **v1** (`lakv/` package: `pipeline.py`, `evaluator.py`, …, plus `run.py` at
+  the repo root as the CLI entry point) — a heterogeneous **3-agent relay**
+  (Reasoner → Verifier → Aggregator by default), each with its own system
+  prompt, KV cache passed hop-to-hop through layer selection + quantization +
+  anchor-table offset correction. Supports GSM8K and HotpotQA via `--dataset`.
 - **v2** (`lakv_v2/`) — a **2-agent shared-prefix design** (Solver → Finalizer)
   where both agents start from a literal shared prompt prefix, eliminating the
   inter-agent positional-offset problem v1 has to correct for, while reusing the
@@ -47,31 +48,39 @@ CUDA GPU for any real (non-trivial) run — see [Hardware requirements](#hardwar
 
 ```
 LAKV/
-├── run.py                     # v1 CLI entry point (calibrate / sanity / experiment)
+├── run.py                      # v1 CLI entry point (calibrate / sanity / experiment)
 ├── run_best.py                 # v1 "best config" runner (3-agent relay, config A/C/D)
-├── pipeline.py                 # v1 LAKVPipeline — N-agent KV relay orchestrator
-├── evaluator.py                # v1 Evaluator — runs PRESETS across a dataset, saves results
-├── calibration_profiler.py     # Per-layer importance profiling → LayerProfile JSON (Tier 1/2/3)
-├── layer_selector.py           # Drops/reconstructs Tier-3 layers based on a LayerProfile
-├── kv_compressor.py            # INT8 / INT4 per-head min-max quantization (+ outlier clipping)
-├── offset_corrector.py         # v1-only: inter-agent prompt-length position offset correction
-├── anchor_table.py             # Shared cross-agent/cross-question KV-delta correction pool
-├── test_kv_compressor_clipping.py   # Standalone pytest: INT4 outlier-clipping accuracy test
 ├── requirements.txt
 │
-└── lakv_v2/                    # v2 — shared-prefix 2-agent pipeline (independent of v1 above)
-    ├── sanity_test.py          # Quick 3-question, multi-config sanity check
-    ├── benchmark.py            # 5-phase GSM8K benchmark runner (single-agent → full v2 matrix)
-    ├── eval_runner.py          # Lower-level v2 eval harness (used programmatically)
-    ├── diagnostic_test.py      # Ad-hoc debugging script for cache/position-id issues
-    ├── pipeline/
-    │   ├── shared_prefix_pipeline.py   # SharedPrefixPipeline — the v2 Solver→Finalizer relay
-    │   ├── single_agent.py             # Absolute baseline: one agent, no relay, no compression
-    │   └── two_agent.py
-    ├── cache/                  # v2-side cache alignment/selection/compression helpers
-    ├── utils/parsing.py
-    └── tests/validation_suite.py
-
+├── lakv/                       # v1 core package
+│   ├── pipeline.py             # LAKVPipeline — N-agent KV relay orchestrator
+│   ├── evaluator.py            # Evaluator — runs PRESETS across a dataset, saves results
+│   ├── calibration_profiler.py # Per-layer importance profiling → LayerProfile JSON (Tier 1/2/3)
+│   ├── layer_selector.py       # Drops/reconstructs Tier-3 layers based on a LayerProfile
+│   ├── kv_compressor.py        # INT8 / INT4 per-head min-max quantization (+ outlier clipping)
+│   ├── offset_corrector.py     # v1-only: inter-agent prompt-length position offset correction
+│   ├── anchor_table.py         # Shared cross-agent/cross-question KV-delta correction pool
+│   └── qa_scoring.py           # EM/F1 scoring for text-span answers (HotpotQA)
+│
+├── lakv_v2/                    # v2 — shared-prefix 2-agent pipeline (independent of v1 above)
+│   ├── sanity_test.py          # Quick 3-question, multi-config sanity check
+│   ├── benchmark.py            # 5-phase GSM8K benchmark runner (single-agent → full v2 matrix)
+│   ├── diagnostic_test.py      # Ad-hoc debugging script for cache/position-id issues
+│   ├── pipeline/
+│   │   ├── shared_prefix_pipeline.py   # SharedPrefixPipeline — the v2 Solver→Finalizer relay
+│   │   ├── single_agent.py             # Absolute baseline: one agent, no relay, no compression
+│   │   └── text_agent.py               # Text-relay baseline (3-agent, no KV) — tests v1's fidelity thesis
+│   └── config/prompts.yaml
+│
+├── scripts/diagnostics/        # One-off diagnostic scripts (not part of the live pipeline)
+├── tests/                      # test_kv_compressor_clipping.py
+├── docs/                       # LAKV_V2_RUN_GUIDE.md, RESEARCH_PLAN.md, implementation_plan.txt
+├── archive/                    # Superseded/duplicate v2 code, kept for reference only —
+│                                # lakv_v2_eval_runner.py, lakv_v2_two_agent.py,
+│                                # lakv_v2_cache/, lakv_v2_validation_suite.py.
+│                                # Not imported by any live code path.
+├── r-papers/                   # Reference PDFs (not code)
+│
 results/    # generated experiment output (git-ignored)
 profiles/   # generated calibration profiles + plots (git-ignored)
 ```
@@ -236,7 +245,8 @@ Full `run.py` flag reference:
 | Flag                  | Default                                     | Meaning                                            |
 | --------------------- | ------------------------------------------- | -------------------------------------------------- |
 | `--model`             | `Qwen/Qwen2.5-7B-Instruct`                  | HF model id                                        |
-| `--task`              | `gsm8k`                                     | Dataset tag (used for profile naming)              |
+| `--task`              | `gsm8k`                                     | Dataset tag (used for profile naming only)         |
+| `--dataset`           | `gsm8k`                                     | `gsm8k` \| `hotpotqa` — which dataset to load       |
 | `--mode`              | `calibrate`                                 | `calibrate` \| `sanity` \| `experiment`            |
 | `--n_samples`         | `100`                                       | GSM8K test questions to evaluate (experiment mode) |
 | `--n_calibration`     | `50`                                        | GSM8K train questions used for calibration         |
@@ -251,7 +261,7 @@ Full `run.py` flag reference:
 
 ### v1 config presets
 
-Defined in `evaluator.py::PRESETS`:
+Defined in `lakv/evaluator.py::PRESETS`:
 
 | Preset          | Layer selection | Compression                       | Offset correction | Reconstruction                         |
 | --------------- | --------------- | --------------------------------- | ----------------- | -------------------------------------- |
@@ -269,12 +279,12 @@ Defined in `evaluator.py::PRESETS`:
 
 Configs with layer selection or adaptive compression require `--profile_path`
 from a prior calibration run. `E` / `E_int8` additionally build a real
-`AnchorTable` (`pipeline.py`, gated by `use_offset_correction`) that learns
+`AnchorTable` (`lakv/pipeline.py`, gated by `use_offset_correction`) that learns
 cross-question KV-drift corrections as the run progresses.
 
 There are also ablation presets (random/fixed layer-index selections) available
 via `--configs C_random_20_s0 C_top20 C_bottom20 ...` — see
-`evaluator.py::ABLATION_CONFIGS`.
+`lakv/evaluator.py::ABLATION_CONFIGS`.
 
 ### Alternate v1 entry point: `run_best.py`
 
@@ -295,7 +305,7 @@ python run_best.py \
 v2 does not require calibration to get started — `v2_full_prefix` / `v2_tail_only`
 run with no profile at all. Layer-selection/compression rows do need one, produced
 by the same `run.py --mode calibrate` command above (v1 and v2 share
-`calibration_profiler.py`).
+`lakv/calibration_profiler.py`).
 
 ### 1. Sanity check
 
@@ -379,30 +389,21 @@ Full `lakv_v2/benchmark.py` flag reference:
 
 ```bash
 # INT4 outlier-clipping accuracy test (synthetic tensors, CPU-only, no model/GPU)
-pytest test_kv_compressor_clipping.py -v
+pytest tests/test_kv_compressor_clipping.py -v
 
 # Or run it directly for a printed before/after accuracy report
-python test_kv_compressor_clipping.py
+python tests/test_kv_compressor_clipping.py
 
 # KVCompressor's built-in sanity check (none/INT8/INT4 round-trip on random data,
 # CPU-only, no model/GPU)
-python -c "from kv_compressor import KVCompressor; KVCompressor.run_sanity_check(device='cpu')"
+python -c "from lakv.kv_compressor import KVCompressor; KVCompressor.run_sanity_check(device='cpu')"
 ```
 
-`lakv_v2/tests/validation_suite.py` is **not** a pytest file — it's a
-`ValidationSuite` class (cache-handoff parity, quantization round-trip, layer-drop
-sensitivity) meant to be instantiated with a real loaded model/tokenizer and run
-programmatically, so it needs a GPU:
-
-```bash
-python -c "
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from lakv_v2.tests.validation_suite import ValidationSuite
-model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen2.5-7B-Instruct', device_map='cuda')
-tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-7B-Instruct')
-ValidationSuite(model, tokenizer, device='cuda').run_all()
-"
-```
+`archive/lakv_v2_validation_suite.py` (a `ValidationSuite` class covering
+cache-handoff parity, quantization round-trip, and layer-drop sensitivity) has
+been archived along with the `CacheAligner` module it exclusively tests —
+neither is on the live code path (see the `archive/` note in
+[Repo layout](#repo-layout)).
 
 ---
 
@@ -425,14 +426,14 @@ source):
 
 ## Architecture summary: v1 vs v2
 
-|                                | v1 (`pipeline.py`)                                                                                           | v2 (`lakv_v2/pipeline/shared_prefix_pipeline.py`)                                                                                                    |
+|                                | v1 (`lakv/pipeline.py`)                                                                                      | v2 (`lakv_v2/pipeline/shared_prefix_pipeline.py`)                                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Agent count                    | 3 by default (configurable via `n_agents`)                                                                   | 2, fixed (Solver, Finalizer)                                                                                                                         |
 | Prompts                        | Each agent gets its **own distinct** system prompt (reasoner / verifier / aggregator)                        | **One shared** system prompt/prefix for both agents                                                                                                  |
 | Position handling              | `OffsetCorrector` corrects for inter-agent prompt-length mismatch (`raw_offset = sender_len - receiver_len`) | No `OffsetCorrector` at all — Finalizer's `position_ids` are an exact continuation from `cache_seq_len`, since both agents share one prefix          |
-| Layer selection / quantization | `layer_selector.py` + `kv_compressor.py`                                                                     | **Same modules**, imported directly — not reimplemented                                                                                              |
-| Calibration                    | `calibration_profiler.py`                                                                                    | **Same module**                                                                                                                                      |
-| Cross-question KV correction   | `anchor_table.py`, gated by `use_offset_correction`                                                          | **Same module**, gated the same way — construct an `AnchorTable` and pass it into `SharedPrefixConfig(anchor_table=..., use_offset_correction=True)` |
+| Layer selection / quantization | `lakv/layer_selector.py` + `lakv/kv_compressor.py`                                                           | **Same modules**, imported directly — not reimplemented                                                                                              |
+| Calibration                    | `lakv/calibration_profiler.py`                                                                               | **Same module**                                                                                                                                      |
+| Cross-question KV correction   | `lakv/anchor_table.py`, gated by `use_offset_correction`                                                     | **Same module**, gated the same way — construct an `AnchorTable` and pass it into `SharedPrefixConfig(anchor_table=..., use_offset_correction=True)` |
 
 v2 is not a bugfixed rewrite of v1 — it's a structurally different experiment
 (fewer, homogeneous-prompt agents) that deliberately reuses v1's compression,

@@ -10,8 +10,8 @@ from typing import Optional, Tuple
 
 import torch
 
-from kv_compressor import KVMessage, CompressedLayer
-from anchor_table import AnchorTable, question_key as make_key
+from lakv.kv_compressor import KVMessage, CompressedLayer
+from lakv.anchor_table import AnchorTable, question_key as make_key
 
 
 class OffsetCorrector:
@@ -109,7 +109,7 @@ class OffsetCorrector:
                 layer_idx=orig.layer_idx,
             ))
 
-        from kv_compressor import KVMessage as KVM
+        from lakv.kv_compressor import KVMessage as KVM
         corrected_msg = KVM(
             layers=new_layers,
             mode="anchor_corrected",

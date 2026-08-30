@@ -17,11 +17,11 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import DynamicCache
 
-from calibration_profiler import LayerProfile
-from layer_selector import LayerSelector, SelectionMask
-from kv_compressor import KVCompressor, KVMessage
-from offset_corrector import OffsetCorrector
-from anchor_table import AnchorTable, question_key as make_key, compute_base_kv
+from lakv.calibration_profiler import LayerProfile
+from lakv.layer_selector import LayerSelector, SelectionMask
+from lakv.kv_compressor import KVCompressor, KVMessage
+from lakv.offset_corrector import OffsetCorrector
+from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
 
 
 # Synthetic (non-eval) few-shot exemplar for the Reasoner: demonstrates
@@ -41,6 +41,59 @@ _REASONER_EXEMPLAR_SOLUTION = (
     "Step 6: Revenue = 25 * 3 = 75.\n"
     "#### 75"
 )
+
+
+# Reasoner/Verifier/Finalizer system prompts, keyed by dataset. GSM8K's set is
+# arithmetic-specific ("mathematical," "calculation," a final number);
+# HotpotQA's set is reading-comprehension-specific (identify supporting
+# sentences in the given context, verify the answer is actually grounded in
+# them, output a short text span instead of a number).
+PROMPT_SETS: Dict[str, List[str]] = {
+    "gsm8k": [
+        (
+            "You are a mathematical reasoning assistant. Solve the problem step "
+            "by step, showing each calculation explicitly. Continue until you "
+            "reach the final answer."
+        ),
+        (
+            "You are a critical verification agent. "
+            "You have access to a prior agent's reasoning in your context. "
+            "Go through each step and check the arithmetic carefully. "
+            "If any step is wrong or incomplete, recompute it correctly. "
+            "Then state the corrected final answer explicitly as a number."
+        ),
+        (
+            "You are the final answer agent. "
+            "You have the full reasoning and verification in your context. "
+            "Output exactly one line in this format: The answer is <number>. "
+            "Do not add explanation, units, or any other text."
+        ),
+    ],
+    "hotpotqa": [
+        (
+            "You are a careful reading-comprehension assistant. Read the given "
+            "context passages and the question, identify the specific "
+            "sentence(s) that answer it, and state a draft answer with a "
+            "brief justification quoting the supporting sentence(s)."
+        ),
+        (
+            "You are a critical verification agent. "
+            "You have access to a prior agent's draft answer and reasoning in "
+            "your context. Check whether the draft answer is directly "
+            "supported by the context passages given. If it is not supported, "
+            "or is contradicted by the passages, correct it. Then state the "
+            "corrected answer explicitly."
+        ),
+        (
+            "You are the final answer agent. "
+            "You have the full reasoning and verification in your context. "
+            "Output exactly one line in this format: The answer is: <answer>. "
+            "The answer should be a short word or phrase copied from the "
+            "context, not a full sentence. Do not add explanation or any "
+            "other text."
+        ),
+    ],
+}
 
 
 # ─── config / result dataclasses ──────────────────────────────────────────────
@@ -81,26 +134,16 @@ class PipelineConfig:
     reasoner_few_shot_example: Tuple[str, str] = (
         _REASONER_EXEMPLAR_QUESTION, _REASONER_EXEMPLAR_SOLUTION
     )
-    system_prompts: List[str] = field(default_factory=lambda: [
-        (
-            "You are a mathematical reasoning assistant. Solve the problem step "
-            "by step, showing each calculation explicitly. Continue until you "
-            "reach the final answer."
-        ),
-        (
-            "You are a critical verification agent. "
-            "You have access to a prior agent's reasoning in your context. "
-            "Go through each step and check the arithmetic carefully. "
-            "If any step is wrong or incomplete, recompute it correctly. "
-            "Then state the corrected final answer explicitly as a number."
-        ),
-        (
-            "You are the final answer agent. "
-            "You have the full reasoning and verification in your context. "
-            "Output exactly one line in this format: The answer is <number>. "
-            "Do not add explanation, units, or any other text."
-        ),
-    ])
+    # Which PROMPT_SETS entry to fall back to when system_prompts isn't given
+    # explicitly. Only consulted in __post_init__ below — passing
+    # system_prompts explicitly (e.g. the two_agent bench prompts in
+    # evaluator.py) always wins, dataset is ignored in that case.
+    dataset: str = "gsm8k"
+    system_prompts: Optional[List[str]] = None
+
+    def __post_init__(self):
+        if self.system_prompts is None:
+            self.system_prompts = list(PROMPT_SETS[self.dataset])
 
 
 @dataclass

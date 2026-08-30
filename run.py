@@ -52,8 +52,39 @@ def load_gsm8k(split: str = "test", n: int = None):
     return data
 
 
+def load_hotpotqa(split: str = "validation", n: int = None):
+    """Return list of {question, answer} dicts from HotpotQA (distractor config).
+
+    Uses the distractor config: each item already bundles its 10 candidate
+    context paragraphs (2 gold + 8 distractors), so no retrieval step is
+    needed — same "everything the model needs is in the question field"
+    convention as load_gsm8k. HotpotQA has no public-answer test split, so
+    default to validation (mirrors load_gsm8k's use of the test split).
+    """
+    from datasets import load_dataset
+    ds = load_dataset("hotpot_qa", "distractor")
+    data = []
+    for item in ds[split]:
+        titles = item["context"]["title"]
+        sentences = item["context"]["sentences"]
+        passages = "\n\n".join(
+            f"[{t}] " + " ".join(s) for t, s in zip(titles, sentences)
+        )
+        question = f"Context:\n{passages}\n\nQuestion: {item['question']}"
+        data.append({"question": question, "answer": item["answer"]})
+    if n is not None:
+        data = data[:n]
+    return data
+
+
+def load_dataset_samples(dataset: str, split: str, n: int = None):
+    """Dispatch to the right loader by dataset name."""
+    loaders = {"gsm8k": load_gsm8k, "hotpotqa": load_hotpotqa}
+    return loaders[dataset](split, n)
+
+
 def mode_calibrate(args):
-    from calibration_profiler import CalibrationProfiler, plot_signals, plot_score_scatter
+    from lakv.calibration_profiler import CalibrationProfiler, plot_signals, plot_score_scatter
 
     # New timestamped folder for every calibration run
     profile_dir = Path(args.profile_dir) / f"run_{_timestamp()}"
@@ -82,8 +113,8 @@ def mode_calibrate(args):
 
 
 def mode_sanity(args):
-    from evaluator import Evaluator
-    from kv_compressor import KVCompressor
+    from lakv.evaluator import Evaluator
+    from lakv.kv_compressor import KVCompressor
     
     if not args.profile_path:
         raise ValueError("--profile_path is required for --mode sanity. "
@@ -95,13 +126,15 @@ def mode_sanity(args):
     print()
 
     model, tokenizer = load_model(args.model, args.device)
-    dataset = load_gsm8k("test", n=3)
+    split = "validation" if args.dataset == "hotpotqa" else "test"
+    dataset = load_dataset_samples(args.dataset, split, n=3)
     Evaluator(model, tokenizer, device=args.device).run_sanity_check(
-        profile_path=args.profile_path, dataset=dataset, arch=args.arch, print_raw_outputs=args.print_raw_outputs)
+        profile_path=args.profile_path, dataset=dataset, arch=args.arch,
+        print_raw_outputs=args.print_raw_outputs, dataset_name=args.dataset)
 
 
 def mode_experiment(args):
-    from evaluator import Evaluator
+    from lakv.evaluator import Evaluator
     if not args.profile_path:
         raise ValueError("--profile_path is required for --mode experiment.")
 
@@ -118,7 +151,8 @@ def mode_experiment(args):
         resume = False
 
     model, tokenizer = load_model(args.model, args.device)
-    dataset = load_gsm8k("test", n=args.n_samples)
+    split = "validation" if args.dataset == "hotpotqa" else "test"
+    dataset = load_dataset_samples(args.dataset, split, n=args.n_samples)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
         dataset=dataset,
         profile_path=args.profile_path,
@@ -128,6 +162,7 @@ def mode_experiment(args):
         resume=resume,
         arch=args.arch,
         print_raw_outputs=args.print_raw_outputs,
+        dataset_name=args.dataset,
     )
 
 
@@ -135,6 +170,9 @@ def main():
     parser = argparse.ArgumentParser(description="LAKV — KV Cache Compression Pipeline")
     parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--task", default="gsm8k")
+    parser.add_argument("--dataset", choices=["gsm8k", "hotpotqa"], default="gsm8k",
+                        help="Which dataset to load for sanity/experiment modes (default: gsm8k). "
+                             "Separate from --task, which is only calibration-profile metadata.")
     parser.add_argument("--mode", choices=["calibrate", "sanity", "experiment"],
                         default="calibrate")
     parser.add_argument("--n_samples", type=int, default=100)

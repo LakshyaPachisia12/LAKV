@@ -59,7 +59,7 @@ def run_sanity(args):
         # across configs that otherwise test unrelated transfer modes.
         if not args.use_offset_correction:
             return {}
-        from anchor_table import AnchorTable
+        from lakv.anchor_table import AnchorTable
         return {
             "use_offset_correction": True,
             "anchor_table": AnchorTable(max_size=20, entropy_threshold=0.3, verbose=True),

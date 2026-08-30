@@ -5,19 +5,36 @@ A plain pipeline that doesn't use KV caching relay, to be used as an absolute ba
 """
 
 from dataclasses import dataclass
+from typing import Optional
 import torch
+
+_SYSTEM_PROMPTS = {
+    "gsm8k": (
+        "You are a mathematical reasoning assistant. "
+        "Solve carefully and return final answer as #### [number]"
+    ),
+    "hotpotqa": (
+        "You are a careful reading-comprehension assistant. Read the given "
+        "context passages and answer the question. Output exactly one line "
+        "in this format: The answer is: <answer>, where <answer> is a short "
+        "word or phrase copied from the context, not a full sentence."
+    ),
+}
+
 
 @dataclass
 class SingleAgentPipelineConfig:
-    system_prompt: str = (
-        "You are a mathematical reasoning assistant. "
-        "Solve carefully and return final answer as #### [number]"
-    )
+    dataset: str = "gsm8k"
+    system_prompt: Optional[str] = None
     print_raw_outputs: bool = False
     max_new_tokens: int = 1536
     do_sample: bool = True
     temperature: float = 0.6
     top_p: float = 0.95
+
+    def __post_init__(self):
+        if self.system_prompt is None:
+            self.system_prompt = _SYSTEM_PROMPTS[self.dataset]
 
 class SingleAgentPipeline:
     def __init__(self, model, tokenizer, config: SingleAgentPipelineConfig = None, device: str = "cuda"):

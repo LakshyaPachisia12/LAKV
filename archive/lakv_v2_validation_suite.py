@@ -1,3 +1,11 @@
+# ARCHIVED (moved out of lakv_v2/tests/ during the folder reorg): this suite
+# only tests CacheAligner, which lives in archive/lakv_v2_cache/aligner.py —
+# a duplicate of the root lakv/kv_compressor.py + lakv/layer_selector.py that
+# implementation_plan.txt already flagged as unreferenced by the live code
+# path. Not wired into any test runner; kept for reference only. The
+# lakv_v2.cache.aligner import below is left pointing at its old (pre-reorg)
+# location and will not resolve as-is — reconstruct the path if this is ever
+# revived.
 import torch
 import torch.nn.functional as F
 from lakv_v2.cache.aligner import CacheAligner
@@ -72,7 +80,7 @@ class ValidationSuite:
 
     def test_quantization_roundtrip(self):
         """Re-verify mathematically that we can INT8 quantize and dequantize close to FP16"""
-        from kv_compressor import KVCompressor # use old just for testing the logic
+        from lakv.kv_compressor import KVCompressor # use old just for testing the logic
         comp = KVCompressor(mode="uniform_int8")
         
         dummy_k = torch.randn(1, 4, 128, 128, dtype=torch.bfloat16, device=self.device)

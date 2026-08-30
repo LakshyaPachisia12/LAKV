@@ -60,7 +60,7 @@ from lakv_v2.pipeline.shared_prefix_pipeline import (
     VERIFY_FINALIZER_SUFFIX,
 )
 from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
-from anchor_table import AnchorTable
+from lakv.anchor_table import AnchorTable
 
 
 # ── answer parsing ─────────────────────────────────────────────────────────────
@@ -102,12 +102,12 @@ def is_malformed(text: str) -> bool:
 # ── pipeline factories ─────────────────────────────────────────────────────────
 
 def _load_profile(profile_path: str):
-    from calibration_profiler import LayerProfile
+    from lakv.calibration_profiler import LayerProfile
     return LayerProfile.load(profile_path)
 
 
 def _build_selector(profile_path: str):
-    from layer_selector import LayerSelector
+    from lakv.layer_selector import LayerSelector
     profile = _load_profile(profile_path)
     return LayerSelector(profile)
 
@@ -140,7 +140,7 @@ def build_pipeline(row_name: str, model, tokenizer, profile_path: str, device: s
     if row_name in ("v1_full_kv", "v1_A_legacy"):
         # V1 reference: 3-agent relay, full KV, no selection.
         # Frozen — do not modify pipeline.py for this row.
-        from pipeline import LAKVPipeline, PipelineConfig
+        from lakv.pipeline import LAKVPipeline, PipelineConfig
         cfg = PipelineConfig(
             use_layer_selection=False,
             compression_mode="none",

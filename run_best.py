@@ -27,9 +27,9 @@ import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from evaluator import PRESETS, extract_answer
+from lakv.evaluator import PRESETS, extract_answer
 from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
-from pipeline import LAKVPipeline, PipelineConfig
+from lakv.pipeline import LAKVPipeline, PipelineConfig
 from run import load_gsm8k, load_model
 
 

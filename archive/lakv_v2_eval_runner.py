@@ -2,6 +2,15 @@
 LAKV-v2 Module: Eval Runner
 Executes evaluation loops cleanly comparing Old LAKV vs Baseline vs LAKV-v2.
 Retains per-sample failure logs.
+
+ARCHIVED during the folder reorg: implementation_plan.txt already flagged
+this as superseded by lakv_v2/benchmark.py (the actual, live v2 harness) and
+unreferenced by any live code path. Kept for reference only, not wired into
+any runner. The lakv_v2.pipeline.two_agent / lakv_v2.cache.* / lakv_v2.utils.*
+imports below point at their old (pre-reorg) locations — those modules moved
+to archive_two_agent.py / archive/lakv_v2_cache/ / archive/lakv_v2_utils_parsing.py
+alongside this file and will not resolve as-is; reconstruct the paths if this
+is ever revived.
 """
 
 import json
@@ -17,8 +26,8 @@ from lakv_v2.cache.reconstruct import ReconstructorV2
 from lakv_v2.utils.parsing import extract_answer
 
 # Import old pipeline for direct comparison
-from pipeline import LAKVPipeline, PipelineConfig as OldPipelineConfig
-from evaluator import PRESETS as OLD_PRESETS
+from lakv.pipeline import LAKVPipeline, PipelineConfig as OldPipelineConfig
+from lakv.evaluator import PRESETS as OLD_PRESETS
 
 class UnifiedEvalRunner:
     def __init__(self, model, tokenizer, device="cuda", profile_path=None):
@@ -30,7 +39,7 @@ class UnifiedEvalRunner:
         # Load from your original beautiful calibration profile JSON
         self.tier_1_2_indices = list(range(19)) # Fallback
         if profile_path:
-            from calibration_profiler import LayerProfile
+            from lakv.calibration_profiler import LayerProfile
             profile = LayerProfile.load(profile_path)
             self.tier_1_2_indices = [i for i, t in enumerate(profile.tier_assignment) if t in (1, 2)]
             print(f"[LAKV-v2] Loaded calibration from {profile_path}")
@@ -66,7 +75,7 @@ class UnifiedEvalRunner:
             return p, "v2_selected_int8"
 
         elif mode == "lakv_v2_anchor":
-            from anchor_table import AnchorTable
+            from lakv.anchor_table import AnchorTable
             cfg = TwoAgentPipelineConfig()
             cfg.selector = LayerSelectorV2(keep_indices=self.tier_1_2_indices, reconstructor=ReconstructorV2("mean_fill"))
             cfg.compressor = CompressorV2(mode="uniform_int8")
@@ -87,7 +96,7 @@ class UnifiedEvalRunner:
             return p, "v2_shared"
 
         elif mode == "lakv_v2_shared_anchor":
-            from anchor_table import AnchorTable
+            from lakv.anchor_table import AnchorTable
             from lakv_v2.pipeline.shared_prefix_pipeline import SharedPrefixPipeline, SharedPrefixConfig
             cfg = SharedPrefixConfig(
                 use_layer_selection=True,

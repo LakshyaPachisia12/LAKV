@@ -2,6 +2,12 @@
 LAKV-v2 Module: Two-Agent Pipeline
 Connects a Solver Agent (generates latent KV reasoning)
 to a Finalizer Agent (consumes KV to produce final numeric output).
+
+ARCHIVED during the folder reorg: only used by lakv_v2/eval_runner.py, which
+implementation_plan.txt already flagged as superseded by lakv_v2/benchmark.py.
+Kept for reference only. The lakv_v2.cache.aligner import below points at its
+old (pre-reorg) location (now archive/lakv_v2_cache/aligner.py) and will not
+resolve as-is; reconstruct the path if this is ever revived.
 """
 
 import torch
@@ -38,7 +44,7 @@ class TwoAgentPipeline:
         base_kv = None
         base_hidden = None
         if self.config.anchor_table is not None:
-            from anchor_table import compute_base_kv, question_key as make_key
+            from lakv.anchor_table import compute_base_kv, question_key as make_key
             base_kv, base_hidden = compute_base_kv(
                 self.model, self.tokenizer, question, self.device)
 
@@ -79,7 +85,7 @@ class TwoAgentPipeline:
 
         # Populate anchor table with solver's observation
         if self.config.anchor_table is not None and base_kv is not None:
-            from anchor_table import question_key as make_key
+            from lakv.anchor_table import question_key as make_key
             q_key = make_key(question)
             self.config.anchor_table.update(
                 q_key, "agent_0", base_kv, raw_kv_tuple, base_hidden,
@@ -107,7 +113,7 @@ class TwoAgentPipeline:
 
         # Anchor table correction: try to improve processed_kv for the finalizer
         if self.config.anchor_table is not None and base_hidden is not None:
-            from anchor_table import question_key as make_key
+            from lakv.anchor_table import question_key as make_key
             q_key = make_key(question)
             result = self.config.anchor_table.query_correction(
                 q_key, "agent_1", base_hidden, device=self.device,
