@@ -24,15 +24,22 @@ def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def load_model(model_name: str, device: str):
-    """Load Qwen2.5-7B in bfloat16 with eager attention for calibration support."""
-    print(f"[run] Loading model: {model_name} …")
+def load_model(model_name: str, device: str, attn_implementation: str = "eager"):
+    """Load Qwen2.5-7B in bfloat16. attn_implementation defaults to 'eager'
+    (required for calibrate mode's output_attentions=True) but sanity/experiment
+    modes can pass 'sdpa' to test whether eager attention's numerics are
+    contributing to the digit-drift failures seen in greedy-decoded outputs
+    (e.g. "200 GB" in the question becoming "220 GB" in the model's own
+    restatement) — sdpa/flash use a fused, more numerically stable softmax
+    than the naive eager implementation, especially in bf16.
+    """
+    print(f"[run] Loading model: {model_name} (attn_implementation={attn_implementation}) …")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.bfloat16,
         device_map=device,
-        attn_implementation="eager",
+        attn_implementation=attn_implementation,
         trust_remote_code=True,
     )
     model.eval()
@@ -92,7 +99,12 @@ def mode_calibrate(args):
     profile_path = profile_dir / "qwen_gsm8k.json"
     print(f"[run] Profile will be saved to: {profile_path}")
 
-    model, tokenizer = load_model(args.model, args.device)
+    if args.attn_implementation != "eager":
+        raise ValueError(
+            "--mode calibrate requires eager attention (needs output_attentions=True, "
+            "which sdpa/flash don't support) — --attn_implementation must stay 'eager' here."
+        )
+    model, tokenizer = load_model(args.model, args.device, args.attn_implementation)
     questions = [e["question"] for e in load_gsm8k("train", n=args.n_calibration)]
 
     profiler = CalibrationProfiler(model, tokenizer, device=args.device)
@@ -125,7 +137,7 @@ def mode_sanity(args):
     KVCompressor.run_sanity_check(device=args.device)
     print()
 
-    model, tokenizer = load_model(args.model, args.device)
+    model, tokenizer = load_model(args.model, args.device, args.attn_implementation)
     split = "validation" if args.dataset == "hotpotqa" else "test"
     dataset = load_dataset_samples(args.dataset, split, n=3)
     Evaluator(model, tokenizer, device=args.device).run_sanity_check(
@@ -150,7 +162,7 @@ def mode_experiment(args):
         print(f"[run] Results will be saved to: {output_dir}")
         resume = False
 
-    model, tokenizer = load_model(args.model, args.device)
+    model, tokenizer = load_model(args.model, args.device, args.attn_implementation)
     split = "validation" if args.dataset == "hotpotqa" else "test"
     dataset = load_dataset_samples(args.dataset, split, n=args.n_samples)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
@@ -188,6 +200,11 @@ def main():
     parser.add_argument("--resume_dir", default=None,
                         help="Path to an existing run folder to resume (e.g. results/run_20260420_123456)")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--attn_implementation", choices=["eager", "sdpa"], default="eager",
+                        help="Attention backend. calibrate mode requires 'eager' (needs "
+                             "output_attentions=True). sanity/experiment can use 'sdpa' to "
+                             "test whether eager's less numerically stable softmax is "
+                             "contributing to digit-drift in greedy-decoded outputs.")
     parser.add_argument("--arch", choices=["legacy", "two_agent"], default="legacy",
                         help="Architecture mode for multi-agent configs (default: legacy)")
     parser.add_argument("--print_raw_outputs", action="store_true", help="Print raw generated outputs")
