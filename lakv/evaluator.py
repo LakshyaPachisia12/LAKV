@@ -115,6 +115,21 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_layer_selection=True, compression_mode="uniform_int8",
         use_offset_correction=True, reconstruction_strategy="zeros",
     ),
+    # Diagnostic pair, not a "real" config to report — isolates whether E's
+    # accuracy gap vs A is caused by low-confidence anchor corrections being
+    # applied anyway (graceful_degradation=True, the default) rather than
+    # rejected in favor of uncorrected relay. Identical to E/E_int8 in every
+    # other respect. See PipelineConfig.anchor_graceful_degradation.
+    "E_strict": PipelineConfig(
+        use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=True, reconstruction_strategy="zeros",
+        outlier_clipping=True, anchor_graceful_degradation=False,
+    ),
+    "E_int8_strict": PipelineConfig(
+        use_layer_selection=True, compression_mode="uniform_int8",
+        use_offset_correction=True, reconstruction_strategy="zeros",
+        anchor_graceful_degradation=False,
+    ),
 }
 
 
@@ -260,19 +275,29 @@ class Evaluator:
         preset.final_max_new_tokens = 16
 
     def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy",
-                        dataset: str = "gsm8k"):
-        """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent."""
+                        dataset: str = "gsm8k", greedy: bool = False):
+        """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent.
+
+        greedy=True forces do_sample=False on every config, overriding each
+        pipeline's own sampling defaults (do_sample=True, temperature=0.6,
+        top_p=0.95) — useful as a deterministic accuracy control run, since
+        every preset otherwise samples per commit 1890b6a.
+        """
         import random as _random
 
         if cfg_name == "single_agent":
             from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
-            return SingleAgentPipeline(self.model, self.tokenizer,
-                                       SingleAgentPipelineConfig(dataset=dataset), self.device), "single"
+            cfg = SingleAgentPipelineConfig(dataset=dataset)
+            if greedy:
+                cfg.do_sample = False
+            return SingleAgentPipeline(self.model, self.tokenizer, cfg, self.device), "single"
 
         if cfg_name == "text_agent":
             from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
-            return TextAgentPipeline(self.model, self.tokenizer,
-                                      TextAgentPipelineConfig(dataset=dataset), self.device), "text"
+            cfg = TextAgentPipelineConfig(dataset=dataset)
+            if greedy:
+                cfg.do_sample = False
+            return TextAgentPipeline(self.model, self.tokenizer, cfg, self.device), "text"
 
         if cfg_name in ABLATION_CONFIGS:
             spec = ABLATION_CONFIGS[cfg_name]
@@ -294,6 +319,8 @@ class Evaluator:
                 dataset=dataset,
             )
             self._apply_arch(preset, arch)
+            if greedy:
+                preset.generation_kwargs = dict(preset.generation_kwargs, do_sample=False)
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
                                 custom_layer_indices=indices)
             return pipe, "multi"
@@ -308,13 +335,15 @@ class Evaluator:
         self._apply_arch(preset, arch)
         if preset.use_layer_selection or preset.compression_mode == "adaptive":
             preset.profile_path = profile_path
+        if greedy:
+            preset.generation_kwargs = dict(preset.generation_kwargs, do_sample=False)
         pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
         return pipe, "multi"
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/", checkpoint_every=5,
                        resume=False, arch: str = "legacy", print_raw_outputs: bool = False,
-                       dataset_name: str = "gsm8k"):
+                       dataset_name: str = "gsm8k", greedy: bool = False):
         if configs_to_run is None:
             # E (layer selection + adaptive compression + anchor-table offset
             # correction) was defined in PRESETS but missing from this default
@@ -402,7 +431,8 @@ class Evaluator:
                     print(f"[Evaluator] Skipping {cfg_name} (already completed)")
                     continue
 
-                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch, dataset=dataset_name)
+                pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch,
+                                                        dataset=dataset_name, greedy=greedy)
                 pipe.config.print_raw_outputs = print_raw_outputs
                 print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
@@ -433,11 +463,11 @@ class Evaluator:
 
                     try:
                         is_gsm8k = dataset_name == "gsm8k"
+                        gold = str(s["answer"]).strip()
                         if pipe_type == "single":
                             raw_answer = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred, ok, f1 = score_sample(dataset_name, raw_answer, s["answer"])
-                            gold = str(s["answer"]).strip()
+                            pred, ok, f1 = score_sample(dataset_name, raw_answer, gold)
                             if ok: correct += 1
                             per_sample.append({"idx":i,"question":s["question"],"gold":gold,
                                 "predicted":pred,"raw_answer":raw_answer,"correct":ok,"f1":f1,
@@ -449,8 +479,7 @@ class Evaluator:
                         elif pipe_type == "text":
                             r = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred, ok, f1 = score_sample(dataset_name, r.answer, s["answer"])
-                            gold = str(s["answer"]).strip()
+                            pred, ok, f1 = score_sample(dataset_name, r.answer, gold)
                             if ok: correct += 1
                             reasoner_text = r.hop_texts[0] if r.hop_texts else None
                             # Reuse the KV-config fields (compressed_mb/original_mb/
@@ -470,7 +499,8 @@ class Evaluator:
                                 "numeric_grounding_failure": (not has_numeric_grounding(
                                     s["question"], reasoner_text if reasoner_text else r.answer)) if is_gsm8k else False,
                                 "compressed_mb":total_mb,"original_mb":total_mb,
-                                "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[]})
+                                "compression_ratio":1.0,"latency_s":elapsed,"hop_stats":[],
+                                "hop_latencies_s":r.hop_latencies})
                             tot_comp += total_mb/nh
                             tot_orig += total_mb/nh
                             tot_ratio += 1.0
@@ -478,8 +508,7 @@ class Evaluator:
                         else:
                             r = pipe.run(s["question"])
                             elapsed = time.time() - t0
-                            pred, ok, f1 = score_sample(dataset_name, r.answer, s["answer"])
-                            gold = str(s["answer"]).strip()
+                            pred, ok, f1 = score_sample(dataset_name, r.answer, gold)
                             if ok: correct += 1
                             nh = max(len(r.hop_stats), 1)
                             # r.hop_texts[0] is the Reasoner's full raw decoded text (hop 1),
@@ -495,7 +524,9 @@ class Evaluator:
                                     s["question"], reasoner_text if reasoner_text else r.answer)) if is_gsm8k else False,
                                 "compressed_mb":r.total_compressed_mb,"original_mb":r.total_original_mb,
                                 "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
-                                "hop_stats":[asdict(h) for h in r.hop_stats]})
+                                "hop_stats":[asdict(h) for h in r.hop_stats],
+                                "finalizer_latency_s":r.finalizer_latency_seconds,
+                                "offset_logs":list(pipe.last_run_offset_logs)})
                             tot_comp += r.total_compressed_mb/nh
                             tot_orig += r.total_original_mb/nh
                             tot_ratio += r.overall_compression_ratio
@@ -556,7 +587,8 @@ class Evaluator:
         return all_results
 
     def run_sanity_check(self, profile_path, dataset=None, n_samples=3, arch: str = "legacy",
-                         print_raw_outputs: bool = False, dataset_name: str = "gsm8k"):
+                         print_raw_outputs: bool = False, dataset_name: str = "gsm8k",
+                         greedy: bool = False):
         if dataset is None:
             dataset = [{"question":"What is 15 + 27?","answer":"42"},
                 {"question":"A train travels 60 miles in 2 hours. Speed in mph?","answer":"30"},
@@ -569,6 +601,8 @@ class Evaluator:
             self._apply_arch(preset, arch)
             if preset.use_layer_selection or preset.compression_mode == "adaptive":
                 preset.profile_path = profile_path
+            if greedy:
+                preset.generation_kwargs = dict(preset.generation_kwargs, do_sample=False)
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
             pipe.config.print_raw_outputs = print_raw_outputs
             print(f"\n{'='*60}\nSanity Check — Config {cfg_name}\n{'='*60}")

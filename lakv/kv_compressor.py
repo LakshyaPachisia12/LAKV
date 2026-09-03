@@ -174,12 +174,19 @@ class KVCompressor:
             if bits == 16:
                 b, h = k.shape[0], k.shape[1]
                 cl = CompressedLayer(
-                    k_q=k.cpu(),
-                    v_q=v.cpu(),
-                    k_scale=torch.ones(b, h),
-                    k_zp=torch.zeros(b, h),
-                    v_scale=torch.ones(b, h),
-                    v_zp=torch.zeros(b, h),
+                    # Kept on their current device (GPU) — this whole pipeline
+                    # runs in a single process on one GPU, nothing ever
+                    # actually serializes/transmits a KVMessage over a wire,
+                    # so the old .cpu() here was a pure round-trip cost (moved
+                    # off GPU, then decompress() immediately moved it right
+                    # back). original_bytes/compressed_bytes accounting below
+                    # is unaffected — it's tensor.nbytes math, device-independent.
+                    k_q=k,
+                    v_q=v,
+                    k_scale=torch.ones(b, h, device=k.device),
+                    k_zp=torch.zeros(b, h, device=k.device),
+                    v_scale=torch.ones(b, h, device=k.device),
+                    v_zp=torch.zeros(b, h, device=k.device),
                     shape=tuple(k.shape),
                     bits=16,
                     layer_idx=layer_idx
@@ -191,12 +198,13 @@ class KVCompressor:
                 v_q, v_scale, v_zp = _quantize(v, bits, clip_percentile=clip_pct)
 
                 cl = CompressedLayer(
-                    k_q=k_q.cpu(),
-                    v_q=v_q.cpu(),
-                    k_scale=k_scale.cpu(),
-                    k_zp=k_zp.cpu(),
-                    v_scale=v_scale.cpu(),
-                    v_zp=v_zp.cpu(),
+                    # Same reasoning as the bits==16 branch above — no .cpu().
+                    k_q=k_q,
+                    v_q=v_q,
+                    k_scale=k_scale,
+                    k_zp=k_zp,
+                    v_scale=v_scale,
+                    v_zp=v_zp,
                     shape=tuple(k.shape),
                     bits=bits,
                     layer_idx=layer_idx
