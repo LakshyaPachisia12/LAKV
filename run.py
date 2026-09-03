@@ -24,15 +24,22 @@ def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def load_model(model_name: str, device: str):
-    """Load Qwen2.5-7B in bfloat16 with eager attention for calibration support."""
-    print(f"[run] Loading model: {model_name} …")
+def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
+    """Load Qwen2.5-7B in bfloat16.
+
+    sdpa (default) gets PyTorch's fused attention kernel — much faster than
+    eager, especially for decode over long KV caches (HotpotQA's contexts are
+    1500-2500+ tokens). eager is only needed for calibration, which reads
+    output_attentions (sdpa doesn't return attention weight tensors) — see
+    mode_calibrate, which requests it explicitly.
+    """
+    print(f"[run] Loading model: {model_name} (attn_implementation={attn_implementation}) …")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.bfloat16,
         device_map=device,
-        attn_implementation="eager",
+        attn_implementation=attn_implementation,
         trust_remote_code=True,
     )
     model.eval()
@@ -42,7 +49,7 @@ def load_model(model_name: str, device: str):
 def load_gsm8k(split: str = "test", n: int = None):
     """Return list of {question, answer} dicts from GSM8K."""
     from datasets import load_dataset
-    ds = load_dataset("gsm8k", "main")
+    ds = load_dataset("openai/gsm8k", "main")
     data = []
     for item in ds[split]:
         answer = item["answer"].split("####")[-1].strip()
@@ -62,7 +69,7 @@ def load_hotpotqa(split: str = "validation", n: int = None):
     default to validation (mirrors load_gsm8k's use of the test split).
     """
     from datasets import load_dataset
-    ds = load_dataset("hotpot_qa", "distractor")
+    ds = load_dataset("hotpotqa/hotpot_qa", "distractor")
     data = []
     for item in ds[split]:
         titles = item["context"]["title"]
@@ -89,15 +96,15 @@ def mode_calibrate(args):
     # New timestamped folder for every calibration run
     profile_dir = Path(args.profile_dir) / f"run_{_timestamp()}"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    profile_path = profile_dir / "qwen_gsm8k.json"
+    profile_path = profile_dir / f"qwen_{args.dataset}.json"
     print(f"[run] Profile will be saved to: {profile_path}")
 
-    model, tokenizer = load_model(args.model, args.device)
-    questions = [e["question"] for e in load_gsm8k("train", n=args.n_calibration)]
+    model, tokenizer = load_model(args.model, args.device, attn_implementation="eager")
+    questions = [e["question"] for e in load_dataset_samples(args.dataset, "train", n=args.n_calibration)]
 
     profiler = CalibrationProfiler(model, tokenizer, device=args.device)
     profile = profiler.run_calibration(questions, save_path=str(profile_path),
-                                       dataset_name=args.task)
+                                       dataset_name=args.dataset)
 
     plot_signals(profile, str(profile_dir / "layer_signals.png"))
     plot_score_scatter(profile, str(profile_dir / "score_scatter.png"))
@@ -108,8 +115,8 @@ def mode_calibrate(args):
         print(f"  Layer {i:2d}: Tier {t}  \u2192  {tag}")
 
     print(f'\n[run] Next steps:')
-    print(f'  Sanity : python run.py --mode sanity    --profile_path "{profile_path}"')
-    print(f'  Eval   : python run.py --mode experiment --profile_path "{profile_path}"')
+    print(f'  Sanity : python run.py --mode sanity    --dataset {args.dataset} --profile_path "{profile_path}"')
+    print(f'  Eval   : python run.py --mode experiment --dataset {args.dataset} --profile_path "{profile_path}"')
 
 
 def mode_sanity(args):
@@ -130,7 +137,8 @@ def mode_sanity(args):
     dataset = load_dataset_samples(args.dataset, split, n=3)
     Evaluator(model, tokenizer, device=args.device).run_sanity_check(
         profile_path=args.profile_path, dataset=dataset, arch=args.arch,
-        print_raw_outputs=args.print_raw_outputs, dataset_name=args.dataset)
+        print_raw_outputs=args.print_raw_outputs, dataset_name=args.dataset,
+        greedy=args.greedy)
 
 
 def mode_experiment(args):
@@ -163,6 +171,7 @@ def mode_experiment(args):
         arch=args.arch,
         print_raw_outputs=args.print_raw_outputs,
         dataset_name=args.dataset,
+        greedy=args.greedy,
     )
 
 
@@ -191,6 +200,9 @@ def main():
     parser.add_argument("--arch", choices=["legacy", "two_agent"], default="legacy",
                         help="Architecture mode for multi-agent configs (default: legacy)")
     parser.add_argument("--print_raw_outputs", action="store_true", help="Print raw generated outputs")
+    parser.add_argument("--greedy", action="store_true",
+                        help="Force do_sample=False on every config. Redundant now that greedy is the "
+                             "default (kept as an explicit override / for readability in scripts)")
     args = parser.parse_args()
 
     if args.mode == "calibrate":

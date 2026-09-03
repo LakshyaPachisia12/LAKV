@@ -57,11 +57,23 @@ class AnchorTable:
 
     def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3,
                  min_confidence: float = 0.5, verbose: bool = False,
-                 graceful_degradation: bool = True):
+                 graceful_degradation: bool = True,
+                 max_distance: Optional[float] = None):
         self.max_size = max_size
         self.entropy_threshold = entropy_threshold
         self.min_confidence = min_confidence
         self.verbose = verbose
+        # Absolute L2-distance floor on the BEST candidate's match quality —
+        # see query_correction for why this is a different, necessary check
+        # from entropy/min_confidence (which only measure agreement among
+        # candidates, and are trivially satisfied by a single candidate
+        # regardless of how good a match it actually is). None = disabled
+        # (previous behavior, unchanged). Units match torch.dist(p=2) on
+        # mean-pooled last-layer hidden states — inspect
+        # last_query_min_distance across a real run to pick a sensible value
+        # rather than guessing; it varies with model/hidden size.
+        self.max_distance = max_distance
+        self.last_query_min_distance: Optional[float] = None
         # When True (KVCOMM-style): an ambiguous/low-confidence match still
         # gets a blended correction applied rather than being rejected
         # outright. Rejecting means the caller falls back to completely
@@ -146,6 +158,7 @@ class AnchorTable:
         question_key: str,
         agent_id: str,
         query_hidden: torch.Tensor,   # (1, seq, hidden) last-layer hidden states
+        query_base_kv: Optional[Tuple] = None,  # THIS question's own base_kv (from compute_base_kv) — see below
         device: str = "cuda",
         target_prompt_len: Optional[int] = None,
         rope_theta: float = 1_000_000.0,
@@ -158,6 +171,7 @@ class AnchorTable:
         corrected_kv_tuple: tuple of (K, V) per layer on `device`
         confidence: scalar in [0, 1]; 1 = perfect single-anchor match
         """
+        self.last_query_min_distance = None  # reset each call so a stale value from a prior query never leaks through on a "no_candidates" miss
         # Filter to entries that have offsets for this agent_id
         candidates = [e for e in self._pool.values() if agent_id in e.agent_offsets]
         if not candidates:
@@ -168,6 +182,31 @@ class AnchorTable:
 
         query_emb = self._embed(query_hidden)
         weights = self._similarity_weights(query_emb, candidates)  # [n_cands]
+
+        # Absolute similarity gate. The entropy/confidence gates below only
+        # measure agreement AMONG candidates — softmax over a single
+        # candidate is always exactly [1.0], so confidence=1.0/entropy=0
+        # unconditionally whenever there's just one candidate in the pool.
+        # That's the common case (the pool gains exactly one entry per
+        # channel per sample, so most of a run has 0-1 candidates), and it
+        # leaves the gates structurally blind to whether that lone candidate
+        # is actually a good match for THIS question — a HotpotQA anchor
+        # from a completely unrelated topic sails through as "100% confident"
+        # every time. Confirmed this was the reason graceful_degradation
+        # produced byte-identical output to the default: the gate it
+        # controls almost never had anything to reject in the first place.
+        # This checks the best candidate's raw distance directly, independent
+        # of how many candidates exist or how much they agree with each other.
+        dists = torch.stack([torch.dist(query_emb, c.embedding, p=2) for c in candidates])
+        best_distance = float(dists.min().item())
+        self.last_query_min_distance = best_distance  # exposed for logging/tuning
+        if self.max_distance is not None and best_distance > self.max_distance:
+            self._log_miss(question_key, agent_id, reason="distance")
+            if self.verbose:
+                print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} "
+                      f"reason=distance best_distance={best_distance:.4f} "
+                      f"max_distance={self.max_distance:.4f}")
+            return None
 
         # Entropy gate: if weights are too spread (ambiguous), the match is
         # low-quality. With graceful_degradation=False (old behavior) this
@@ -226,27 +265,45 @@ class AnchorTable:
             delta_k_interp.append(dk)
             delta_v_interp.append(dv)
 
-        # Blend base KV with the SAME weights used for the delta, so the
-        # base and delta are drawn from a consistent mixture of anchors
-        # instead of "delta blended across all candidates, base taken from
-        # only the single best-matching one" (the previous behavior — an
-        # inconsistency that matters most exactly when confidence is low,
-        # i.e. when weight mass is spread across multiple candidates whose
-        # base KVs may differ substantially, since they come from different
-        # questions). All candidate base_k/base_v are truncated/left as-is;
-        # sequence-length alignment happens per-layer below using the
-        # blended base's own length.
-        base_seq_lens = [c.base_k[0].shape[2] for c in candidates]
-        min_base_seq = min(base_seq_lens)
-        base_k_interp = []
-        base_v_interp = []
-        for layer_idx in range(n_layers):
-            bk = sum(weights[ci].item() * candidates[ci].base_k[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
-                     for ci in range(len(candidates)))
-            bv = sum(weights[ci].item() * candidates[ci].base_v[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
-                     for ci in range(len(candidates)))
-            base_k_interp.append(bk.to(candidates[0].base_k[layer_idx].dtype))
-            base_v_interp.append(bv.to(candidates[0].base_v[layer_idx].dtype))
+        # Base KV: use the CURRENT question's own base_kv (already computed
+        # fresh by compute_base_kv() every run() call — this is a real
+        # forward pass over THIS question's actual text, not a shared or
+        # generic quantity). The old version of this code blended CANDIDATES'
+        # base_k/base_v instead — i.e. reconstructed each corrected layer as
+        # (some other, unrelated past question's own base+delta), which is
+        # functionally that other question's own actual KV content, position-
+        # shifted, injected in place of this question's. That explains why
+        # anchor distance showed zero correlation with correctness when
+        # checked against real run data: the failure mode wasn't "picked a
+        # slightly-worse-matched anchor," it was "substituted a different
+        # question's facts into the context" regardless of match quality.
+        # Only the DELTA (the prefix/position perturbation pattern — the
+        # part actually hypothesized to transfer across questions) should
+        # come from the anchor pool; the base content must be this
+        # question's own.
+        if query_base_kv is not None:
+            base_k_interp = [query_base_kv[layer_idx][0].to(torch.float32) for layer_idx in range(n_layers)]
+            base_v_interp = [query_base_kv[layer_idx][1].to(torch.float32) for layer_idx in range(n_layers)]
+        else:
+            # No query_base_kv supplied (a caller other than pipeline.py's
+            # LAKVPipeline — e.g. lakv_v2/pipeline/shared_prefix_pipeline.py,
+            # not currently exercised by any tested config). Falls back to
+            # the old candidate-blended behavior rather than crashing, but
+            # this reproduces the bug described above — fix that caller to
+            # pass its own query_base_kv before trusting its output.
+            base_seq_lens = [c.base_k[0].shape[2] for c in candidates]
+            min_base_seq = min(base_seq_lens)
+            base_k_interp = []
+            base_v_interp = []
+            for layer_idx in range(n_layers):
+                bk = sum(weights[ci].item() * candidates[ci].base_k[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
+                         for ci in range(len(candidates)))
+                bv = sum(weights[ci].item() * candidates[ci].base_v[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
+                         for ci in range(len(candidates)))
+                base_k_interp.append(bk)
+                base_v_interp.append(bv)
+        base_k_interp = [bk.to(candidates[0].base_k[layer_idx].dtype) for layer_idx, bk in enumerate(base_k_interp)]
+        base_v_interp = [bv.to(candidates[0].base_v[layer_idx].dtype) for layer_idx, bv in enumerate(base_v_interp)]
 
         best_idx = int(weights.argmax().item())
         candidates[best_idx].access_count += 1

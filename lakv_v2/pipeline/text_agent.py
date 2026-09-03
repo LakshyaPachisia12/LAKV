@@ -13,12 +13,13 @@ project has produced so far could not answer: does relaying KV actually beat
 the much simpler, much cheaper (in bytes) alternative of just relaying text?
 """
 
-from dataclasses import dataclass
-from typing import List, Optional
+import time
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 import torch
 
-from lakv.pipeline import PipelineConfig
+from lakv.pipeline import PipelineConfig, _REASONER_FEWSHOT_EXAMPLES
 
 
 def _default_system_prompts(dataset: str = "gsm8k") -> List[str]:
@@ -36,12 +37,25 @@ class TextAgentPipelineConfig:
     dataset: str = "gsm8k"
     system_prompts: Optional[List[str]] = None
     n_agents: int = 3
-    intermediate_max_new_tokens: int = 200
+    # See PipelineConfig.intermediate_max_new_tokens (lakv/pipeline.py) — same
+    # fix, same reasoning: 200 was truncating Reasoner/Verifier hops mid-
+    # derivation on ~85-90% of questions, measured this session.
+    intermediate_max_new_tokens: int = 512
     final_max_new_tokens: int = 1536
-    do_sample: bool = True
-    temperature: float = 0.6
-    top_p: float = 0.95
+    # Greedy by default — see SingleAgentPipelineConfig / PipelineConfig for
+    # rationale. temperature/top_p kept at Qwen's recommended values for when
+    # sampling is turned back on (e.g. self-consistency).
+    do_sample: bool = False
+    temperature: float = 0.7
+    top_p: float = 0.8
     print_raw_outputs: bool = False
+    # Off by default — same rationale as SingleAgentPipelineConfig.use_few_shot
+    # and PipelineConfig.use_reasoner_few_shot. Applied only to the first
+    # (Reasoner) hop, GSM8K only, when explicitly turned on.
+    use_few_shot: bool = False
+    few_shot_examples: List[Tuple[str, str]] = field(
+        default_factory=lambda: list(_REASONER_FEWSHOT_EXAMPLES)
+    )
 
     def __post_init__(self):
         if self.system_prompts is None:
@@ -54,6 +68,7 @@ class TextAgentResult:
     hop_texts: List[str]          # decoded text per non-final agent (Reasoner, Verifier)
     hop_bytes: List[int]          # UTF-8 byte length of each inter-agent handoff
     total_bytes: int
+    hop_latencies: List[float] = field(default_factory=list)  # wall-clock seconds per agent, index 0..n_agents-1 (Reasoner, Verifier, Finalizer)
 
 
 class TextAgentPipeline:
@@ -63,11 +78,14 @@ class TextAgentPipeline:
         self.config = config or TextAgentPipelineConfig()
         self.device = device
 
-    def _generate(self, system_prompt: str, user_content: str, max_new_tokens: int) -> str:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ]
+    def _generate(self, system_prompt: str, user_content: str, max_new_tokens: int,
+                   include_few_shot: bool = False) -> str:
+        messages = [{"role": "system", "content": system_prompt}]
+        if include_few_shot:
+            for exemplar_q, exemplar_a in self.config.few_shot_examples:
+                messages.append({"role": "user", "content": exemplar_q})
+                messages.append({"role": "assistant", "content": exemplar_a})
+        messages.append({"role": "user", "content": user_content})
         prompt_text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
@@ -99,6 +117,7 @@ class TextAgentPipeline:
         n_agents = self.config.n_agents
         hop_texts: List[str] = []
         hop_bytes: List[int] = []
+        hop_latencies: List[float] = []
         prev_text = None
         answer = ""
 
@@ -118,7 +137,14 @@ class TextAgentPipeline:
                 )
 
             max_new = self.config.final_max_new_tokens if is_last else self.config.intermediate_max_new_tokens
-            text = self._generate(system_prompt, user_content, max_new)
+            include_few_shot = (agent_idx == 0 and self.config.use_few_shot and self.config.dataset == "gsm8k")
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            _t0 = time.perf_counter()
+            text = self._generate(system_prompt, user_content, max_new, include_few_shot=include_few_shot)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            hop_latencies.append(time.perf_counter() - _t0)
 
             if is_last:
                 answer = text
@@ -139,4 +165,5 @@ class TextAgentPipeline:
             hop_texts=hop_texts,
             hop_bytes=hop_bytes,
             total_bytes=total_bytes,
+            hop_latencies=hop_latencies,
         )

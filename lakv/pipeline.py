@@ -24,23 +24,47 @@ from lakv.offset_corrector import OffsetCorrector
 from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
 
 
-# Synthetic (non-eval) few-shot exemplar for the Reasoner: demonstrates
+# Synthetic (non-eval) few-shot exemplars for the Reasoner: demonstrate
 # restating each given number before using it, to counter the model's
-# tendency to misread numbers it copies later in its own reasoning.
-_REASONER_EXEMPLAR_QUESTION = (
-    "A bakery bakes 45 loaves of bread each morning. It sells 12 loaves to a "
-    "cafe and donates 8 loaves to a shelter. It sells the rest at $3 per "
-    "loaf. How much money does the bakery make from the remaining loaves?"
-)
-_REASONER_EXEMPLAR_SOLUTION = (
-    "Step 1: The bakery bakes 45 loaves (given: 45 loaves baked).\n"
-    "Step 2: It sells 12 loaves to a cafe (given: 12 loaves to cafe).\n"
-    "Step 3: It donates 8 loaves to a shelter (given: 8 loaves donated).\n"
-    "Step 4: Loaves remaining = 45 - 12 - 8 = 25.\n"
-    "Step 5: Price per loaf is $3 (given: $3 per loaf).\n"
-    "Step 6: Revenue = 25 * 3 = 75.\n"
-    "#### 75"
-)
+# tendency to misread/substitute numbers later in its own reasoning. Three
+# exemplars covering distinct operation shapes (subtract-then-multiply,
+# percentage increase, multi-entity multiplicative scaling) so the pattern
+# generalizes rather than just being memorized for one problem shape.
+_REASONER_FEWSHOT_EXAMPLES: List[Tuple[str, str]] = [
+    (
+        "A bakery bakes 45 loaves of bread each morning. It sells 12 loaves to a "
+        "cafe and donates 8 loaves to a shelter. It sells the rest at $3 per "
+        "loaf. How much money does the bakery make from the remaining loaves?",
+        "Step 1: The bakery bakes 45 loaves (given: 45 loaves baked).\n"
+        "Step 2: It sells 12 loaves to a cafe (given: 12 loaves to cafe).\n"
+        "Step 3: It donates 8 loaves to a shelter (given: 8 loaves donated).\n"
+        "Step 4: Loaves remaining = 45 - 12 - 8 = 25.\n"
+        "Step 5: Price per loaf is $3 (given: $3 per loaf).\n"
+        "Step 6: Revenue = 25 * 3 = 75.\n"
+        "#### 75",
+    ),
+    (
+        "A painting costs $200. After restoration it is worth 150% more than "
+        "its original price. How much is the painting worth after restoration?",
+        "Step 1: The painting's original price is $200 (given: $200 original price).\n"
+        "Step 2: The value increase is 150% of the original price (given: 150% more).\n"
+        "Step 3: Increase in value = 200 * 1.50 = 300.\n"
+        "Step 4: Value after restoration = original price + increase = 200 + 300 = 500.\n"
+        "#### 500",
+    ),
+    (
+        "Mia has 5 marbles. Noah has 3 times as many marbles as Mia. Liam has "
+        "twice as many marbles as Noah. How many marbles do Mia, Noah, and "
+        "Liam have together?",
+        "Step 1: Mia has 5 marbles (given: 5 marbles).\n"
+        "Step 2: Noah has 3 times as many as Mia (given: 3 times Mia's amount) "
+        "= 3 * 5 = 15.\n"
+        "Step 3: Liam has twice as many as Noah (given: 2 times Noah's amount) "
+        "= 2 * 15 = 30.\n"
+        "Step 4: Total = 5 + 15 + 30 = 50.\n"
+        "#### 50",
+    ),
+]
 
 
 # Reasoner/Verifier/Finalizer system prompts, keyed by dataset. GSM8K's set is
@@ -52,8 +76,11 @@ PROMPT_SETS: Dict[str, List[str]] = {
     "gsm8k": [
         (
             "You are a mathematical reasoning assistant. Solve the problem step "
-            "by step, showing each calculation explicitly. Continue until you "
-            "reach the final answer."
+            "by step, showing each calculation explicitly. Before using any "
+            "number from the question in a calculation, first restate it "
+            "exactly as given in the question, so you don't accidentally "
+            "substitute a different value. Continue until you reach the final "
+            "answer."
         ),
         (
             "You are a critical verification agent. "
@@ -74,7 +101,10 @@ PROMPT_SETS: Dict[str, List[str]] = {
             "You are a careful reading-comprehension assistant. Read the given "
             "context passages and the question, identify the specific "
             "sentence(s) that answer it, and state a draft answer with a "
-            "brief justification quoting the supporting sentence(s)."
+            "brief justification quoting the supporting sentence(s). Before "
+            "stating your answer, first quote the exact sentence(s) from the "
+            "context word-for-word, so you don't rely on a misremembered or "
+            "paraphrased detail."
         ),
         (
             "You are a critical verification agent. "
@@ -107,8 +137,37 @@ class PipelineConfig:
     n_agents: int = 3
     outlier_clipping: bool = False
     clip_percentile: float = 99.5
+    # AnchorTable tuning (only consulted when use_offset_correction=True).
+    # graceful_degradation=True (default) means a low-confidence/ambiguous
+    # anchor match still gets applied as a blended correction rather than
+    # rejected outright. Investigation this session (E/E_int8's accuracy gap
+    # vs A, n=15 HotpotQA) found the Verifier hedging away answers the
+    # Reasoner got right on corrected hops — plausibly correction noise from
+    # exactly this kind of low-confidence blend. Set False to instead fall
+    # back to uncorrected relay (raw, unshifted KV — same as if the anchor
+    # table had missed) whenever confidence/entropy don't clear the bar
+    # below, to isolate whether correction QUALITY (not the plumbing, which
+    # is now fixed) is the accuracy bottleneck.
+    anchor_graceful_degradation: bool = True
+    anchor_min_confidence: float = 0.5
+    anchor_entropy_threshold: float = 0.3
+    # Absolute L2-distance floor on the best anchor candidate's match quality
+    # — a check entropy/min_confidence above CANNOT express (they only
+    # measure agreement among candidates, and are trivially "perfect" with
+    # just one candidate, which is the common case here). None = disabled.
+    # See AnchorTable.__init__ / query_correction for the full reasoning.
+    anchor_max_distance: Optional[float] = None
     profile_path: Optional[str] = None
-    intermediate_max_new_tokens: int = 200
+    # Was 200 (a Kaggle OOM workaround that outlived its reason once moved to a
+    # 4090 with headroom to spare). Measured this was truncating the Reasoner/
+    # Verifier hops mid-derivation on ~85-90% of questions — checked by
+    # tokenizing every hop_texts entry across every result file this session
+    # and counting how many land within 5 tokens of the cap. 512 is grounded
+    # in single_agent's own raw-answer token-length distribution (same verbose
+    # numbered-step style, rarely truncated at its 1536 budget): p90=480,
+    # p95=533 tokens across 130 samples. It's a ceiling, not a fixed length —
+    # generation still stops early via EOS once actually done.
+    intermediate_max_new_tokens: int = 512
     # Kept at 512 (not bumped to single_agent's 1536) deliberately: every
     # existing preset's final hop always goes through the manual KV-injection
     # decode loop (_generate's injection branch), which now samples via
@@ -121,18 +180,29 @@ class PipelineConfig:
     # the larger budget, since it never carries an injected cache forward
     # with real sampling.
     final_max_new_tokens: int = 512
+    # Greedy by default: real eval harnesses only use sampling when paired with
+    # self-consistency (multi-sample majority voting), never bare for a single
+    # generation — see LAKV_V2_RUN_GUIDE session notes. temperature/top_p still
+    # set to Qwen's own recommended values (its generation_config.json) so
+    # they're correct whenever do_sample is turned back on (e.g. self-consistency).
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
-        "do_sample": True,
-        "temperature": 0.6,
-        "top_p": 0.95,
+        "do_sample": False,
+        "temperature": 0.7,
+        "top_p": 0.8,
         "num_beams": 1,
     })
     print_raw_outputs: bool = False
     anchor_channel_key: str = "solver_to_finalizer"
     _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
-    use_reasoner_few_shot: bool = True
-    reasoner_few_shot_example: Tuple[str, str] = (
-        _REASONER_EXEMPLAR_QUESTION, _REASONER_EXEMPLAR_SOLUTION
+    # Off by default: the exemplars measurably grow the Reasoner's prompt (and
+    # therefore its KV cache — Config A's KV/hop went 37.6MB -> 56.7MB with
+    # this on), inflating A-E's reported transmission cost for an accuracy
+    # effect that wasn't statistically distinguishable from noise at the
+    # sample sizes tested. Mechanism kept available — pass
+    # use_reasoner_few_shot=True explicitly to opt back in.
+    use_reasoner_few_shot: bool = False
+    reasoner_few_shot_examples: List[Tuple[str, str]] = field(
+        default_factory=lambda: list(_REASONER_FEWSHOT_EXAMPLES)
     )
     # Which PROMPT_SETS entry to fall back to when system_prompts isn't given
     # explicitly. Only consulted in __post_init__ below — passing
@@ -154,6 +224,7 @@ class HopStat:
     compression_ratio: float
     n_layers_transmitted: int
     n_layers_total: int             # 28
+    latency_seconds: float = 0.0    # wall-clock time for this hop's generation call only
 
 
 @dataclass
@@ -165,6 +236,7 @@ class RunResult:
     total_original_mb: float
     overall_compression_ratio: float
     hop_texts: List[str]            # decoded text per intermediate hop; hop_texts[0] is the Reasoner
+    finalizer_latency_seconds: float = 0.0  # wall-clock time for the last agent's generation call only
 
 
 # ─── pipeline ─────────────────────────────────────────────────────────────────
@@ -207,7 +279,13 @@ class LAKVPipeline:
         self.anchor_table: Optional[AnchorTable] = None
         self.corrector: Optional[OffsetCorrector] = None
         if config.use_offset_correction:
-            self.anchor_table = AnchorTable(max_size=20, entropy_threshold=0.3, min_confidence=0.5)
+            self.anchor_table = AnchorTable(
+                max_size=20,
+                entropy_threshold=config.anchor_entropy_threshold,
+                min_confidence=config.anchor_min_confidence,
+                graceful_degradation=config.anchor_graceful_degradation,
+                max_distance=config.anchor_max_distance,
+            )
             self.corrector = OffsetCorrector(anchor_table=self.anchor_table)
 
         self._eos_ids = self._get_stop_token_ids()
@@ -240,6 +318,7 @@ class LAKVPipeline:
         pending_position_offset = 0
         total_bytes = 0
         answer = ""
+        finalizer_latency = 0.0
         q_key = make_key(question)
         self.last_run_offset_logs = []
 
@@ -256,10 +335,10 @@ class LAKVPipeline:
         for agent_idx in range(n_agents):
             system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
             messages = [{"role": "system", "content": system_prompt}]
-            if agent_idx == 0 and self.config.use_reasoner_few_shot:
-                exemplar_q, exemplar_a = self.config.reasoner_few_shot_example
-                messages.append({"role": "user", "content": exemplar_q})
-                messages.append({"role": "assistant", "content": exemplar_a})
+            if agent_idx == 0 and self.config.use_reasoner_few_shot and self.config.dataset == "gsm8k":
+                for exemplar_q, exemplar_a in self.config.reasoner_few_shot_examples:
+                    messages.append({"role": "user", "content": exemplar_q})
+                    messages.append({"role": "assistant", "content": exemplar_a})
             messages.append({"role": "user", "content": question})
             prompt_text = self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
@@ -285,6 +364,9 @@ class LAKVPipeline:
                 injected_kv_tuple = decompressed
 
             if is_last:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _t0 = time.perf_counter()
                 answer = self._generate(
                     input_ids,
                     injected_kv_tuple,
@@ -292,9 +374,15 @@ class LAKVPipeline:
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
                 )
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                finalizer_latency = time.perf_counter() - _t0
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _t0 = time.perf_counter()
                 raw_kv_tuple, agent_hidden, hop_text = self._generate_intermediate_with_hidden(
                     input_ids,
                     injected_kv_tuple,
@@ -302,6 +390,9 @@ class LAKVPipeline:
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
                 )
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                hop_latency = time.perf_counter() - _t0
                 hop_texts.append(hop_text)
                 pending_position_offset = 0
 
@@ -350,6 +441,7 @@ class LAKVPipeline:
                         question=question,
                         channel_key=receiver_id,
                         query_hidden=base_hidden,
+                        query_base_kv=base_kv,
                         device=self.device,
                         rope_theta=self._get_rope_theta(),
                     )
@@ -388,6 +480,7 @@ class LAKVPipeline:
                     compression_ratio=kv_message.compression_ratio,
                     n_layers_transmitted=n_transmitted,
                     n_layers_total=self.N_LAYERS,
+                    latency_seconds=hop_latency,
                 ))
 
         if self.config.print_raw_outputs:
@@ -404,6 +497,7 @@ class LAKVPipeline:
             total_original_mb=total_orig,
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
             hop_texts=hop_texts,
+            finalizer_latency_seconds=finalizer_latency,
         )
 
     def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
@@ -565,15 +659,24 @@ class LAKVPipeline:
     ) -> str:
         """Run generation for the final agent.
 
-        When KV is injected from a prior agent, model.generate() cannot be used
-        directly — generate() assumes past_key_values covers a prefix of the
-        *same* input_ids, but our KV comes from a *different* agent's prompt.
-        This causes internal cache_position trimming to produce an empty tensor,
-        crashing in _cache_dependant_input_preparation.
+        When KV is injected from a prior agent, model.generate() can't be called
+        directly on the full prompt — its first-call bookkeeping (which tokens
+        are "new" vs already covered by past_key_values) assumes input_ids is a
+        continuation of whatever produced the cache. When the cache instead came
+        from a *different* agent's prompt, that assumption breaks (verified
+        against the installed transformers source: it computes
+        next_sequence_length = input_ids.shape[1] - past_key_values.get_seq_
+        length(), which goes negative here).
 
-        Solution: prime the cache with one explicit forward() call, then run a
-        manual greedy decode loop (one token at a time) using the primed cache.
-        When there is no KV to inject, fall back to model.generate() normally.
+        Solution: prime the cache ourselves with one explicit forward() call
+        over the full prompt (unavoidable), sample the first token from that,
+        then hand the now-self-consistent cache off to generate() for the rest
+        of decode — at that point it's just a normal continuation, so
+        generate()'s fast path works correctly. Falls back to the fully manual
+        per-token loop only for offset-corrected configs (position_offset != 0),
+        where generate()'s default position handling doesn't know about the
+        custom RoPE-offset trick those configs apply. When there is no KV to
+        inject at all, this skips straight to plain model.generate().
         """
         eos_ids = self._eos_ids
         if max_new_tokens is None:
@@ -581,11 +684,15 @@ class LAKVPipeline:
 
         if injected_kv_tuple is None:
             # ── No KV injection: standard generate ───────────────────
+            # repetition_penalty forced to 1.0 for the same reason as the
+            # fast path in _generate_intermediate_with_hidden — see its
+            # comment. Model default (1.05) would otherwise silently apply
+            # here but nowhere in the manual loop below.
             with torch.no_grad():
                 output_ids = self.model.generate(
                     input_ids=input_ids,
                     max_new_tokens=max_new_tokens,
-                    **self.config.generation_kwargs,
+                    **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
@@ -616,10 +723,45 @@ class LAKVPipeline:
             )
         running_cache = out.past_key_values          # natural DynamicCache
         next_logits   = out.logits[:, -1, :]         # logits for the next token
-
-        # Step 2 — Greedy decode one token at a time with explicit position tracking
-        generated: List[int] = []
         cur_pos = position_start + prompt_len
+
+        if position_offset == 0:
+            # position_start == cache_seq_len exactly (no RoPE-offset trick in
+            # play), so running_cache's physical length already equals the
+            # RoPE position the next token needs. generate() can take over
+            # for the rest of decode: sample token 1 ourselves (from the prime
+            # step's logits, via the same _sample_next_token used everywhere
+            # else), then hand the primed cache off to generate() for tokens
+            # 2..max_new_tokens. See _generate_intermediate_with_hidden's
+            # matching branch for the full account of why this is safe (and
+            # the correction to an earlier, WRONG assumption about omitting
+            # attention_mask here — it must be passed, covering the full
+            # cache+new-token length, or generate() auto-builds its own
+            # length-1 mask that triggers the exact crash this works around).
+            first_token = self._sample_next_token(next_logits)
+            first_tok_id = first_token.item()
+            if first_tok_id in eos_ids or max_new_tokens <= 1:
+                generated_ids = [] if first_tok_id in eos_ids else [first_tok_id]
+            else:
+                handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                with torch.no_grad():
+                    gen_out = self.model.generate(
+                        input_ids=first_token,
+                        past_key_values=running_cache,
+                        attention_mask=handoff_mask,
+                        max_new_tokens=max_new_tokens - 1,
+                        use_cache=True,
+                        return_dict_in_generate=True,
+                        **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                    )
+                generated_ids = gen_out.sequences[0].tolist()
+            return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+        # ── position_offset != 0 (offset-corrected configs): keep the exact
+        # manual loop — generate() doesn't know about the custom RoPE-offset
+        # trick those configs apply, and silently getting that wrong is
+        # exactly the kind of bug that already broke Config E once before. ──
+        generated: List[int] = []
         for _ in range(max_new_tokens):
             next_token = self._sample_next_token(next_logits)  # (1, 1)
             tok_id = next_token.item()
@@ -720,40 +862,135 @@ class LAKVPipeline:
         if max_new is None:
             max_new = self.config.intermediate_max_new_tokens
 
-        if injected_kv_tuple is not None:
-            cache = self._to_dynamic_cache(injected_kv_tuple)
-            cache_seq_len = injected_kv_tuple[0][0].shape[2]
-            position_start = cache_seq_len + position_offset
-            prompt_len = input_ids.shape[1]
-            position_ids = torch.arange(
-                position_start, position_start + prompt_len,
-                device=self.device,
-            ).unsqueeze(0)
-            attention_mask = torch.ones(
-                (1, cache_seq_len + prompt_len),
-                dtype=torch.long, device=self.device,
-            )
+        if injected_kv_tuple is None:
+            # Nothing to inject on this hop (always true for the Reasoner,
+            # agent_idx 0) — there's no foreign-prompt cache_position mismatch
+            # to work around here, so the manual per-token loop below buys
+            # nothing. Let generate() do prefill+decode natively; measured
+            # this session: this hop was paying the full manual-loop tax for
+            # zero reason, since it was never actually injecting anything.
+            # repetition_penalty: Qwen2.5's own generation_config.json defaults
+            # this to 1.05. generate() silently inherits it when not overridden
+            # here — but _sample_next_token (the manual loop below, still used
+            # for Verifier/Finalizer) applies no penalty at all. Force 1.0 so
+            # this fast path is truly behaviorally identical to the loop it
+            # replaces, not just usually close. Confirmed this mattered: without
+            # it, the Reasoner rambled measurably longer (sometimes back past
+            # the 512-token cap) and diverged from what the un-penalized
+            # Verifier/Finalizer expected, corrupting downstream answers.
             with torch.no_grad():
-                out = self.model(
+                gen_out = self.model.generate(
                     input_ids=input_ids,
-                    past_key_values=cache,
-                    position_ids=position_ids,
-                    attention_mask=attention_mask,
+                    max_new_tokens=max_new,
                     use_cache=True,
+                    return_dict_in_generate=True,
                     output_hidden_states=True,
+                    **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
                 )
-        else:
-            with torch.no_grad():
-                out = self.model(input_ids=input_ids, use_cache=True,
-                                 output_hidden_states=True)
-            position_start = 0
-            prompt_len = input_ids.shape[1]
+            # hidden_states[0] = the prompt-prefill step (one forward() call
+            # over the whole prompt); [-1] = last layer. Same tensor this
+            # branch produced before, just read off generate()'s own output
+            # instead of a separate hand-rolled forward() call.
+            last_hidden = gen_out.hidden_states[0][-1]  # (1, prompt_len, hidden)
+            new_tokens = gen_out.sequences[0, input_ids.shape[1]:]
+            generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            return self._to_tuple(gen_out.past_key_values), last_hidden, generated_text
+
+        # ── Real injection (Verifier/Finalizer hops): a manual "prime" step
+        # is still unavoidable — generate()'s own first-call bookkeeping
+        # (which tokens are "new" vs already in the cache) breaks when the
+        # cache didn't come from the same prompt as input_ids (confirmed by
+        # reading the installed transformers source: it computes
+        # next_sequence_length = input_ids.shape[1] - past_key_values.get_
+        # seq_length(), which goes negative here and produces garbage). So we
+        # do that one forward() call ourselves, exactly as before. What
+        # happens AFTER priming is handled below. ─────────────────────────
+        cache = self._to_dynamic_cache(injected_kv_tuple)
+        cache_seq_len = injected_kv_tuple[0][0].shape[2]
+        position_start = cache_seq_len + position_offset
+        prompt_len = input_ids.shape[1]
+        position_ids = torch.arange(
+            position_start, position_start + prompt_len,
+            device=self.device,
+        ).unsqueeze(0)
+        attention_mask = torch.ones(
+            (1, cache_seq_len + prompt_len),
+            dtype=torch.long, device=self.device,
+        )
+        with torch.no_grad():
+            out = self.model(
+                input_ids=input_ids,
+                past_key_values=cache,
+                position_ids=position_ids,
+                attention_mask=attention_mask,
+                use_cache=True,
+                output_hidden_states=True,
+            )
 
         last_hidden = out.hidden_states[-1]  # (1, seq, hidden)
         running_cache = out.past_key_values
         next_logits = out.logits[:, -1, :]
-
         cur_pos = position_start + prompt_len
+
+        if position_offset == 0:
+            # Once primed, running_cache's physical length already equals
+            # the RoPE position the next token needs (no offset trick in
+            # play) — generate() can take over for the rest of decode.
+            #
+            # CORRECTION to the original version of this comment: omitting
+            # attention_mask here does NOT avoid the crash — generate() auto-
+            # builds its own default mask sized to match input_ids (length 1),
+            # which makes attention_mask.shape[1] == input_ids.shape[1] (1==1)
+            # true, wrongly telling _prefill() "input_ids is the FULL sequence,
+            # slice it down to just the new part" -> next_sequence_length =
+            # 1 - <real cache length> (deeply negative) -> input_ids sliced to
+            # 0 elements -> crash deep in q_proj's reshape. Confirmed via an
+            # actual run, not just reading the source.
+            #
+            # Fix: pass attention_mask explicitly, covering the FULL sequence
+            # (cache so far + this 1 new token) — length cur_pos + 1, not 1.
+            # That makes attention_mask.shape[1] != input_ids.shape[1], so the
+            # "full sequence passed, please slice" branch never triggers, and
+            # input_ids (just the 1 real new token) is used as-is, correctly.
+            first_token = self._sample_next_token(next_logits)
+            first_tok_id = first_token.item()
+            if first_tok_id in eos_ids:
+                generated_ids = []
+            elif max_new <= 1:
+                # Edge case (max_new is always 512 in practice, never hit):
+                # still fold first_token into running_cache via one manual
+                # forward, matching what the old per-token loop always did
+                # even on its very last iteration — generate() isn't used
+                # here since max_new_tokens=0 handling isn't worth depending
+                # on for a case that doesn't occur with current configs.
+                generated_ids = [first_tok_id]
+                with torch.no_grad():
+                    out = self.model(
+                        input_ids=first_token,
+                        past_key_values=running_cache,
+                        position_ids=torch.tensor([[cur_pos]], device=self.device),
+                        use_cache=True,
+                    )
+                running_cache = out.past_key_values
+            else:
+                handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                with torch.no_grad():
+                    gen_out = self.model.generate(
+                        input_ids=first_token,
+                        past_key_values=running_cache,
+                        attention_mask=handoff_mask,
+                        max_new_tokens=max_new - 1,
+                        use_cache=True,
+                        return_dict_in_generate=True,
+                        **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                    )
+                generated_ids = gen_out.sequences[0].tolist()
+                running_cache = gen_out.past_key_values
+            generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            return self._to_tuple(running_cache), last_hidden, generated_text
+
+        # ── position_offset != 0 (offset-corrected configs): keep the exact
+        # manual loop — see the matching comment in _generate() above. ────
         generated_ids: List[int] = []
         for _ in range(max_new):
             next_token = self._sample_next_token(next_logits)

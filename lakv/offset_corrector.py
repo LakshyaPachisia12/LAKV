@@ -41,6 +41,7 @@ class OffsetCorrector:
         sender_seq_len: Optional[int] = None,
         receiver_prompt_len: Optional[int] = None,
         query_hidden: Optional[torch.Tensor] = None,
+        query_base_kv: Optional[Tuple] = None,
         device: str = "cuda",
         rope_theta: float = 1_000_000.0,
     ) -> Tuple[KVMessage, bool]:
@@ -54,6 +55,11 @@ class OffsetCorrector:
             question: the shared placeholder text (math question).
             agent_id: which agent will receive this cache (e.g. "agent_1").
             query_hidden: (1, seq, hidden) hidden states from receiver's base KV.
+            query_base_kv: THIS question's own base_kv (from compute_base_kv) —
+                forwarded to AnchorTable.query_correction as the reconstruction's
+                base content, so a correction transfers the matched anchor's
+                position/prefix DELTA onto this question's own facts rather
+                than substituting the anchor's own (different) content.
             device: target device for corrected tensors.
 
         Returns:
@@ -89,10 +95,16 @@ class OffsetCorrector:
             key,
             effective_channel,
             query_hidden,
-            device,
+            query_base_kv=query_base_kv,
+            device=device,
             target_prompt_len=receiver_len,
             rope_theta=rope_theta,
         )
+        # Surface the best candidate's raw L2 distance regardless of hit/miss
+        # — this is what anchor_max_distance would threshold on, and needs to
+        # be visible in real run data before picking a value (see
+        # AnchorTable.max_distance docstring).
+        self.last_offset_log["anchor_min_distance"] = self.anchor_table.last_query_min_distance
         if result is None:
             return kv_message, False
 
@@ -100,21 +112,45 @@ class OffsetCorrector:
 
         # Rebuild KVMessage from corrected bfloat16 tensors (mode='none', no re-quantisation)
         # We preserve original bytes accounting so stats stay comparable.
+        #
+        # corrected_kv is a DENSE, full 28-layer tuple indexed by REAL layer
+        # index (anchor_table.update() is called with raw_kv_tuple, i.e.
+        # before layer selection ever runs — see pipeline.py::run()). But
+        # kv_message.layers only holds the layers layer selection actually
+        # KEPT (e.g. 20/28), in ascending real-index order — NOT a dense
+        # 0..19 range. The old code did `enumerate(corrected_kv)` and
+        # matched position i against kv_message.layers[i], silently
+        # assuming those two indexings lined up. They don't, as soon as any
+        # layer below position len(kv_message.layers)-1 was dropped (always
+        # true once any selection happens) — real layer 5's corrected KV
+        # would get relabeled and injected as whatever layer kv_message.
+        # layers[5] actually was (e.g. real layer 7), scrambling which
+        # attention layer's weights see which cache. Confirmed as the cause
+        # of E/E_int8 producing pure noise output (checked raw generated
+        # text — token-soup garbage from the very first token, consistent
+        # with cache data landing in the wrong layer's attention entirely).
+        #
+        # Fix: index corrected_kv by each kept layer's REAL layer_idx, not
+        # by its position in the (sparse) kept-layer list.
         new_layers = []
-        for layer_idx, (k, v) in enumerate(corrected_kv):
-            if layer_idx >= len(kv_message.layers):
+        for orig in kv_message.layers:
+            layer_idx = orig.layer_idx
+            if layer_idx >= len(corrected_kv):
                 break
-            orig = kv_message.layers[layer_idx]
+            k, v = corrected_kv[layer_idx]
             new_layers.append(CompressedLayer(
-                k_q=k.cpu(),
-                v_q=v.cpu(),
-                k_scale=torch.ones(k.shape[0], k.shape[1]),
-                k_zp=torch.zeros(k.shape[0], k.shape[1]),
-                v_scale=torch.ones(v.shape[0], v.shape[1]),
-                v_zp=torch.zeros(v.shape[0], v.shape[1]),
+                # No .cpu() — same reasoning as kv_compressor.py's compress():
+                # single-process pipeline, nothing ever actually transmits a
+                # KVMessage over a wire, so the round-trip was pure overhead.
+                k_q=k,
+                v_q=v,
+                k_scale=torch.ones(k.shape[0], k.shape[1], device=k.device),
+                k_zp=torch.zeros(k.shape[0], k.shape[1], device=k.device),
+                v_scale=torch.ones(v.shape[0], v.shape[1], device=k.device),
+                v_zp=torch.zeros(v.shape[0], v.shape[1], device=k.device),
                 shape=tuple(k.shape),
                 bits=16,
-                layer_idx=orig.layer_idx,
+                layer_idx=layer_idx,
             ))
 
         from lakv.kv_compressor import KVMessage as KVM
