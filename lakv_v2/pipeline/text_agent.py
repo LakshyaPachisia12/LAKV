@@ -48,6 +48,11 @@ class TextAgentPipelineConfig:
     do_sample: bool = False
     temperature: float = 0.7
     top_p: float = 0.8
+    # Explicit rather than left unset — see SingleAgentPipelineConfig
+    # .repetition_penalty for why (matches Qwen2.5's own generation_config
+    # .json default; kept explicit so this doesn't silently diverge from
+    # lakv/pipeline.py's KV-relay configs, which now set the same value).
+    repetition_penalty: float = 1.05
     print_raw_outputs: bool = False
     # Off by default — same rationale as SingleAgentPipelineConfig.use_few_shot
     # and PipelineConfig.use_reasoner_few_shot. Applied only to the first
@@ -101,6 +106,7 @@ class TextAgentPipeline:
             do_sample=self.config.do_sample,
             num_beams=1,
             pad_token_id=self.tokenizer.eos_token_id,
+            repetition_penalty=self.config.repetition_penalty,
         )
         if self.config.do_sample:
             gen_kwargs["temperature"] = self.config.temperature

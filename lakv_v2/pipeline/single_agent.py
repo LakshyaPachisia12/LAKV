@@ -43,6 +43,13 @@ class SingleAgentPipelineConfig:
     do_sample: bool = False
     temperature: float = 0.7
     top_p: float = 0.8
+    # Explicit rather than left unset: Qwen2.5's generation_config.json
+    # default is 1.05 and generate() silently inherits it either way, but
+    # leaving it implicit here made it easy to miss that lakv/pipeline.py's
+    # KV-relay configs were diverging from this value (they used to force
+    # 1.0) — now both sides set the same value explicitly instead of one
+    # relying on an implicit external default.
+    repetition_penalty: float = 1.05
     # Off by default — see PipelineConfig.use_reasoner_few_shot (lakv/pipeline.py)
     # for why: real but statistically-unproven accuracy effect at the sample
     # sizes tested, real prompt-length cost. GSM8K-specific — HotpotQA is
@@ -86,6 +93,7 @@ class SingleAgentPipeline:
             do_sample=self.config.do_sample,
             num_beams=1,
             pad_token_id=self.tokenizer.eos_token_id,
+            repetition_penalty=self.config.repetition_penalty,
         )
         if self.config.do_sample:
             gen_kwargs["temperature"] = self.config.temperature
