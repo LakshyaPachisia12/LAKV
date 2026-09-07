@@ -93,10 +93,14 @@ def load_dataset_samples(dataset: str, split: str, n: int = None):
 def mode_calibrate(args):
     from lakv.calibration_profiler import CalibrationProfiler, plot_signals, plot_score_scatter
 
-    # New timestamped folder for every calibration run
+    # New timestamped folder for every calibration run. Filename is derived
+    # from --model (not hardcoded to "qwen") so calibrating a second model
+    # family (see Phase 0b of the research-extensions plan) doesn't produce a
+    # misleadingly-named "qwen_*.json" profile for a non-Qwen model.
     profile_dir = Path(args.profile_dir) / f"run_{_timestamp()}"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    profile_path = profile_dir / f"qwen_{args.dataset}.json"
+    model_slug = args.model.rstrip("/").split("/")[-1].lower().replace(".", "_")
+    profile_path = profile_dir / f"{model_slug}_{args.dataset}.json"
     print(f"[run] Profile will be saved to: {profile_path}")
 
     model, tokenizer = load_model(args.model, args.device, attn_implementation="eager")

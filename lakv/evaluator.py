@@ -644,7 +644,18 @@ class Evaluator:
             is_single = (c == "single_agent")
             comp_str = "      —   " if is_single else f"{s['mean_compressed_mb']:>8.2f} MB"
             ratio_str = "        — " if is_single else f"{s['mean_compression_ratio']:>8.2f}x"
-            layer_str = "   —      " if is_single else f"{s['mean_layers_transmitted']:>5.0f}/28    "
+            # n_layers_total varies by model (28 for Qwen2.5-7B, 32 for e.g.
+            # Llama-3.1-8B) — read it from this config's own hop_stats rather
+            # than hardcoding, so the table stays correct once a second model
+            # is evaluated (see Phase 0b of the research-extensions plan).
+            n_layers_total = None
+            for sample in d.get("per_sample", []):
+                hs = sample.get("hop_stats")
+                if hs:
+                    n_layers_total = hs[0].get("n_layers_total")
+                    break
+            total_str = f"{n_layers_total}" if n_layers_total is not None else "?"
+            layer_str = "   —      " if is_single else f"{s['mean_layers_transmitted']:>5.0f}/{total_str:<6}"
             print(f"{c:<22}| {s['accuracy']*100:>7.1f}% | {comp_str} | "
                   f"{ratio_str} | {layer_str} | {s['mean_latency_seconds']:>8.1f}s")
             n = s.get("n_samples", 0)
