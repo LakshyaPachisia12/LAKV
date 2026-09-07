@@ -114,6 +114,18 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="zeros",
         outlier_clipping=True,
     ),
+    # KIVI-inspired (Liu et al., ICML'24) alternative to the rotation
+    # approach above: instead of rotating K (which produced bizarre
+    # out-of-distribution tokens, plausibly from disrupting K's RoPE
+    # encoding), quantize K per-channel instead of per-head. V is unchanged
+    # from plain B_int4 (not implicated in the RoPE-interaction failure).
+    # See lakv/kv_compressor.py's _quantize_per_channel docstring for the
+    # full reasoning and what's simplified relative to the original paper.
+    "B_int4_kivi": PipelineConfig(
+        use_layer_selection=False, compression_mode="uniform_int4_kivi_k_channel",
+        use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
+    ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",

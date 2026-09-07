@@ -94,6 +94,58 @@ def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) 
     return t.to(torch.bfloat16)
 
 
+def _quantize_per_channel(tensor: torch.Tensor, bits: int, clip_percentile: Optional[float] = None):
+    """Per-(head, channel) min-max quantization — one scale/zero-point per
+    (batch, head, head_dim) triple, reducing over the SEQUENCE axis only
+    (not head_dim), unlike _quantize() above which lumps seq+dim together
+    into one range per head.
+
+    KIVI-inspired (Liu et al., ICML'24, arXiv 2402.02750) — motivated by K
+    specifically: RoPE (already applied to K before it's cached) mixes pairs
+    of channels by a position-dependent amount, which makes per-head
+    min-max quantization (one range for every channel AND every position)
+    a much worse fit for K than for V. Per-channel quantization keeps each
+    channel's own scale, only reducing over position — this is intended for
+    K specifically, NOT a general replacement for V's existing per-head
+    quantization (V has no RoPE applied, so it isn't implicated in the
+    failure mode this addresses).
+
+    Simplified relative to the original KIVI paper: no group-wise windowing
+    over sequence chunks, no fp16 residual buffer for the most recent
+    tokens. Verify against the primary source before treating this as a
+    faithful reproduction.
+
+    tensor shape: (batch, heads, seq, dim)
+    Returns: (quantized_uint8, scale[b,h,d], zero_point[b,h,d])
+    """
+    t = tensor.detach().float()
+    qmax = (1 << bits) - 1
+
+    if clip_percentile is not None:
+        lo_q = (100.0 - clip_percentile) / 100.0
+        hi_q = clip_percentile / 100.0
+        t_min = torch.quantile(t, lo_q, dim=2, keepdim=True)  # reduce over seq only
+        t_max = torch.quantile(t, hi_q, dim=2, keepdim=True)
+    else:
+        t_min = t.amin(dim=2, keepdim=True)  # (b, h, 1, d)
+        t_max = t.amax(dim=2, keepdim=True)
+
+    same = (t_max == t_min)
+    scale = torch.where(same, torch.ones_like(t_max), (t_max - t_min) / qmax)
+    zero_point = t_min
+
+    q = ((t - zero_point) / scale).round().clamp(0, qmax).to(torch.uint8)
+    return q, scale.squeeze(2), zero_point.squeeze(2)  # (b, h, d)
+
+
+def _dequantize_per_channel(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) -> torch.Tensor:
+    """Inverse of _quantize_per_channel. scale/zero_point shape (b, h, d)."""
+    s = scale.unsqueeze(2).float()        # (b, h, 1, d)
+    zp = zero_point.unsqueeze(2).float()  # (b, h, 1, d)
+    t = q.to(torch.float32) * s + zp
+    return t.to(torch.bfloat16)
+
+
 # ─── rotation (TurboQuant/PolarQuant-inspired int4 quantization) ──────────────
 #
 # Phase 3 of the research-extensions plan. Rotating a tensor by a fixed
@@ -180,7 +232,7 @@ class KVCompressor:
                 is enabled. Default 99.5 (i.e. clip to the 0.5th/99.5th range).
         """
         if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated",
-                        "uniform_int4_rotated_v_only", "adaptive"):
+                        "uniform_int4_rotated_v_only", "uniform_int4_kivi_k_channel", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
         if mode == "adaptive" and profile is None:
             raise ValueError("'adaptive' mode requires a LayerProfile")
@@ -194,7 +246,8 @@ class KVCompressor:
             return 16
         if self.mode == 'uniform_int8':
             return 8
-        if self.mode in ('uniform_int4', 'uniform_int4_rotated', 'uniform_int4_rotated_v_only'):
+        if self.mode in ('uniform_int4', 'uniform_int4_rotated', 'uniform_int4_rotated_v_only',
+                         'uniform_int4_kivi_k_channel'):
             return 4
         
         # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
@@ -284,7 +337,18 @@ class KVCompressor:
                 rotate_v = self.mode in ("uniform_int4_rotated", "uniform_int4_rotated_v_only")
                 k_in = _rotate(k) if rotate_k else k
                 v_in = _rotate(v) if rotate_v else v
-                k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
+
+                if self.mode == "uniform_int4_kivi_k_channel":
+                    # KIVI-inspired: K quantized per-channel (reduces over
+                    # sequence only, keeps head_dim separate) instead of
+                    # per-head — see _quantize_per_channel's docstring for
+                    # why this targets K's RoPE-induced quantization
+                    # difficulty specifically. V is UNCHANGED (still the
+                    # existing per-head _quantize) since V has no RoPE
+                    # applied and isn't implicated in that failure mode.
+                    k_q, k_scale, k_zp = _quantize_per_channel(k_in, bits, clip_percentile=clip_pct)
+                else:
+                    k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
                 v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
 
                 cl = CompressedLayer(
@@ -323,11 +387,18 @@ class KVCompressor:
                 k = cl.k_q.to(device)
                 v = cl.v_q.to(device)
             else:
-                k = _dequantize(
-                    cl.k_q.to(device),
-                    cl.k_scale.to(device),
-                    cl.k_zp.to(device)
-                )
+                if message.mode == "uniform_int4_kivi_k_channel":
+                    k = _dequantize_per_channel(
+                        cl.k_q.to(device),
+                        cl.k_scale.to(device),
+                        cl.k_zp.to(device)
+                    )
+                else:
+                    k = _dequantize(
+                        cl.k_q.to(device),
+                        cl.k_scale.to(device),
+                        cl.k_zp.to(device)
+                    )
                 v = _dequantize(
                     cl.v_q.to(device),
                     cl.v_scale.to(device),
