@@ -147,11 +147,21 @@ class OffsetCorrector:
                 layer_idx=layer_idx,
             ))
 
+        # Recompute compressed_bytes from the actual new_layers tensors —
+        # they're real bf16 (bits=16) now, not whatever kv_message.compressed_
+        # bytes reflected pre-correction (e.g. INT8/adaptive-int4 for E/E_int8).
+        # Carrying that stale figure forward understated the real transmitted
+        # size on every hop where a correction hit. Same accounting convention
+        # kv_compressor.py itself uses for its own bits==16 layers: real
+        # tensor .nbytes, no bytes_per_el formula (that only applies to the
+        # quantized branches, which this rebuilt message never uses).
+        corrected_compressed_bytes = sum(k.nbytes + v.nbytes for k, v in corrected_kv)
+
         from lakv.kv_compressor import KVMessage as KVM
         corrected_msg = KVM(
             layers=new_layers,
             mode="anchor_corrected",
             original_bytes=kv_message.original_bytes,
-            compressed_bytes=kv_message.compressed_bytes,
+            compressed_bytes=corrected_compressed_bytes,
         )
         return corrected_msg, True
