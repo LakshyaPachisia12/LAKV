@@ -71,6 +71,15 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
     # lakv_v2.pipeline.text_agent.TextAgentPipeline. Also not a PipelineConfig;
     # _build_pipeline special-cases it the same way as single_agent above.
     "text_agent": None,
+    # *_matched: same pipelines as single_agent/text_agent, but capped at
+    # final_max_new_tokens=512 to match every KV-relay config's final-hop
+    # budget instead of the 1536 single_agent/text_agent use by default (see
+    # PipelineConfig.final_max_new_tokens for why 512 isn't raised — a real
+    # OOM constraint on this GPU, not an arbitrary choice). Use these for the
+    # primary apples-to-apples comparison; single_agent/text_agent (1536)
+    # remain available as a secondary, unconstrained-ceiling reference.
+    "single_agent_matched": None,
+    "text_agent_matched": None,
     "A": PipelineConfig(
         use_layer_selection=False, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",
@@ -302,16 +311,30 @@ class Evaluator:
         """
         import random as _random
 
-        if cfg_name == "single_agent":
+        if cfg_name in ("single_agent", "single_agent_matched"):
             from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
             cfg = SingleAgentPipelineConfig(dataset=dataset)
+            if cfg_name == "single_agent_matched":
+                # Matched-budget variant: same final-hop token cap as the
+                # KV-relay configs (PipelineConfig.final_max_new_tokens,
+                # 512 — kept there rather than raised, to avoid the OOM this
+                # GPU hits above ~4 samples of Config A at 1536). Use this
+                # for the primary single_agent vs. KV-relay comparison;
+                # "single_agent" (1536) stays available as a secondary,
+                # unconstrained-ceiling reference, not the headline number.
+                cfg.max_new_tokens = 512
             if greedy:
                 cfg.do_sample = False
             return SingleAgentPipeline(self.model, self.tokenizer, cfg, self.device), "single"
 
-        if cfg_name == "text_agent":
+        if cfg_name in ("text_agent", "text_agent_matched"):
             from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
             cfg = TextAgentPipelineConfig(dataset=dataset)
+            if cfg_name == "text_agent_matched":
+                # See single_agent_matched above — same rationale, applied
+                # to the final (Finalizer) hop only; intermediate hops are
+                # already matched at 512 by both configs' own defaults.
+                cfg.final_max_new_tokens = 512
             if greedy:
                 cfg.do_sample = False
             return TextAgentPipeline(self.model, self.tokenizer, cfg, self.device), "text"
