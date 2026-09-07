@@ -13,6 +13,8 @@ Usage:
 """
 
 import argparse
+import json
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +24,46 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _write_run_metadata(output_dir: Path, args) -> None:
+    """Record what was actually run, so a results folder is reproducible
+    without having to guess it later. HotpotQA in particular had zero
+    provenance before this — no seed needed (load_hotpotqa/load_gsm8k are
+    both deterministic data[:n] slices, no shuffling), but the dataset
+    library version and exact split/n/config used were never recorded
+    anywhere, and load_dataset() itself doesn't pin a dataset revision, so
+    this is the next best thing: capture what version of everything
+    actually produced this run's numbers.
+    """
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        git_commit = None
+
+    import datasets
+    import transformers
+
+    metadata = {
+        "timestamp": _timestamp(),
+        "git_commit": git_commit,
+        "model": args.model,
+        "dataset": args.dataset,
+        "split": "validation" if args.dataset == "hotpotqa" else "test",
+        "n_samples": args.n_samples,
+        "configs": args.configs,
+        "arch": args.arch,
+        "greedy": args.greedy,
+        "profile_path": args.profile_path,
+        "datasets_version": datasets.__version__,
+        "transformers_version": transformers.__version__,
+        "torch_version": torch.__version__,
+    }
+    with open(output_dir / "run_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
 
 
 def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
@@ -157,6 +199,7 @@ def mode_experiment(args):
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"[run] Results will be saved to: {output_dir}")
         resume = False
+        _write_run_metadata(output_dir, args)
 
     model, tokenizer = load_model(args.model, args.device)
     split = "validation" if args.dataset == "hotpotqa" else "test"
