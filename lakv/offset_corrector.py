@@ -41,7 +41,8 @@ class OffsetCorrector:
         sender_seq_len: Optional[int] = None,
         receiver_prompt_len: Optional[int] = None,
         query_hidden: Optional[torch.Tensor] = None,
-        query_base_kv: Optional[Tuple] = None,
+        real_kv: Optional[Tuple] = None,
+        real_kv_layer_indices: Optional[list] = None,
         device: str = "cuda",
         rope_theta: float = 1_000_000.0,
     ) -> Tuple[KVMessage, bool]:
@@ -55,11 +56,17 @@ class OffsetCorrector:
             question: the shared placeholder text (math question).
             agent_id: which agent will receive this cache (e.g. "agent_1").
             query_hidden: (1, seq, hidden) hidden states from receiver's base KV.
-            query_base_kv: THIS question's own base_kv (from compute_base_kv) —
-                forwarded to AnchorTable.query_correction as the reconstruction's
-                base content, so a correction transfers the matched anchor's
-                position/prefix DELTA onto this question's own facts rather
-                than substituting the anchor's own (different) content.
+            real_kv: the REAL, actually-relayed KV for this hop's kept layers
+                (post layer-selection, pre-compression — the exact content
+                config D would transmit unmodified), in the same order as
+                kv_message.layers. Forwarded to AnchorTable.query_correction
+                as what the anchor delta gets added ON TOP OF, so a
+                correction refines the real transmitted content rather than
+                substituting a reconstruction for it (matches the actual
+                KVCOMM reference design — see query_correction's docstring).
+            real_kv_layer_indices: real (0-27) layer index for each entry in
+                real_kv, i.e. selection_mask.kept_layer_indices, or None when
+                layer selection is off (real_kv already covers all layers).
             device: target device for corrected tensors.
 
         Returns:
@@ -95,7 +102,8 @@ class OffsetCorrector:
             key,
             effective_channel,
             query_hidden,
-            query_base_kv=query_base_kv,
+            real_kv=real_kv,
+            real_kv_layer_indices=real_kv_layer_indices,
             device=device,
             target_prompt_len=receiver_len,
             rope_theta=rope_theta,
@@ -113,31 +121,17 @@ class OffsetCorrector:
         # Rebuild KVMessage from corrected bfloat16 tensors (mode='none', no re-quantisation)
         # We preserve original bytes accounting so stats stay comparable.
         #
-        # corrected_kv is a DENSE, full 28-layer tuple indexed by REAL layer
-        # index (anchor_table.update() is called with raw_kv_tuple, i.e.
-        # before layer selection ever runs — see pipeline.py::run()). But
-        # kv_message.layers only holds the layers layer selection actually
-        # KEPT (e.g. 20/28), in ascending real-index order — NOT a dense
-        # 0..19 range. The old code did `enumerate(corrected_kv)` and
-        # matched position i against kv_message.layers[i], silently
-        # assuming those two indexings lined up. They don't, as soon as any
-        # layer below position len(kv_message.layers)-1 was dropped (always
-        # true once any selection happens) — real layer 5's corrected KV
-        # would get relabeled and injected as whatever layer kv_message.
-        # layers[5] actually was (e.g. real layer 7), scrambling which
-        # attention layer's weights see which cache. Confirmed as the cause
-        # of E/E_int8 producing pure noise output (checked raw generated
-        # text — token-soup garbage from the very first token, consistent
-        # with cache data landing in the wrong layer's attention entirely).
-        #
-        # Fix: index corrected_kv by each kept layer's REAL layer_idx, not
-        # by its position in the (sparse) kept-layer list.
+        # corrected_kv is now already POSITION-aligned with kv_message.layers
+        # 1:1 — query_correction builds it by walking real_kv_layer_indices,
+        # which pipeline.py passes in as this exact same order (selection_
+        # mask.kept_layer_indices). No real-vs-position lookup needed here
+        # any more (a previous version of this code needed one, when
+        # corrected_kv was a dense 28-layer tuple built independently of
+        # which layers were actually selected — that mismatch is what
+        # produced the pure-noise output from a couple of iterations ago).
         new_layers = []
-        for orig in kv_message.layers:
+        for orig, (k, v) in zip(kv_message.layers, corrected_kv):
             layer_idx = orig.layer_idx
-            if layer_idx >= len(corrected_kv):
-                break
-            k, v = corrected_kv[layer_idx]
             new_layers.append(CompressedLayer(
                 # No .cpu() — same reasoning as kv_compressor.py's compress():
                 # single-process pipeline, nothing ever actually transmits a

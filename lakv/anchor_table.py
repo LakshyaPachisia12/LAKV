@@ -58,11 +58,17 @@ class AnchorTable:
     def __init__(self, max_size: int = 20, entropy_threshold: float = 0.3,
                  min_confidence: float = 0.5, verbose: bool = False,
                  graceful_degradation: bool = True,
-                 max_distance: Optional[float] = None):
+                 max_distance: Optional[float] = None,
+                 delta_scale: float = 1.0):
         self.max_size = max_size
         self.entropy_threshold = entropy_threshold
         self.min_confidence = min_confidence
         self.verbose = verbose
+        # Diagnostic multiplier on the transferred delta — see PipelineConfig
+        # .anchor_delta_scale for why this exists (isolating whether delta-
+        # transfer itself is the source of garbage output vs a RoPE-shift
+        # alignment bug). 1.0 = unchanged behavior.
+        self.delta_scale = delta_scale
         # Absolute L2-distance floor on the BEST candidate's match quality —
         # see query_correction for why this is a different, necessary check
         # from entropy/min_confidence (which only measure agreement among
@@ -158,7 +164,8 @@ class AnchorTable:
         question_key: str,
         agent_id: str,
         query_hidden: torch.Tensor,   # (1, seq, hidden) last-layer hidden states
-        query_base_kv: Optional[Tuple] = None,  # THIS question's own base_kv (from compute_base_kv) — see below
+        real_kv: Optional[Tuple] = None,  # the REAL, actually-relayed KV for the layers being sent this hop (post layer-selection, pre-compression) — same content config D would transmit unmodified
+        real_kv_layer_indices: Optional[List[int]] = None,  # real (0-27) layer index for each entry in real_kv, in order; None means real_kv is already dense/full-width
         device: str = "cuda",
         target_prompt_len: Optional[int] = None,
         rope_theta: float = 1_000_000.0,
@@ -167,6 +174,16 @@ class AnchorTable:
         Returns (corrected_kv_tuple, confidence) if a usable anchor is found,
         None if the pool is empty or entropy check fails (caller should use
         transmitted KV as-is).
+
+        Per the actual KVCOMM reference implementation (kvcomm_engine.py,
+        FastMAS/KVCOMM on GitHub): corrected = REAL, actually-computed KV of
+        the current request + a blended anchor delta, added on top — never a
+        substitute reconstruction from any kind of "base" (candidate's or the
+        query's own). Earlier versions of this function got that backwards
+        (built the result from base_k/base_v instead of the real transmitted
+        content), which is what caused every correction to discard real
+        information — first another question's, then this question's own
+        no-prefix recomputation instead of what was actually sent.
 
         corrected_kv_tuple: tuple of (K, V) per layer on `device`
         confidence: scalar in [0, 1]; 1 = perfect single-anchor match
@@ -265,66 +282,58 @@ class AnchorTable:
             delta_k_interp.append(dk)
             delta_v_interp.append(dv)
 
-        # Base KV: use the CURRENT question's own base_kv (already computed
-        # fresh by compute_base_kv() every run() call — this is a real
-        # forward pass over THIS question's actual text, not a shared or
-        # generic quantity). The old version of this code blended CANDIDATES'
-        # base_k/base_v instead — i.e. reconstructed each corrected layer as
-        # (some other, unrelated past question's own base+delta), which is
-        # functionally that other question's own actual KV content, position-
-        # shifted, injected in place of this question's. That explains why
-        # anchor distance showed zero correlation with correctness when
-        # checked against real run data: the failure mode wasn't "picked a
-        # slightly-worse-matched anchor," it was "substituted a different
-        # question's facts into the context" regardless of match quality.
-        # Only the DELTA (the prefix/position perturbation pattern — the
-        # part actually hypothesized to transfer across questions) should
-        # come from the anchor pool; the base content must be this
-        # question's own.
-        if query_base_kv is not None:
-            base_k_interp = [query_base_kv[layer_idx][0].to(torch.float32) for layer_idx in range(n_layers)]
-            base_v_interp = [query_base_kv[layer_idx][1].to(torch.float32) for layer_idx in range(n_layers)]
-        else:
-            # No query_base_kv supplied (a caller other than pipeline.py's
-            # LAKVPipeline — e.g. lakv_v2/pipeline/shared_prefix_pipeline.py,
-            # not currently exercised by any tested config). Falls back to
-            # the old candidate-blended behavior rather than crashing, but
-            # this reproduces the bug described above — fix that caller to
-            # pass its own query_base_kv before trusting its output.
-            base_seq_lens = [c.base_k[0].shape[2] for c in candidates]
-            min_base_seq = min(base_seq_lens)
-            base_k_interp = []
-            base_v_interp = []
-            for layer_idx in range(n_layers):
-                bk = sum(weights[ci].item() * candidates[ci].base_k[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
-                         for ci in range(len(candidates)))
-                bv = sum(weights[ci].item() * candidates[ci].base_v[layer_idx][:, :, :min_base_seq, :].to(torch.float32)
-                         for ci in range(len(candidates)))
-                base_k_interp.append(bk)
-                base_v_interp.append(bv)
-        base_k_interp = [bk.to(candidates[0].base_k[layer_idx].dtype) for layer_idx, bk in enumerate(base_k_interp)]
-        base_v_interp = [bv.to(candidates[0].base_v[layer_idx].dtype) for layer_idx, bv in enumerate(base_v_interp)]
+        # Apply the anchor delta on top of the REAL, actually-relayed KV for
+        # this hop (real_kv — the exact content config D would transmit
+        # unmodified: post layer-selection, pre-compression), never a
+        # substitute reconstruction. Matches the actual KVCOMM reference
+        # design (see docstring above): corrected = real + delta, not
+        # base + delta. Two prior versions of this function got this
+        # backwards, discarding real content either way (a different
+        # question's, then this question's own no-prefix recomputation).
+        if real_kv is None:
+            # No real_kv supplied (a caller other than pipeline.py's
+            # LAKVPipeline — not currently exercised by any tested config).
+            # Nothing sensible to correct without the real content to
+            # correct it onto; treat as a miss rather than fabricate one.
+            self._log_miss(question_key, agent_id, reason="no_real_kv")
+            if self.verbose:
+                print(f"  [AnchorTable] MISS key={question_key} agent={agent_id} reason=no_real_kv")
+            return None
+
+        layer_indices = real_kv_layer_indices if real_kv_layer_indices is not None else list(range(len(real_kv)))
 
         best_idx = int(weights.argmax().item())
         candidates[best_idx].access_count += 1
 
         corrected = []
-        for layer_idx in range(n_layers):
-            bk = base_k_interp[layer_idx].to(device)
-            bv = base_v_interp[layer_idx].to(device)
-            dk = delta_k_interp[layer_idx].to(device)
-            dv = delta_v_interp[layer_idx].to(device)
-            # Sequence length: base and delta blends can have different
-            # lengths (min_base_seq vs min_delta_seq computed separately
-            # above) — use the shorter of the two so the add below can
-            # never mismatch shapes.
-            seq = min(bk.shape[2], dk.shape[2])
-            k_corr = bk[:, :, :seq, :] + dk[:, :, :seq, :]
-            v_corr = bv[:, :, :seq, :] + dv[:, :, :seq, :]
+        for pos, real_layer_idx in enumerate(layer_indices):
+            rk, rv = real_kv[pos]
+            orig_dtype = rk.dtype
+            rk = rk.to(device).to(torch.float32)
+            rv = rv.to(device).to(torch.float32)
+            if self.delta_scale == 0.0 or real_layer_idx >= n_layers:
+                # Diagnostic mode (or no matching stored delta for this
+                # layer): pure real KV + RoPE position-shift, no
+                # anchor-transferred delta at all.
+                seq = rk.shape[2]
+                k_corr, v_corr = rk, rv
+            else:
+                dk = delta_k_interp[real_layer_idx].to(device) * self.delta_scale
+                dv = delta_v_interp[real_layer_idx].to(device) * self.delta_scale
+                # Suffix-align, not prefix-align: the delta was computed from
+                # the END of a sequence (near the generation point — see
+                # update()'s own suffix-aligned windowing above), so it needs
+                # to land on the corresponding suffix of the real KV, not its
+                # start. The earlier base+delta version of this code aligned
+                # on the start, which was wrong regardless of what "base" was
+                # being used.
+                seq = min(rk.shape[2], dk.shape[2])
+                k_corr = rk[:, :, -seq:, :] + dk[:, :, -seq:, :]
+                v_corr = rv[:, :, -seq:, :] + dv[:, :, -seq:, :]
             if target_prompt_len is not None:
                 target_shift = max(int(target_prompt_len) - seq, 0)
                 k_corr = self._rope_shift_k(k_corr, shift=target_shift, theta=rope_theta)
-            corrected.append((k_corr, v_corr))
+            corrected.append((k_corr.to(orig_dtype), v_corr.to(orig_dtype)))
 
         delta_norm = float(sum(
             dk.float().norm().item() for dk in delta_k_interp
