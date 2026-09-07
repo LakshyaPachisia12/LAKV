@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from lakv.pipeline import LAKVPipeline, PipelineConfig, PROMPT_SETS, RunResult
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
+from lakv.causal_audit import KVAuditPool
 
 
 TWO_AGENT_BENCH_PROMPTS = {
@@ -148,6 +149,21 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         outlier_clipping=True, anchor_delta_scale=0.0,
     ),
 }
+
+
+# ── causal-audit configs (Phase 1 of the research-extensions plan) ────────────
+# Not separate PRESETS entries (the brief explicitly calls for parametrized
+# plumbing, not nine near-duplicate pipelines) — instead, a name suffix on an
+# existing base config dispatches to the same preset with causal_audit_mode
+# set. "mismatched" additionally requires a pre-built KVAuditPool — see
+# Evaluator._build_audit_pool and the pre-pass in run_experiment.
+AUDIT_BASE_CONFIGS = ("A", "D", "B_int8")
+AUDIT_MODE_SUFFIXES = {
+    "_audit_zeroed": "zeroed",
+    "_audit_random": "random",
+    "_audit_mismatched": "mismatched",
+}
+AUDIT_MISMATCHED_POOL_SIZE = 20
 
 
 # ── ablation presets (require custom layer indices, built at runtime) ─────────
@@ -292,13 +308,25 @@ class Evaluator:
         preset.final_max_new_tokens = 16
 
     def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy",
-                        dataset: str = "gsm8k", greedy: bool = False):
-        """Return a pipeline for cfg_name. Handles standard presets, ablations, and single-agent.
+                        dataset: str = "gsm8k", greedy: bool = False,
+                        audit_pools: Optional[Dict[str, KVAuditPool]] = None,
+                        record_audit_pool: Optional[KVAuditPool] = None):
+        """Return a pipeline for cfg_name. Handles standard presets, ablations, single-agent,
+        and causal-audit variants (<base>_audit_zeroed / _audit_random / _audit_mismatched,
+        base in AUDIT_BASE_CONFIGS — see Phase 1 of the research-extensions plan).
 
         greedy=True forces do_sample=False on every config, overriding each
         pipeline's own sampling defaults (do_sample=True, temperature=0.6,
         top_p=0.95) — useful as a deterministic accuracy control run, since
         every preset otherwise samples per commit 1890b6a.
+
+        audit_pools: {base_config_name: KVAuditPool}, required when cfg_name
+        is a "*_audit_mismatched" variant — built ahead of time by
+        run_experiment's held-out pre-pass, never by this method.
+        record_audit_pool: when given, cfg_name is built as a PLAIN (non-
+        audited) pipeline that records its real relayed KV into this pool
+        instead of scoring anything — used only by _build_audit_pool's own
+        pre-pass. Mutually exclusive with cfg_name being an audit variant.
         """
         import random as _random
 
@@ -342,20 +370,68 @@ class Evaluator:
                                 custom_layer_indices=indices)
             return pipe, "multi"
 
+        # Causal-audit variant? Strip a known suffix to find the base preset
+        # name and which substitution mode to apply — see AUDIT_MODE_SUFFIXES.
+        base_name = cfg_name
+        audit_mode = "none"
+        for suffix, mode in AUDIT_MODE_SUFFIXES.items():
+            if cfg_name.endswith(suffix):
+                base_name, audit_mode = cfg_name[: -len(suffix)], mode
+                break
+
+        if base_name not in PRESETS or PRESETS[base_name] is None:
+            raise ValueError(f"Unknown config: {cfg_name!r}")
+
         # Standard preset. PRESETS entries were built at module-load time with
         # the gsm8k default, so system_prompts is already populated by
         # PipelineConfig.__post_init__ — reassign directly rather than
         # clearing it back to None, since __post_init__ only fills a None.
-        preset = copy.deepcopy(PRESETS[cfg_name])
+        preset = copy.deepcopy(PRESETS[base_name])
         preset.dataset = dataset
         preset.system_prompts = list(PROMPT_SETS[dataset])
+        preset.causal_audit_mode = audit_mode
         self._apply_arch(preset, arch)
         if preset.use_layer_selection or preset.compression_mode == "adaptive":
             preset.profile_path = profile_path
         if greedy:
             preset.generation_kwargs = dict(preset.generation_kwargs, do_sample=False)
-        pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device)
+
+        audit_pool = None
+        if audit_mode == "mismatched":
+            if not audit_pools or base_name not in audit_pools:
+                raise ValueError(
+                    f"{cfg_name!r} requires a pre-built KVAuditPool for base config "
+                    f"{base_name!r}, but none was provided — this should have been built "
+                    f"by run_experiment's held-out pre-pass before reaching _build_pipeline."
+                )
+            audit_pool = audit_pools[base_name]
+
+        pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
+                            audit_pool=audit_pool, record_audit_pool=record_audit_pool)
         return pipe, "multi"
+
+    def _build_audit_pool(self, base_cfg_name: str, profile_path: Optional[str],
+                          held_out_samples: List[dict], arch: str = "legacy",
+                          dataset_name: str = "gsm8k", greedy: bool = False) -> KVAuditPool:
+        """Run base_cfg_name (plain, causal_audit_mode='none') over held_out_samples,
+        recording every hop's REAL relayed KV into a fresh KVAuditPool.
+
+        held_out_samples must never overlap with the examples actually being
+        scored in the same run — see run_experiment, which slices them from
+        beyond the scored n_samples range specifically so "mismatched" mode
+        can never sample a question's own content back to itself.
+        """
+        pool = KVAuditPool(max_size_per_agent=len(held_out_samples))
+        pipe, pipe_type = self._build_pipeline(base_cfg_name, profile_path, arch=arch,
+                                               dataset=dataset_name, greedy=greedy,
+                                               record_audit_pool=pool)
+        assert pipe_type == "multi", (
+            f"_build_audit_pool only supports KV-relay base configs (got {base_cfg_name!r}, "
+            f"pipe_type={pipe_type!r}) — single_agent/text_agent have no KV handoff to record."
+        )
+        for s in held_out_samples:
+            pipe.run(s["question"])
+        return pool
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/", checkpoint_every=5,
@@ -369,6 +445,39 @@ class Evaluator:
             configs_to_run = ["single_agent", "A", "B_int8", "B_int4", "C", "D", "E", "E_int8"]
 
         samples = dataset[:n_samples]
+
+        # ── causal-audit pre-pass: build a held-out KVAuditPool for every
+        # base config that has a "*_audit_mismatched" variant requested. Must
+        # happen BEFORE the main loop below, and must draw from examples
+        # beyond samples (dataset[n_samples:...]), never from samples itself
+        # — the whole point of "mismatched" mode is that its substitute
+        # content is never the current question's own. If the caller didn't
+        # load enough extra examples for this (see run.py, which reserves
+        # AUDIT_MISMATCHED_POOL_SIZE extra when a mismatched config is
+        # requested), fail loudly here rather than building an
+        # under-sized/degenerate pool silently.
+        audit_pools: Dict[str, KVAuditPool] = {}
+        mismatched_bases = sorted({
+            cfg[: -len("_audit_mismatched")]
+            for cfg in configs_to_run if cfg.endswith("_audit_mismatched")
+        })
+        if mismatched_bases:
+            held_out = dataset[n_samples:n_samples + AUDIT_MISMATCHED_POOL_SIZE]
+            if len(held_out) < AUDIT_MISMATCHED_POOL_SIZE:
+                raise ValueError(
+                    f"Need {AUDIT_MISMATCHED_POOL_SIZE} held-out examples beyond "
+                    f"n_samples={n_samples} to build a causal-audit pool for "
+                    f"{mismatched_bases}, but only {len(held_out)} are available "
+                    f"(dataset has {len(dataset)} total). Load more examples — "
+                    f"e.g. n_samples + {AUDIT_MISMATCHED_POOL_SIZE} from the dataset loader."
+                )
+            for base in mismatched_bases:
+                print(f"[Evaluator] Building causal-audit KV pool for '{base}' "
+                      f"from {len(held_out)} held-out examples (never among the {n_samples} scored)...")
+                audit_pools[base] = self._build_audit_pool(
+                    base, profile_path, held_out, arch=arch,
+                    dataset_name=dataset_name, greedy=greedy)
+
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
 
         partial_path = out / "experiment_results.partial.json"
@@ -449,7 +558,8 @@ class Evaluator:
                     continue
 
                 pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch,
-                                                        dataset=dataset_name, greedy=greedy)
+                                                        dataset=dataset_name, greedy=greedy,
+                                                        audit_pools=audit_pools)
                 pipe.config.print_raw_outputs = print_raw_outputs
                 print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
@@ -543,7 +653,8 @@ class Evaluator:
                                 "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                                 "hop_stats":[asdict(h) for h in r.hop_stats],
                                 "finalizer_latency_s":r.finalizer_latency_seconds,
-                                "offset_logs":list(pipe.last_run_offset_logs)})
+                                "offset_logs":list(pipe.last_run_offset_logs),
+                                "audit_logs":list(getattr(pipe, "last_run_audit_logs", []))})
                             tot_comp += r.total_compressed_mb/nh
                             tot_orig += r.total_original_mb/nh
                             tot_ratio += r.overall_compression_ratio

@@ -164,7 +164,15 @@ def mode_experiment(args):
 
     model, tokenizer = load_model(args.model, args.device)
     split = "validation" if args.dataset == "hotpotqa" else "test"
-    dataset = load_dataset_samples(args.dataset, split, n=args.n_samples)
+
+    # A "*_audit_mismatched" config (Phase 1 causal audit) needs held-out
+    # examples beyond n_samples to build its KVAuditPool from — see
+    # Evaluator.run_experiment's pre-pass, which raises loudly if it doesn't
+    # find enough. Load the extra examples here so that never happens.
+    from lakv.evaluator import AUDIT_MISMATCHED_POOL_SIZE
+    needs_audit_pool = any(c.endswith("_audit_mismatched") for c in args.configs)
+    n_to_load = args.n_samples + (AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0)
+    dataset = load_dataset_samples(args.dataset, split, n=n_to_load)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
         dataset=dataset,
         profile_path=args.profile_path,
