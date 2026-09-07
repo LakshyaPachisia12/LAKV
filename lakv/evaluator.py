@@ -85,6 +85,19 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="zeros",
         outlier_clipping=True,
     ),
+    # Phase 3 of the research-extensions plan: identical to B_int4 in every
+    # setting (outlier_clipping stays on, so this is a clean single-variable
+    # comparison) except the quantization scheme itself — rotates each head's
+    # K/V by a fixed Hadamard matrix before quantizing (TurboQuant/PolarQuant-
+    # inspired, see lakv/kv_compressor.py's rotation section for exactly what
+    # is and isn't a faithful reproduction of that paper). Tests whether
+    # B_int4's total collapse (CLAUDE.md: 0.0%/0.0%) is a quantization-scheme
+    # artifact or a real 4-bit ceiling for this model.
+    "B_int4_turboquant": PipelineConfig(
+        use_layer_selection=False, compression_mode="uniform_int4_rotated",
+        use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
+    ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",

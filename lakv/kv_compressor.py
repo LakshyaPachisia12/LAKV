@@ -94,6 +94,72 @@ def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) 
     return t.to(torch.bfloat16)
 
 
+# ─── rotation (TurboQuant/PolarQuant-inspired int4 quantization) ──────────────
+#
+# Phase 3 of the research-extensions plan. Rotating a tensor by a fixed
+# orthonormal Walsh-Hadamard matrix redistributes each head's per-dimension
+# magnitude evenly across all dimensions BEFORE quantizing — a few large
+# outlier values that would otherwise blow out one dimension's quant range
+# get spread thin across every dimension instead, so per-head min-max
+# quantization has much less to lose. The rotation itself is lossless (it's
+# orthogonal — H @ H.T == I, so un-rotating after dequantization exactly
+# inverts it up to floating-point error); only the quantization step in
+# between loses information, same as the unrotated path.
+#
+# NOTE ON FIDELITY: this is our own implementation of the core "rotate before
+# quantizing" idea behind TurboQuant/PolarQuant (Zandieh et al., ICLR'26) —
+# specifically the PolarQuant half (Walsh-Hadamard rotation + scalar
+# quantization). It does NOT implement TurboQuant's QJL 1-bit bias-correction
+# step; that was deliberately left out because its exact procedure wasn't
+# independently verified against the paper before this was written (see
+# lakv_research_extensions_prompt.md, Phase 3), and per this project's own
+# convention (CLAUDE.md), an unverified guess at someone else's algorithm is
+# worse than a clearly-labeled simplification. Verify against the primary
+# source before citing this as a faithful TurboQuant reproduction.
+#
+# Requires head_dim to be a power of 2 (128 for both Qwen2.5-7B and
+# Mistral-7B-v0.3 — true for every model this project currently uses, but NOT
+# checked/padded for automatically if a future model's head_dim isn't).
+
+_HADAMARD_CACHE: Dict[Tuple[int, str], torch.Tensor] = {}
+
+
+def _hadamard_matrix(n: int) -> torch.Tensor:
+    """n x n orthonormal Walsh-Hadamard matrix via Sylvester's recursive
+    doubling construction. Returns H / sqrt(n) (orthonormal, not just
+    orthogonal) so applying it is a pure rotation with no scale change."""
+    if n & (n - 1) != 0:
+        raise ValueError(f"Hadamard rotation requires a power-of-2 dimension, got {n}")
+    h = torch.tensor([[1.0]], dtype=torch.float32)
+    while h.shape[0] < n:
+        h = torch.cat([
+            torch.cat([h, h], dim=1),
+            torch.cat([h, -h], dim=1),
+        ], dim=0)
+    return h / (n ** 0.5)
+
+
+def _get_hadamard(n: int, device) -> torch.Tensor:
+    key = (n, str(device))
+    if key not in _HADAMARD_CACHE:
+        _HADAMARD_CACHE[key] = _hadamard_matrix(n).to(device)
+    return _HADAMARD_CACHE[key]
+
+
+def _rotate(tensor: torch.Tensor) -> torch.Tensor:
+    """Rotate the last (head_dim) axis by a fixed orthonormal Hadamard matrix."""
+    h = _get_hadamard(tensor.shape[-1], tensor.device)
+    return (tensor.float() @ h).to(tensor.dtype)
+
+
+def _unrotate(tensor: torch.Tensor) -> torch.Tensor:
+    """Invert _rotate. H is orthonormal, so H.T == H^-1 — exact (up to
+    floating-point error) inversion of the rotation step, independent of
+    whatever quantization error was introduced in between."""
+    h = _get_hadamard(tensor.shape[-1], tensor.device)
+    return (tensor.float() @ h.T).to(tensor.dtype)
+
+
 # ─── compressor ───────────────────────────────────────────────────────────────
 
 class KVCompressor:
@@ -113,7 +179,7 @@ class KVCompressor:
             clip_percentile: the percentile to clip to when outlier_clipping
                 is enabled. Default 99.5 (i.e. clip to the 0.5th/99.5th range).
         """
-        if mode not in ("none", "uniform_int8", "uniform_int4", "adaptive"):
+        if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
         if mode == "adaptive" and profile is None:
             raise ValueError("'adaptive' mode requires a LayerProfile")
@@ -127,7 +193,7 @@ class KVCompressor:
             return 16
         if self.mode == 'uniform_int8':
             return 8
-        if self.mode == 'uniform_int4':
+        if self.mode in ('uniform_int4', 'uniform_int4_rotated'):
             return 4
         
         # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
@@ -194,8 +260,14 @@ class KVCompressor:
                 compressed_bytes += k.nbytes + v.nbytes
             else:
                 clip_pct = self.clip_percentile if (self.outlier_clipping and bits == 4) else None
-                k_q, k_scale, k_zp = _quantize(k, bits, clip_percentile=clip_pct)
-                v_q, v_scale, v_zp = _quantize(v, bits, clip_percentile=clip_pct)
+                # Rotate BEFORE quantizing (uniform_int4_rotated only) —
+                # spreads outlier magnitude evenly across head_dim so
+                # per-head min-max quantization has less to lose. See the
+                # rotation section above for why this is lossless on its own.
+                k_in = _rotate(k) if self.mode == "uniform_int4_rotated" else k
+                v_in = _rotate(v) if self.mode == "uniform_int4_rotated" else v
+                k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
+                v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
 
                 cl = CompressedLayer(
                     # Same reasoning as the bits==16 branch above — no .cpu().
@@ -243,7 +315,10 @@ class KVCompressor:
                     cl.v_scale.to(device),
                     cl.v_zp.to(device)
                 )
-            
+                if message.mode == "uniform_int4_rotated":
+                    k = _unrotate(k)
+                    v = _unrotate(v)
+
             assert k.shape == torch.Size(cl.shape), f"Shape mismatch: {k.shape} vs {cl.shape}"
             result.append((k, v))
 
@@ -257,7 +332,7 @@ class KVCompressor:
         dummy_v = torch.randn(1, 4, 512, 128, dtype=torch.bfloat16).to(device)
         dummy_kv = ((dummy_k, dummy_v),)
 
-        for mode in ['none', 'uniform_int8', 'uniform_int4']:
+        for mode in ['none', 'uniform_int8', 'uniform_int4', 'uniform_int4_rotated']:
             comp = KVCompressor(mode=mode)
             msg = comp.compress(dummy_kv)
             recon = comp.decompress(msg, device=device)
