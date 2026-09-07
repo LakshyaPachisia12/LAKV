@@ -126,6 +126,17 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="zeros",
         outlier_clipping=True,
     ),
+    # Recombination of the two validated pieces above, not new untested
+    # math: K uses KIVI's per-channel grouping (uniform_int4_kivi_k_channel),
+    # V uses the Hadamard rotation (uniform_int4_rotated_v_only). Built to
+    # test whether V benefits from rotation ON TOP OF K's RoPE-safe fix, or
+    # whether that's unnecessary complexity once K alone is fixed — compare
+    # against B_int4_kivi specifically, don't assume this wins by default.
+    "B_int4_hybrid": PipelineConfig(
+        use_layer_selection=False, compression_mode="uniform_int4_hybrid",
+        use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
+    ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",

@@ -232,7 +232,8 @@ class KVCompressor:
                 is enabled. Default 99.5 (i.e. clip to the 0.5th/99.5th range).
         """
         if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated",
-                        "uniform_int4_rotated_v_only", "uniform_int4_kivi_k_channel", "adaptive"):
+                        "uniform_int4_rotated_v_only", "uniform_int4_kivi_k_channel",
+                        "uniform_int4_hybrid", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
         if mode == "adaptive" and profile is None:
             raise ValueError("'adaptive' mode requires a LayerProfile")
@@ -247,7 +248,7 @@ class KVCompressor:
         if self.mode == 'uniform_int8':
             return 8
         if self.mode in ('uniform_int4', 'uniform_int4_rotated', 'uniform_int4_rotated_v_only',
-                         'uniform_int4_kivi_k_channel'):
+                         'uniform_int4_kivi_k_channel', 'uniform_int4_hybrid'):
             return 4
         
         # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
@@ -333,19 +334,33 @@ class KVCompressor:
                 # unrotated, as a diagnostic before attempting any RoPE-aware
                 # fix. See lakv_research_extensions_prompt.md Phase 3 update,
                 # 2026-09-07.
+                # uniform_int4_hybrid: the two pieces above, recombined —
+                # K uses KIVI's per-channel grouping (RoPE-safe, never mixes
+                # across dimensions), V uses the Hadamard rotation (proven to
+                # reduce outlier error, and V has no RoPE to disrupt). Built
+                # only after both pieces were independently validated on
+                # their own — this is a recombination of already-tested
+                # parts, not a new untested idea, but it should still only be
+                # trusted over uniform_int4_kivi_k_channel alone if the real
+                # numbers show it earns the extra complexity.
                 rotate_k = self.mode == "uniform_int4_rotated"
-                rotate_v = self.mode in ("uniform_int4_rotated", "uniform_int4_rotated_v_only")
+                rotate_v = self.mode in ("uniform_int4_rotated", "uniform_int4_rotated_v_only",
+                                          "uniform_int4_hybrid")
                 k_in = _rotate(k) if rotate_k else k
                 v_in = _rotate(v) if rotate_v else v
 
-                if self.mode == "uniform_int4_kivi_k_channel":
+                use_k_per_channel = self.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid")
+                if use_k_per_channel:
                     # KIVI-inspired: K quantized per-channel (reduces over
                     # sequence only, keeps head_dim separate) instead of
                     # per-head — see _quantize_per_channel's docstring for
                     # why this targets K's RoPE-induced quantization
-                    # difficulty specifically. V is UNCHANGED (still the
-                    # existing per-head _quantize) since V has no RoPE
-                    # applied and isn't implicated in that failure mode.
+                    # difficulty specifically. In uniform_int4_kivi_k_channel,
+                    # V is unchanged (plain per-head _quantize, v_in == v);
+                    # in uniform_int4_hybrid, V is additionally rotated
+                    # (v_in was already set above) before this same per-head
+                    # _quantize call — the two knobs (K's axis, V's rotation)
+                    # are independent of each other.
                     k_q, k_scale, k_zp = _quantize_per_channel(k_in, bits, clip_percentile=clip_pct)
                 else:
                     k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
@@ -387,7 +402,7 @@ class KVCompressor:
                 k = cl.k_q.to(device)
                 v = cl.v_q.to(device)
             else:
-                if message.mode == "uniform_int4_kivi_k_channel":
+                if message.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid"):
                     k = _dequantize_per_channel(
                         cl.k_q.to(device),
                         cl.k_scale.to(device),
@@ -407,7 +422,7 @@ class KVCompressor:
                 if message.mode == "uniform_int4_rotated":
                     k = _unrotate(k)
                     v = _unrotate(v)
-                elif message.mode == "uniform_int4_rotated_v_only":
+                elif message.mode in ("uniform_int4_rotated_v_only", "uniform_int4_hybrid"):
                     v = _unrotate(v)
 
             assert k.shape == torch.Size(cl.shape), f"Shape mismatch: {k.shape} vs {cl.shape}"
