@@ -7,8 +7,13 @@
 > locked. `B_int4_kivi` is confirmed at n=100: 52.0% accuracy / 64.1% F1,
 > statistically indistinguishable from `D` (McNemar p=0.86) at higher
 > compression and no calibration profile — current leading candidate for the
-> paper's headline result. `B_int4_kivi_full` is built but not yet run.
-> Causal audit is built but has zero GPU results — this is the single
+> paper's headline result. `B_int4_kivi_full` (adds per-token V quantization)
+> does NOT improve on plain `B_int4_kivi` — tested (n=50, matched subset):
+> 44.0% vs 50.0%, not significant but trending the other way, plus a real
+> compression-ratio cost (3.75x vs 3.99x) from per-token scale/zero-point
+> overhead. Combined with `B_int4_hybrid`'s earlier null result, this is TWO
+> independent failed attempts to improve V — use plain `B_int4_kivi`.
+> Causal audit is built but has zero GPU results — this is now the single
 > biggest remaining gap in the Results section. Orthogonal Backfill was
 > deliberately scoped out (see Limitations), not left as an open thread.
 > Bracketed notes mark anything needing a final number or decision before
@@ -85,10 +90,17 @@ config (`D`, 50.0%/61.9%; McNemar p=0.86) while achieving higher compression
 (3.99x vs 2.76x) with no calibration profile required — direct empirical
 confirmation, on our pipeline and task, of what this literature identifies
 as the correct axis for addressing the problem, rather than the
-rotation-based axis we tried first. [If B_int4_kivi_full — adding per-token
-value quantization, KIVI's other asymmetric half — improves further once
-run: report that number instead/in addition, and note it as the more
-complete asymmetric reproduction.]
+rotation-based axis we tried first. We additionally tested KIVI's other
+asymmetric half — per-token value quantization on top of our key fix — and
+found it does not improve on the key-only fix (44.0% vs 50.0% on a matched
+50-example subset, not statistically significant but trending the other
+direction), at a real compression-ratio cost (3.75x vs 3.99x) from the
+much finer per-position scale/zero-point bookkeeping it requires relative
+to per-channel grouping. Combined with an earlier null result for rotating
+values instead (Section [X]), this is two independently-motivated attempts
+to improve the value side that both failed to help — evidence that the
+key-side fix alone accounts for the full recovery, not a coincidence of one
+underpowered comparison.
 
 **Auditing whether KV reuse does what it claims.** A recent line of work
 interrogates cross-agent KV/latent reuse mechanisms critically rather than
@@ -252,9 +264,16 @@ per-model calibration profile. `B_int4_kivi` trends below the uncompressed
 not yet statistically confirmed at n=100 (7-12 discordant examples,
 McNemar p=0.36-0.50); we report this honestly as an open question rather
 than claiming `B_int4_kivi` is cost-free the way Finding 1 establishes for
-`B_int8`. [If `B_int4_kivi_full` — adding per-token value quantization —
-improves on this further once evaluated, report that result here instead
-or in addition.]
+`B_int8`. We tested whether also fixing the value side (`B_int4_kivi_full`,
+per-token quantization — KIVI's other asymmetric axis) improves on this
+further; it does not (44.0% vs 50.0% on a matched 50-example subset, p=0.51,
+trending toward the key-only fix), and costs compression ratio (3.75x vs
+3.99x) for the extra per-position bookkeeping it requires. Together with an
+earlier null result for rotating values instead, two independently-motivated
+value-side interventions both failed to improve on the key-only fix — we
+take this as evidence the key/RoPE interaction was the entire mechanism
+behind `B_int4`'s original collapse, not one of several contributing
+factors.
 
 **Finding 5 — causal audit.** [Pending GPU evaluation.]
 

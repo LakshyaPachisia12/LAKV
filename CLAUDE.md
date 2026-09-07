@@ -199,9 +199,21 @@ don't just trust this summary if more data has come in since):
    examples (an extremely tight match); `B_int4_kivi` vs `A`/`B_int8` has
    7-12 discordant examples and point estimates that trend real (52% vs
    56-57%) — the honest statement is "not yet distinguishable from a real
-   cost at this n," not "no cost." Likely candidate for the paper's
-   strongest positive compression result once `B_int4_kivi_full` is checked
-   and the write-up locks in a final config.
+   cost at this n," not "no cost." **`B_int4_kivi_full` (adds per-token V
+   quantization on top of K's fix) does NOT improve on `B_int4_kivi` — tested
+   at n=50 (`results/run_20260907_203253`), same idx range as a matched
+   subset of `B_int4_kivi`'s n=100 run: 44.0% vs 50.0%, McNemar p=0.51 (not
+   significant, but trending toward plain `B_int4_kivi` being better, not
+   worse). Its compression ratio is also WORSE (3.75x vs 3.99x) for a
+   real, mechanical reason, not noise: per-token quantization stores a
+   scale/zero-point pair per sequence position, and sequence length (hundreds
+   to low thousands of tokens) vastly exceeds K's per-channel grouping
+   (128 channels) — real overhead, no accuracy benefit. Combined with
+   `B_int4_hybrid`'s earlier null result (rotating V didn't help either),
+   this is now TWO independent, differently-motivated attempts to improve V
+   that both failed — strong, replicated evidence that K's per-channel fix
+   alone accounts for the whole recovery, not a coincidence.
+   `B_int4_kivi` (plain, K-only) remains the config to report and use.**
 
 **Not yet statistically established, don't overclaim these:** `D` vs `C` on
 Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
@@ -212,14 +224,15 @@ just underpowered noise (see finding 5 above).
 **Still open / in progress on this branch:** the causal audit
 (`*_audit_zeroed/random/mismatched`) has been built and unit-tested but not
 yet run on GPU — no result yet on whether relayed KV demonstrably carries
-real content beyond "having some cache." `B_int4_kivi_full` is built,
-unit-tested (99.8% MSE reduction on the mirror-image synthetic test to
-`B_int4_kivi`'s) but not yet run on GPU. Orthogonal Backfill (a 4th `D`
-reconstruction strategy) is blocked on a design decision: the paper's real
-formula needs attention weights, which this pipeline's fast `sdpa` decode
-path doesn't provide (only `eager` does, currently reserved for
-calibration) — needs either an `eager`-backend carve-out for that one config
-or an explicitly-labeled simplified version.
+real content beyond "having some cache." This is now the single biggest
+remaining gap before the paper's Results section is complete (see
+`docs/naacl2027_paper_draft.md`). Orthogonal Backfill was deliberately
+scoped out (not attempted) rather than left open — see that same draft's
+Limitations section for the reasoning (its real formula needs attention
+weights this pipeline's fast `sdpa` decode path doesn't expose, and
+shipping an approximated version under time pressure was judged not worth
+the risk given this project's own evidence that unfaithful reproductions
+can actively mislead).
 
 ## Known issues / settled questions (read before re-investigating)
 
