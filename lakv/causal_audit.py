@@ -95,6 +95,9 @@ def _match_seq_len(donor: torch.Tensor, target_shape: torch.Size, seq_dim: int =
 class _PoolEntry:
     question_key: str
     kv: KVTuple  # stored on CPU
+    question_text: str = ""  # full question text, for post-hoc "did the wrong
+    # answer bleed content from the DONOR question" analysis — question_key
+    # alone is a hash, not reversible back to readable text.
 
 
 class KVAuditPool:
@@ -115,7 +118,7 @@ class KVAuditPool:
         self.max_size_per_agent = max_size_per_agent
         self._pools: Dict[int, List[_PoolEntry]] = {}
 
-    def add(self, agent_idx: int, question_key: str, kv: KVTuple) -> None:
+    def add(self, agent_idx: int, question_key: str, kv: KVTuple, question_text: str = "") -> None:
         pool = self._pools.setdefault(agent_idx, [])
         if any(e.question_key == question_key for e in pool):
             return
@@ -123,7 +126,7 @@ class KVAuditPool:
         # the GPU the whole time competing with the model's own memory —
         # moved back to the target device only at sample() time.
         cpu_kv = tuple((k.detach().to("cpu"), v.detach().to("cpu")) for k, v in kv)
-        pool.append(_PoolEntry(question_key, cpu_kv))
+        pool.append(_PoolEntry(question_key, cpu_kv, question_text))
         if len(pool) > self.max_size_per_agent:
             pool.pop(0)
 
@@ -133,18 +136,27 @@ class KVAuditPool:
     def sample(
         self, agent_idx: int, exclude_question_key: str, target_shape: torch.Size,
         device, rng: Optional[_random_module.Random] = None,
-    ) -> Tuple[Optional[KVTuple], bool]:
-        """Return (substitute_kv, was_shape_resized). substitute_kv is None
-        only if this agent_idx's pool has no eligible entries at all — this
-        should never happen if the pool was pre-built correctly (it means
-        the pool wasn't populated for this agent_idx before the audit run
-        started); callers should treat None as a setup error, not a
-        per-sample condition to paper over silently.
+    ) -> Tuple[Optional[KVTuple], bool, str]:
+        """Return (substitute_kv, was_shape_resized, donor_question_text).
+        substitute_kv is None only if this agent_idx's pool has no eligible
+        entries at all — this should never happen if the pool was pre-built
+        correctly (it means the pool wasn't populated for this agent_idx
+        before the audit run started); callers should treat None as a setup
+        error, not a per-sample condition to paper over silently.
+
+        donor_question_text (empty string if substitute_kv is None) records
+        WHICH held-out question's content was actually substituted in — not
+        just that a substitution happened. Exists so a "mismatched" run's
+        wrong answers can be checked for whether they reflect the donor
+        question's topic bleeding through, rather than only measuring the
+        accuracy drop — a corrupted hop silently steering the final answer
+        toward unrelated content would be a materially different, more
+        concerning finding than an accuracy drop alone.
         """
         pool = self._pools.get(agent_idx, [])
         eligible = [e for e in pool if e.question_key != exclude_question_key]
         if not eligible:
-            return None, False
+            return None, False, ""
 
         rng = rng or _random_module
         entry = rng.choice(eligible)
@@ -156,7 +168,7 @@ class KVAuditPool:
             v_matched, v_resized = _match_seq_len(v_dev, target_shape)
             resized = resized or k_resized or v_resized
             out.append((k_matched, v_matched))
-        return tuple(out), resized
+        return tuple(out), resized, entry.question_text
 
 
 # ─── dispatch ─────────────────────────────────────────────────────────────────
@@ -190,7 +202,8 @@ def apply_causal_audit(
             raise ValueError("causal_audit_mode='mismatched' requires a KVAuditPool")
         target_shape = real_kv[0][0].shape
         device = real_kv[0][0].device
-        substitute, was_resized = pool.sample(agent_idx, question_key, target_shape, device, rng=rng)
+        substitute, was_resized, donor_question = pool.sample(
+            agent_idx, question_key, target_shape, device, rng=rng)
         if substitute is None:
             # The pool for this agent_idx was never populated before this
             # audit run started — a setup bug (wrong pool passed in, or the
@@ -203,6 +216,9 @@ def apply_causal_audit(
                 f"(question_key={question_key!r}) — was the pool pre-built for this "
                 f"agent before running the audit config?"
             )
-        return substitute, {"mode": "mismatched", "shape_resized": was_resized}
+        return substitute, {
+            "mode": "mismatched", "shape_resized": was_resized,
+            "donor_question": donor_question,
+        }
 
     raise ValueError(f"Unknown causal_audit_mode: {mode!r}")

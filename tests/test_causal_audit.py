@@ -57,16 +57,17 @@ def test_pool_add_and_sample_excludes_current_question():
     pool = KVAuditPool(max_size_per_agent=5)
     kv_a = _make_kv(seed=10)
     kv_b = _make_kv(seed=11)
-    pool.add(agent_idx=1, question_key="qA", kv=kv_a)
-    pool.add(agent_idx=1, question_key="qB", kv=kv_b)
+    pool.add(agent_idx=1, question_key="qA", kv=kv_a, question_text="What color is the sky?")
+    pool.add(agent_idx=1, question_key="qB", kv=kv_b, question_text="Who wrote Hamlet?")
 
     target_shape = kv_a[0][0].shape
-    substitute, resized = pool.sample(agent_idx=1, exclude_question_key="qA",
-                                       target_shape=target_shape, device="cpu")
+    substitute, resized, donor_text = pool.sample(agent_idx=1, exclude_question_key="qA",
+                                                   target_shape=target_shape, device="cpu")
     assert substitute is not None
     assert not resized
     # must be qB's content (the only eligible entry), not qA's own
     assert torch.allclose(substitute[0][0], kv_b[0][0])
+    assert donor_text == "Who wrote Hamlet?"
 
 
 def test_pool_deduplicates_same_question_key():
@@ -95,8 +96,8 @@ def test_pool_sample_resizes_mismatched_seq_len():
 
     target = _make_kv(seq_len=25, seed=41)  # different (longer) seq_len
     target_shape = target[0][0].shape
-    substitute, resized = pool.sample(agent_idx=1, exclude_question_key="not_donor",
-                                       target_shape=target_shape, device="cpu")
+    substitute, resized, _ = pool.sample(agent_idx=1, exclude_question_key="not_donor",
+                                          target_shape=target_shape, device="cpu")
     assert substitute is not None
     assert resized
     assert substitute[0][0].shape == target_shape  # padded up to match
@@ -112,8 +113,8 @@ def test_pool_sample_truncates_when_donor_longer():
 
     target = _make_kv(seq_len=12, seed=51)
     target_shape = target[0][0].shape
-    substitute, resized = pool.sample(agent_idx=1, exclude_question_key="not_donor",
-                                       target_shape=target_shape, device="cpu")
+    substitute, resized, _ = pool.sample(agent_idx=1, exclude_question_key="not_donor",
+                                          target_shape=target_shape, device="cpu")
     assert resized
     assert substitute[0][0].shape == target_shape
     assert torch.allclose(substitute[0][0], donor[0][0][:, :, :12, :])
@@ -121,9 +122,10 @@ def test_pool_sample_truncates_when_donor_longer():
 
 def test_pool_sample_returns_none_when_no_eligible_entries():
     pool = KVAuditPool()
-    substitute, resized = pool.sample(agent_idx=5, exclude_question_key="whatever",
-                                       target_shape=torch.Size([1, 4, 10, 8]), device="cpu")
+    substitute, resized, donor_text = pool.sample(agent_idx=5, exclude_question_key="whatever",
+                                                   target_shape=torch.Size([1, 4, 10, 8]), device="cpu")
     assert substitute is None
+    assert donor_text == ""
 
 
 def test_apply_causal_audit_none_mode_passthrough():
@@ -131,6 +133,21 @@ def test_apply_causal_audit_none_mode_passthrough():
     out, log = apply_causal_audit("none", real, agent_idx=1, question_key="q")
     assert out is real
     assert log == {"mode": "none"}
+
+
+def test_apply_causal_audit_mismatched_reports_donor_question():
+    pool = KVAuditPool()
+    donor_kv = _make_kv(seed=64)
+    pool.add(agent_idx=1, question_key="donor_key", kv=donor_kv,
+             question_text="What is the capital of France?")
+    real = _make_kv(seed=65)
+
+    out, log = apply_causal_audit("mismatched", real, agent_idx=1,
+                                   question_key="current_q", pool=pool)
+    assert log["mode"] == "mismatched"
+    assert log["donor_question"] == "What is the capital of France?"
+    # the injected KV must be the donor's content, not the real one
+    assert torch.allclose(out[0][0], donor_kv[0][0])
 
 
 def test_apply_causal_audit_mismatched_raises_on_empty_pool():

@@ -430,7 +430,7 @@ class LAKVPipeline:
                 # capture the REAL relayed KV, no substitution happens here
                 # (causal_audit_mode should be "none" whenever this is set).
                 if self.record_audit_pool is not None:
-                    self.record_audit_pool.add(agent_idx, q_key, decompressed)
+                    self.record_audit_pool.add(agent_idx, q_key, decompressed, question_text=question)
 
                 if self.config.causal_audit_mode != "none":
                     decompressed, audit_log = apply_causal_audit(
