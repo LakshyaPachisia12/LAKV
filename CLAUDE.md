@@ -18,6 +18,16 @@ numeric-grounding checks) are GSM8K-specific and gated off for HotpotQA.
 Active branch: `lakshya/hotpotqa`. Model: `Qwen/Qwen2.5-7B-Instruct`, bf16, on
 a single RTX 4090.
 
+**Publication push (branch `feat/research-extensions`, off `lakshya/hotpotqa`,
+started 2026-09-07):** extends this project toward an ACL/NAACL (ARR)
+submission — adds paired significance testing, a second model family
+(Mistral-7B-Instruct-v0.3) to check generalization, a causal audit of
+whether relayed KV carries real content, and a rotation-based (TurboQuant-
+inspired) int4 quantization attempt. See "Research-extensions findings"
+below for what's been statistically confirmed so far. Not yet merged to
+`lakshya/hotpotqa` — if you're reading this on a different branch, that
+section may not apply to what's currently checked out.
+
 ## Architecture
 
 - `run.py` — CLI entry point (`--mode calibrate|sanity|experiment`).
@@ -37,6 +47,22 @@ a single RTX 4090.
 - `lakv_v2/pipeline/single_agent.py`, `text_agent.py` — the two non-KV
   baselines. `text_agent` relays literal decoded text instead of KV cache,
   same role/prompt structure as config A, for an apples-to-apples comparison.
+- `lakv/stats.py` (branch `feat/research-extensions`) — paired McNemar test +
+  bootstrap F1 CI + Monte-Carlo power estimate for comparing two configs from
+  the same `experiment_results.json` (or two different files, same example
+  indices — used for old-vs-new / cross-model comparisons too). Run via
+  `python -m lakv.stats <file> <cfgA> <cfgB> ...`.
+- `lakv/causal_audit.py` (same branch) — substitutes the KV handed to the
+  next agent with zeroed/moment-matched-random/held-out-mismatched content,
+  to test whether a config's accuracy comes from the real relayed content or
+  just from having *some* non-empty cache. Reachable via config names
+  `<base>_audit_zeroed` / `_audit_random` / `_audit_mismatched`, base in
+  `("A", "D", "B_int8")` — see `lakv/evaluator.py::AUDIT_MODE_SUFFIXES`.
+- `lakv/kv_compressor.py`'s `uniform_int4_rotated` mode (same branch) —
+  rotates K/V by a fixed Hadamard matrix before int4 quantizing
+  (TurboQuant/PolarQuant-inspired; does NOT include TurboQuant's QJL
+  correction — see the file's own comments for exactly what is and isn't a
+  faithful reproduction). Preset: `B_int4_turboquant`.
 
 ## Configs (`lakv/evaluator.py::PRESETS`)
 
@@ -77,6 +103,70 @@ but small, since decode time dominates total latency far more than prefill for
 this task (hops run 100-500+ generated tokens). `D` trades ~13 accuracy points
 for a 2.76x smaller relayed cache; `B_int8` gets 2x compression for
 essentially no accuracy cost.
+
+## Research-extensions findings (branch `feat/research-extensions`, as of 2026-09-07)
+
+The table above (2026-09-04) predates a real bug fix (`repetition_penalty`
+was being force-disabled on both decode paths instead of applied
+consistently — see git history on this branch) and predates any paired
+significance testing. Refreshed n=100 HotpotQA/Qwen numbers, same profile,
+current code: `single_agent` 57.0%/68.4%, `text_agent` 54.0%/68.3%, `A`
+56.0%/69.1%, `B_int8` 57.0%/70.5%, `B_int4` 0.0%/0.0% (still collapses),
+`C` 43.0%/57.8%, `D` 50.0%/61.9%, `E` 9.0%/17.4%, `E_int8` 1.0%/6.2%.
+
+**Important honesty note:** D's move (44%→50%) and E's move (12%→9%) from
+the repetition_penalty fix are NOT statistically significant against the old
+numbers (paired McNemar, same 100 examples: D p=0.21, E p=0.58, E_int8
+p=0.375 — see `lakv/stats.py`). The fix demonstrably changed *which*
+examples came out right, but whether it's a net real improvement/regression
+isn't established at this n. Don't cite "the fix improved D" as fact.
+
+**Three claims that ARE statistically solid enough to build a paper around**
+(see `lakv/stats.py` output for exact p-values/CIs; re-derive before citing,
+don't just trust this summary if more data has come in since):
+
+1. **Uniform 8-bit KV quantization is statistically indistinguishable from
+   uncompressed relay.** Confirmed on both Qwen (`A` vs `B_int8`: p=1.0, only
+   3 discordant examples out of 100) and Mistral-7B-Instruct-v0.3 (`A` vs
+   `B_int8`: 0 discordant examples — literally identical per-example
+   outcomes). Not an underpowered null result — the effect is tight enough
+   at n=100 that this is a real near-zero-cost finding.
+2. **The anchor-based offset-correction mechanism (config `E`) fails
+   catastrophically and this is not explained by the repetition_penalty
+   confound.** `D` vs `E`: p≈0.00003 (old file) and p≈0.00003 (new file,
+   even after the fix) — E's raw hop_texts in the new run still show
+   duplicated phrases and hallucinated finalizer content, same failure
+   signature as before the fix. See "Known issues" below for the full bug
+   history behind this conclusion.
+3. **Layer-selection's accuracy cost is architecture-dependent, not a fixed
+   property of "drop ~29% of layers."** On Mistral-7B-Instruct-v0.3 (n=50,
+   `results/run_20260907_130646`), `A` vs `D` collapsed by 30.5 F1 points
+   (p=0.0001, overwhelming) after dropping 9/32 layers (28%). On Qwen (n=100,
+   this file), the same comparison isn't even statistically significant yet
+   (`A` vs `D`: p=0.34) — but the claim survives regardless: the most
+   generous reading of Qwen's own uncertainty (F1 CI upper bound +16.4
+   points) is still less than half of Mistral's confirmed collapse.
+   Supporting citation found in a literature search this session: "No Free
+   Swap: Protocol-Dependent Layer Redundancy in Transformers" (arXiv
+   2605.16234) finds layer redundancy is architecture/protocol-dependent
+   across Qwen3-8B/Llama-3.1-8B/Mistral-7B — consistent with, not just
+   coincidentally matching, this finding.
+
+**Not yet statistically established, don't overclaim these:** `D` vs `C` on
+Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
+`A` vs `D` on Qwen alone without the cross-model framing (p=0.34, 15% power).
+
+**Still open / in progress on this branch:** the causal audit
+(`*_audit_zeroed/random/mismatched`) has been built and unit-tested but not
+yet run on GPU — no result yet on whether relayed KV demonstrably carries
+real content beyond "having some cache." `B_int4_turboquant` is built,
+unit-tested (93.6% MSE reduction on a synthetic outlier tensor) but not yet
+run on GPU — open question whether it fixes `B_int4`'s real-model collapse.
+Orthogonal Backfill (a 4th `D` reconstruction strategy) is blocked on a
+design decision: the paper's real formula needs attention weights, which
+this pipeline's fast `sdpa` decode path doesn't provide (only `eager` does,
+currently reserved for calibration) — needs either an `eager`-backend
+carve-out for that one config or an explicitly-labeled simplified version.
 
 ## Known issues / settled questions (read before re-investigating)
 
