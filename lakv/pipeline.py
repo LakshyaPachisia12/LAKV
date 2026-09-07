@@ -194,11 +194,32 @@ class PipelineConfig:
     # generation — see LAKV_V2_RUN_GUIDE session notes. temperature/top_p still
     # set to Qwen's own recommended values (its generation_config.json) so
     # they're correct whenever do_sample is turned back on (e.g. self-consistency).
+    #
+    # repetition_penalty=1.05 (Qwen2.5's own generation_config.json default,
+    # and what single_agent/text_agent have always implicitly used, since
+    # they call model.generate() without overriding it) is set explicitly
+    # here now. An earlier fix in this file forced this to 1.0 (off) to
+    # resolve an inconsistency between the fast generate() path (which
+    # silently inherited the model's 1.05 default) and the manual per-token
+    # loop (which had no repetition-penalty logic at all) — "off everywhere"
+    # made the two paths consistent, but left every KV-relay hop with zero
+    # protection against greedy-decoding repetition loops. Confirmed this
+    # bit in practice: checked every hop that hit the 512-token cap under
+    # config D and found every single one degenerating into a repeated
+    # token/phrase loop ("/licensed/licensed/licensed...",
+    # "and and unequivocally, and and unequivocally...") rather than
+    # genuinely long reasoning — config A, working from full (uncompressed)
+    # context, never hit this once in the same run, but D's degraded,
+    # layer-selected context made the model measurably more prone to it.
+    # Fix: apply the SAME modest penalty consistently on both paths instead
+    # of disabling it on both — see _sample_next_token for the manual loop's
+    # side of this.
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
         "do_sample": False,
         "temperature": 0.7,
         "top_p": 0.8,
         "num_beams": 1,
+        "repetition_penalty": 1.05,
     })
     print_raw_outputs: bool = False
     anchor_channel_key: str = "solver_to_finalizer"
@@ -641,20 +662,41 @@ class LAKVPipeline:
 
         return self._to_tuple(outputs.past_key_values)
 
-    def _sample_next_token(self, logits: torch.Tensor) -> torch.Tensor:
+    def _sample_next_token(self, logits: torch.Tensor, generated_ids: Optional[List[int]] = None) -> torch.Tensor:
         """Pick the next token respecting self.config.generation_kwargs
-        (do_sample/temperature/top_p), or greedy argmax when do_sample is
-        False. The manual KV-injection decode loops below can't use
-        model.generate()'s built-in sampling (they inject cache from a
-        different agent's prompt, which generate() can't accept - see the
-        docstring on _generate) — this reproduces the same top-p nucleus
-        sampling behavior manually so those loops aren't stuck on pure
-        greedy regardless of config. Confirmed via hop_texts inspection this
+        (do_sample/temperature/top_p/repetition_penalty), or greedy argmax
+        when do_sample is False. The manual KV-injection decode loops below
+        can't use model.generate()'s built-in sampling (they inject cache
+        from a different agent's prompt, which generate() can't accept - see
+        the docstring on _generate) — this reproduces the same behavior
+        manually so those loops aren't stuck on pure, unpenalized greedy
+        regardless of config. Confirmed via hop_texts inspection this
         session: hop 0 (the Reasoner) goes through this same manual loop even
         though it injects nothing, so being permanently greedy here was
         costing accuracy independent of anything about KV relay itself.
+
+        generated_ids: token ids already produced earlier in THIS hop's
+        decode loop (not the prompt) — used for the repetition-penalty term
+        below. Standard CTRL-style penalty (matches HF's
+        RepetitionPenaltyLogitsProcessor): divide positive logits / multiply
+        negative logits for any token already seen. Without this, every
+        manual-loop hop (and the single first-token sample before every fast
+        generate() handoff) had zero protection against greedy-decoding
+        repetition loops — confirmed directly: every hop that hit the
+        512-token cap under config D was a degenerate repeated-token/phrase
+        loop, not genuine long-form reasoning. See PipelineConfig.
+        generation_kwargs for the full story of how this regressed.
         """
         kwargs = self.config.generation_kwargs
+
+        repetition_penalty = float(kwargs.get("repetition_penalty", 1.0))
+        if repetition_penalty != 1.0 and generated_ids:
+            unique_ids = torch.tensor(sorted(set(generated_ids)), device=logits.device, dtype=torch.long)
+            seen = logits[0, unique_ids]
+            seen = torch.where(seen < 0, seen * repetition_penalty, seen / repetition_penalty)
+            logits = logits.clone()
+            logits[0, unique_ids] = seen
+
         if not kwargs.get("do_sample", False):
             return logits.argmax(-1, keepdim=True)
 
@@ -711,15 +753,14 @@ class LAKVPipeline:
 
         if injected_kv_tuple is None:
             # ── No KV injection: standard generate ───────────────────
-            # repetition_penalty forced to 1.0 for the same reason as the
-            # fast path in _generate_intermediate_with_hidden — see its
-            # comment. Model default (1.05) would otherwise silently apply
-            # here but nowhere in the manual loop below.
+            # repetition_penalty comes from generation_kwargs (1.05 by
+            # default) — see PipelineConfig.generation_kwargs for why this
+            # is no longer forced to 1.0.
             with torch.no_grad():
                 output_ids = self.model.generate(
                     input_ids=input_ids,
                     max_new_tokens=max_new_tokens,
-                    **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                    **self.config.generation_kwargs,
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
@@ -779,7 +820,7 @@ class LAKVPipeline:
                         max_new_tokens=max_new_tokens - 1,
                         use_cache=True,
                         return_dict_in_generate=True,
-                        **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                        **self.config.generation_kwargs,
                     )
                 generated_ids = gen_out.sequences[0].tolist()
             return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
@@ -790,7 +831,7 @@ class LAKVPipeline:
         # exactly the kind of bug that already broke Config E once before. ──
         generated: List[int] = []
         for _ in range(max_new_tokens):
-            next_token = self._sample_next_token(next_logits)  # (1, 1)
+            next_token = self._sample_next_token(next_logits, generated_ids=generated)  # (1, 1)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
@@ -896,15 +937,10 @@ class LAKVPipeline:
             # nothing. Let generate() do prefill+decode natively; measured
             # this session: this hop was paying the full manual-loop tax for
             # zero reason, since it was never actually injecting anything.
-            # repetition_penalty: Qwen2.5's own generation_config.json defaults
-            # this to 1.05. generate() silently inherits it when not overridden
-            # here — but _sample_next_token (the manual loop below, still used
-            # for Verifier/Finalizer) applies no penalty at all. Force 1.0 so
-            # this fast path is truly behaviorally identical to the loop it
-            # replaces, not just usually close. Confirmed this mattered: without
-            # it, the Reasoner rambled measurably longer (sometimes back past
-            # the 512-token cap) and diverged from what the un-penalized
-            # Verifier/Finalizer expected, corrupting downstream answers.
+            # repetition_penalty comes from generation_kwargs (1.05 by
+            # default, matching _sample_next_token's own penalty below) — see
+            # PipelineConfig.generation_kwargs for why both paths now apply
+            # the same penalty instead of both disabling it.
             with torch.no_grad():
                 gen_out = self.model.generate(
                     input_ids=input_ids,
@@ -912,7 +948,7 @@ class LAKVPipeline:
                     use_cache=True,
                     return_dict_in_generate=True,
                     output_hidden_states=True,
-                    **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                    **self.config.generation_kwargs,
                 )
             # hidden_states[0] = the prompt-prefill step (one forward() call
             # over the whole prompt); [-1] = last layer. Same tensor this
@@ -1009,7 +1045,7 @@ class LAKVPipeline:
                         max_new_tokens=max_new - 1,
                         use_cache=True,
                         return_dict_in_generate=True,
-                        **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
+                        **self.config.generation_kwargs,
                     )
                 generated_ids = gen_out.sequences[0].tolist()
                 running_cache = gen_out.past_key_values
@@ -1020,7 +1056,7 @@ class LAKVPipeline:
         # manual loop — see the matching comment in _generate() above. ────
         generated_ids: List[int] = []
         for _ in range(max_new):
-            next_token = self._sample_next_token(next_logits)
+            next_token = self._sample_next_token(next_logits, generated_ids=generated_ids)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
