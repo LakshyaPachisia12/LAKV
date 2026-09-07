@@ -209,9 +209,17 @@ class KVCompressor:
                     bits=bits,
                     layer_idx=layer_idx
                 )
-                bytes_per_el = 1 if bits == 8 else 0.5
-                n_el = k.numel() + v.numel()
-                compressed_bytes += int(n_el * bytes_per_el)
+                # Real tensor size, not a bit-width formula: _quantize()
+                # returns k_q/v_q as uint8 regardless of bits being 4 or 8 —
+                # there is no nibble-packing anywhere in this file, so a
+                # 4-bit value occupies the same one full byte an 8-bit value
+                # does. The old `bytes_per_el = 1 if bits==8 else 0.5`
+                # formula assumed packing that was never implemented,
+                # fabricating a "4x compression" for INT4 that doesn't
+                # physically exist (real INT4-vs-INT8 saving today is only
+                # the scale/zp overhead below, which is small). Matches the
+                # convention the bits==16 branch above already uses.
+                compressed_bytes += k_q.nbytes + v_q.nbytes
                 # Overhead for scale/zp per head
                 compressed_bytes += (k_scale.numel() + v_scale.numel()) * 4 * 2
 
