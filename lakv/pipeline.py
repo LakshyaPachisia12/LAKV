@@ -11,6 +11,7 @@ Conversion helpers:
 """
 
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -22,6 +23,32 @@ from lakv.layer_selector import LayerSelector, SelectionMask
 from lakv.kv_compressor import KVCompressor, KVMessage
 from lakv.offset_corrector import OffsetCorrector
 from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
+
+
+@contextmanager
+def timed_section(timings: Optional[Dict[str, float]], name: str):
+    """Sync-bracketed wall-clock timer for one GPU-bound region.
+
+    Measurement only — does not alter control flow, return values, or any
+    existing behavior. `timings` may be None (e.g. a caller that doesn't
+    want component-level breakdown), in which case this is a no-op wrapper
+    with no synchronize() calls at all, so passing None costs nothing.
+    When `timings` is a dict, accumulates (rather than overwrites) elapsed
+    seconds under `name`, so a region entered more than once in the same
+    dict sums correctly rather than losing all but the last call.
+    """
+    if timings is None:
+        yield
+        return
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        timings[name] = timings.get(name, 0.0) + (time.perf_counter() - t0)
 
 
 # Synthetic (non-eval) few-shot exemplars for the Reasoner: demonstrate
@@ -240,7 +267,16 @@ class HopStat:
     compression_ratio: float
     n_layers_transmitted: int
     n_layers_total: int             # 28
-    latency_seconds: float = 0.0    # wall-clock time for this hop's generation call only
+    latency_seconds: float = 0.0    # wall-clock time for this hop's generation call only (unchanged meaning)
+    # Sync-bracketed sub-timers within this hop, measurement-only — see
+    # timed_section() above. Keys present depend on what this hop actually
+    # does: "prefill"/"decode" or "generate" from inside the generation
+    # call, plus "anchor_update"/"layer_select"/"compress"/"offset_correct"
+    # /"decompress_reconstruct" for the surrounding KV-processing work that
+    # latency_seconds above has never included. Not guaranteed to sum to
+    # latency_seconds (decompress_reconstruct happens before the generation
+    # call it wraps into; anchor/layer-select/compress/correct happen after).
+    component_timings: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -252,7 +288,12 @@ class RunResult:
     total_original_mb: float
     overall_compression_ratio: float
     hop_texts: List[str]            # decoded text per intermediate hop; hop_texts[0] is the Reasoner
-    finalizer_latency_seconds: float = 0.0  # wall-clock time for the last agent's generation call only
+    finalizer_latency_seconds: float = 0.0  # wall-clock time for the last agent's generation call only (unchanged meaning)
+    # Same idea as HopStat.component_timings, for the last agent's hop:
+    # "decompress_reconstruct" (its own injected-cache prep, which happens
+    # before finalizer_latency's timer starts) and "prefill"/"decode" from
+    # inside its generation call.
+    finalizer_component_timings: Dict[str, float] = field(default_factory=dict)
 
 
 # ─── pipeline ─────────────────────────────────────────────────────────────────
@@ -336,6 +377,7 @@ class LAKVPipeline:
         total_bytes = 0
         answer = ""
         finalizer_latency = 0.0
+        finalizer_component_timings: Dict[str, float] = {}
         q_key = make_key(question)
         self.last_run_offset_logs = []
 
@@ -365,18 +407,22 @@ class LAKVPipeline:
             )["input_ids"].to(self.device)
 
             is_last = (agent_idx == n_agents - 1)
+            # Sync-bracketed sub-timers for this hop — measurement only, see
+            # timed_section() and HopStat/RunResult.component_timings above.
+            component_timings: Dict[str, float] = {}
 
             # ── decompress + inject KV from previous agent ───────────
             injected_kv_tuple: Optional[tuple] = None
             if kv_message is not None:
-                decompressed = self.compressor.decompress(kv_message, device=self.device)
+                with timed_section(component_timings, "decompress_reconstruct"):
+                    decompressed = self.compressor.decompress(kv_message, device=self.device)
 
-                if self.selector and selection_mask is not None:
-                    decompressed = self.selector.reconstruct(
-                        decompressed,
-                        selection_mask,
-                        strategy=self.config.reconstruction_strategy,
-                    )
+                    if self.selector and selection_mask is not None:
+                        decompressed = self.selector.reconstruct(
+                            decompressed,
+                            selection_mask,
+                            strategy=self.config.reconstruction_strategy,
+                        )
 
                 injected_kv_tuple = decompressed
 
@@ -399,6 +445,7 @@ class LAKVPipeline:
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
                     capture_for_anchor=capture_for_anchor,
+                    component_timings=component_timings,
                 )
                 if capture_for_anchor:
                     answer, agent_raw_kv, agent_hidden_last = gen_result
@@ -424,10 +471,13 @@ class LAKVPipeline:
                     )
                     injected_len = injected_kv_tuple[0][0].shape[2] if injected_kv_tuple is not None else 0
                     hop_prompt_seq_len = injected_len + input_ids.shape[1]
-                    self.anchor_table.update(
-                        q_key, channel_key, base_kv, agent_raw_kv, agent_hidden_last,
-                        prompt_seq_len=hop_prompt_seq_len,
-                        rope_theta=self._get_rope_theta())
+                    with timed_section(component_timings, "anchor_update"):
+                        self.anchor_table.update(
+                            q_key, channel_key, base_kv, agent_raw_kv, agent_hidden_last,
+                            prompt_seq_len=hop_prompt_seq_len,
+                            rope_theta=self._get_rope_theta())
+
+                finalizer_component_timings = component_timings
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
@@ -440,6 +490,7 @@ class LAKVPipeline:
                     max_new=self.config.intermediate_max_new_tokens,
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
+                    component_timings=component_timings,
                 )
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
@@ -468,28 +519,31 @@ class LAKVPipeline:
                     # after fixing what it gets added to and how it's aligned.
                     injected_len = injected_kv_tuple[0][0].shape[2] if injected_kv_tuple is not None else 0
                     hop_prompt_seq_len = injected_len + input_ids.shape[1]
-                    self.anchor_table.update(
-                        q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
-                        prompt_seq_len=hop_prompt_seq_len,
-                        rope_theta=self._get_rope_theta())
+                    with timed_section(component_timings, "anchor_update"):
+                        self.anchor_table.update(
+                            q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
+                            prompt_seq_len=hop_prompt_seq_len,
+                            rope_theta=self._get_rope_theta())
 
                 # layer selection
                 tier_info: Optional[Dict[int, int]] = None
-                if self.selector:
-                    filtered_kv, selection_mask = self.selector.select(raw_kv_tuple)
-                    tier_info = selection_mask.tier_per_kept_layer
-                    n_transmitted = len(selection_mask.kept_layer_indices)
-                else:
-                    filtered_kv = raw_kv_tuple
-                    selection_mask = None
-                    n_transmitted = self.N_LAYERS
+                with timed_section(component_timings, "layer_select"):
+                    if self.selector:
+                        filtered_kv, selection_mask = self.selector.select(raw_kv_tuple)
+                        tier_info = selection_mask.tier_per_kept_layer
+                        n_transmitted = len(selection_mask.kept_layer_indices)
+                    else:
+                        filtered_kv = raw_kv_tuple
+                        selection_mask = None
+                        n_transmitted = self.N_LAYERS
 
                 # compression
-                kv_message = self.compressor.compress(
-                    filtered_kv,
-                    tier_info=tier_info,
-                    layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
-                )
+                with timed_section(component_timings, "compress"):
+                    kv_message = self.compressor.compress(
+                        filtered_kv,
+                        tier_info=tier_info,
+                        layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
+                    )
 
                 # anchor-table offset correction
                 if self.corrector and base_hidden is not None:
@@ -501,18 +555,19 @@ class LAKVPipeline:
                     receiver_prompt_len = self._prompt_len_for_agent(
                         question, prompts, agent_idx + 1
                     )
-                    kv_message, was_corrected = self.corrector.correct(
-                        kv_message,
-                        sender_seq_len=sender_seq_len,
-                        receiver_prompt_len=receiver_prompt_len,
-                        question=question,
-                        channel_key=receiver_id,
-                        query_hidden=base_hidden,
-                        real_kv=filtered_kv,
-                        real_kv_layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
-                        device=self.device,
-                        rope_theta=self._get_rope_theta(),
-                    )
+                    with timed_section(component_timings, "offset_correct"):
+                        kv_message, was_corrected = self.corrector.correct(
+                            kv_message,
+                            sender_seq_len=sender_seq_len,
+                            receiver_prompt_len=receiver_prompt_len,
+                            question=question,
+                            channel_key=receiver_id,
+                            query_hidden=base_hidden,
+                            real_kv=filtered_kv,
+                            real_kv_layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
+                            device=self.device,
+                            rope_theta=self._get_rope_theta(),
+                        )
                     if self.corrector.last_offset_log:
                         self.last_run_offset_logs.append(dict(self.corrector.last_offset_log))
                     if was_corrected:
@@ -549,6 +604,7 @@ class LAKVPipeline:
                     n_layers_transmitted=n_transmitted,
                     n_layers_total=self.N_LAYERS,
                     latency_seconds=hop_latency,
+                    component_timings=component_timings,
                 ))
 
         if self.config.print_raw_outputs:
@@ -566,6 +622,7 @@ class LAKVPipeline:
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
             hop_texts=hop_texts,
             finalizer_latency_seconds=finalizer_latency,
+            finalizer_component_timings=finalizer_component_timings,
         )
 
     def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
@@ -749,6 +806,7 @@ class LAKVPipeline:
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
         capture_for_anchor: bool = False,
+        component_timings: Optional[Dict[str, float]] = None,
     ):
         """Run generation for the final agent.
 
@@ -796,12 +854,13 @@ class LAKVPipeline:
             # including the manual per-token loops below via
             # _sample_next_token's generated_ids parameter, so there's no
             # need to override it here.
-            with torch.no_grad():
-                output_ids = self.model.generate(
-                    input_ids=input_ids,
-                    max_new_tokens=max_new_tokens,
-                    **self.config.generation_kwargs,
-                )
+            with timed_section(component_timings, "generate"):
+                with torch.no_grad():
+                    output_ids = self.model.generate(
+                        input_ids=input_ids,
+                        max_new_tokens=max_new_tokens,
+                        **self.config.generation_kwargs,
+                    )
             new_tokens = output_ids[0, input_ids.shape[1]:]
             text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
             return (text, None, None) if capture_for_anchor else text
@@ -822,15 +881,16 @@ class LAKVPipeline:
         )
 
         # Step 1 — Prime: forward pass with injected KV + full prompt
-        with torch.no_grad():
-            out = self.model(
-                input_ids=input_ids,
-                past_key_values=cache,
-                position_ids=position_ids,
-                attention_mask=attention_mask,
-                use_cache=True,
-                output_hidden_states=capture_for_anchor,
-            )
+        with timed_section(component_timings, "prefill"):
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=input_ids,
+                    past_key_values=cache,
+                    position_ids=position_ids,
+                    attention_mask=attention_mask,
+                    use_cache=True,
+                    output_hidden_states=capture_for_anchor,
+                )
         running_cache = out.past_key_values          # natural DynamicCache
         next_logits   = out.logits[:, -1, :]         # logits for the next token
         cur_pos = position_start + prompt_len
@@ -857,23 +917,24 @@ class LAKVPipeline:
             # attention_mask here — it must be passed, covering the full
             # cache+new-token length, or generate() auto-builds its own
             # length-1 mask that triggers the exact crash this works around).
-            first_token = self._sample_next_token(next_logits, input_ids[0].tolist())
-            first_tok_id = first_token.item()
-            if first_tok_id in eos_ids or max_new_tokens <= 1:
-                generated_ids = [] if first_tok_id in eos_ids else [first_tok_id]
-            else:
-                handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
-                with torch.no_grad():
-                    gen_out = self.model.generate(
-                        input_ids=first_token,
-                        past_key_values=running_cache,
-                        attention_mask=handoff_mask,
-                        max_new_tokens=max_new_tokens - 1,
-                        use_cache=True,
-                        return_dict_in_generate=True,
-                        **self.config.generation_kwargs,
-                    )
-                generated_ids = gen_out.sequences[0].tolist()
+            with timed_section(component_timings, "decode"):
+                first_token = self._sample_next_token(next_logits, input_ids[0].tolist())
+                first_tok_id = first_token.item()
+                if first_tok_id in eos_ids or max_new_tokens <= 1:
+                    generated_ids = [] if first_tok_id in eos_ids else [first_tok_id]
+                else:
+                    handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                    with torch.no_grad():
+                        gen_out = self.model.generate(
+                            input_ids=first_token,
+                            past_key_values=running_cache,
+                            attention_mask=handoff_mask,
+                            max_new_tokens=max_new_tokens - 1,
+                            use_cache=True,
+                            return_dict_in_generate=True,
+                            **self.config.generation_kwargs,
+                        )
+                    generated_ids = gen_out.sequences[0].tolist()
             return _finish(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
         # ── position_offset != 0 (offset-corrected configs): keep the exact
@@ -882,23 +943,24 @@ class LAKVPipeline:
         # exactly the kind of bug that already broke Config E once before. ──
         generated: List[int] = []
         history = input_ids[0].tolist()  # this agent's own prompt + generation so far, for repetition_penalty
-        for _ in range(max_new_tokens):
-            next_token = self._sample_next_token(next_logits, history)  # (1, 1)
-            tok_id = next_token.item()
-            if tok_id in eos_ids:
-                break
-            generated.append(tok_id)
-            history.append(tok_id)
-            with torch.no_grad():
-                out = self.model(
-                    input_ids=next_token,
-                    past_key_values=running_cache,
-                    position_ids=torch.tensor([[cur_pos]], device=self.device),
-                    use_cache=True,
-                )
-            running_cache = out.past_key_values
-            next_logits   = out.logits[:, -1, :]
-            cur_pos += 1
+        with timed_section(component_timings, "decode"):
+            for _ in range(max_new_tokens):
+                next_token = self._sample_next_token(next_logits, history)  # (1, 1)
+                tok_id = next_token.item()
+                if tok_id in eos_ids:
+                    break
+                generated.append(tok_id)
+                history.append(tok_id)
+                with torch.no_grad():
+                    out = self.model(
+                        input_ids=next_token,
+                        past_key_values=running_cache,
+                        position_ids=torch.tensor([[cur_pos]], device=self.device),
+                        use_cache=True,
+                    )
+                running_cache = out.past_key_values
+                next_logits   = out.logits[:, -1, :]
+                cur_pos += 1
 
         return _finish(self.tokenizer.decode(generated, skip_special_tokens=True))
 
@@ -977,6 +1039,7 @@ class LAKVPipeline:
         max_new: Optional[int] = None,
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
+        component_timings: Optional[Dict[str, float]] = None,
     ) -> tuple:
         """Like _generate_intermediate but also returns last hidden states for anchor embedding."""
         eos_ids = self._eos_ids
@@ -996,15 +1059,16 @@ class LAKVPipeline:
             # used for Verifier/Finalizer) now applies the same penalty via
             # its generated_ids parameter, so this fast path and the manual
             # loop apply the same value instead of one being force-disabled.
-            with torch.no_grad():
-                gen_out = self.model.generate(
-                    input_ids=input_ids,
-                    max_new_tokens=max_new,
-                    use_cache=True,
-                    return_dict_in_generate=True,
-                    output_hidden_states=True,
-                    **self.config.generation_kwargs,
-                )
+            with timed_section(component_timings, "generate"):
+                with torch.no_grad():
+                    gen_out = self.model.generate(
+                        input_ids=input_ids,
+                        max_new_tokens=max_new,
+                        use_cache=True,
+                        return_dict_in_generate=True,
+                        output_hidden_states=True,
+                        **self.config.generation_kwargs,
+                    )
             # hidden_states[0] = the prompt-prefill step (one forward() call
             # over the whole prompt); [-1] = last layer. Same tensor this
             # branch produced before, just read off generate()'s own output
@@ -1035,15 +1099,16 @@ class LAKVPipeline:
             (1, cache_seq_len + prompt_len),
             dtype=torch.long, device=self.device,
         )
-        with torch.no_grad():
-            out = self.model(
-                input_ids=input_ids,
-                past_key_values=cache,
-                position_ids=position_ids,
-                attention_mask=attention_mask,
-                use_cache=True,
-                output_hidden_states=True,
-            )
+        with timed_section(component_timings, "prefill"):
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=input_ids,
+                    past_key_values=cache,
+                    position_ids=position_ids,
+                    attention_mask=attention_mask,
+                    use_cache=True,
+                    output_hidden_states=True,
+                )
 
         last_hidden = out.hidden_states[-1]  # (1, seq, hidden)
         running_cache = out.past_key_values
@@ -1070,40 +1135,41 @@ class LAKVPipeline:
             # That makes attention_mask.shape[1] != input_ids.shape[1], so the
             # "full sequence passed, please slice" branch never triggers, and
             # input_ids (just the 1 real new token) is used as-is, correctly.
-            first_token = self._sample_next_token(next_logits, input_ids[0].tolist())
-            first_tok_id = first_token.item()
-            if first_tok_id in eos_ids:
-                generated_ids = []
-            elif max_new <= 1:
-                # Edge case (max_new is always 512 in practice, never hit):
-                # still fold first_token into running_cache via one manual
-                # forward, matching what the old per-token loop always did
-                # even on its very last iteration — generate() isn't used
-                # here since max_new_tokens=0 handling isn't worth depending
-                # on for a case that doesn't occur with current configs.
-                generated_ids = [first_tok_id]
-                with torch.no_grad():
-                    out = self.model(
-                        input_ids=first_token,
-                        past_key_values=running_cache,
-                        position_ids=torch.tensor([[cur_pos]], device=self.device),
-                        use_cache=True,
-                    )
-                running_cache = out.past_key_values
-            else:
-                handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
-                with torch.no_grad():
-                    gen_out = self.model.generate(
-                        input_ids=first_token,
-                        past_key_values=running_cache,
-                        attention_mask=handoff_mask,
-                        max_new_tokens=max_new - 1,
-                        use_cache=True,
-                        return_dict_in_generate=True,
-                        **self.config.generation_kwargs,
-                    )
-                generated_ids = gen_out.sequences[0].tolist()
-                running_cache = gen_out.past_key_values
+            with timed_section(component_timings, "decode"):
+                first_token = self._sample_next_token(next_logits, input_ids[0].tolist())
+                first_tok_id = first_token.item()
+                if first_tok_id in eos_ids:
+                    generated_ids = []
+                elif max_new <= 1:
+                    # Edge case (max_new is always 512 in practice, never hit):
+                    # still fold first_token into running_cache via one manual
+                    # forward, matching what the old per-token loop always did
+                    # even on its very last iteration — generate() isn't used
+                    # here since max_new_tokens=0 handling isn't worth depending
+                    # on for a case that doesn't occur with current configs.
+                    generated_ids = [first_tok_id]
+                    with torch.no_grad():
+                        out = self.model(
+                            input_ids=first_token,
+                            past_key_values=running_cache,
+                            position_ids=torch.tensor([[cur_pos]], device=self.device),
+                            use_cache=True,
+                        )
+                    running_cache = out.past_key_values
+                else:
+                    handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                    with torch.no_grad():
+                        gen_out = self.model.generate(
+                            input_ids=first_token,
+                            past_key_values=running_cache,
+                            attention_mask=handoff_mask,
+                            max_new_tokens=max_new - 1,
+                            use_cache=True,
+                            return_dict_in_generate=True,
+                            **self.config.generation_kwargs,
+                        )
+                    generated_ids = gen_out.sequences[0].tolist()
+                    running_cache = gen_out.past_key_values
             generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
             return self._to_tuple(running_cache), last_hidden, generated_text
 
@@ -1111,23 +1177,24 @@ class LAKVPipeline:
         # manual loop — see the matching comment in _generate() above. ────
         generated_ids: List[int] = []
         history = input_ids[0].tolist()  # this agent's own prompt + generation so far, for repetition_penalty
-        for _ in range(max_new):
-            next_token = self._sample_next_token(next_logits, history)
-            tok_id = next_token.item()
-            if tok_id in eos_ids:
-                break
-            generated_ids.append(tok_id)
-            history.append(tok_id)
-            with torch.no_grad():
-                out = self.model(
-                    input_ids=next_token,
-                    past_key_values=running_cache,
-                    position_ids=torch.tensor([[cur_pos]], device=self.device),
-                    use_cache=True,
-                )
-            running_cache = out.past_key_values
-            next_logits = out.logits[:, -1, :]
-            cur_pos += 1
+        with timed_section(component_timings, "decode"):
+            for _ in range(max_new):
+                next_token = self._sample_next_token(next_logits, history)
+                tok_id = next_token.item()
+                if tok_id in eos_ids:
+                    break
+                generated_ids.append(tok_id)
+                history.append(tok_id)
+                with torch.no_grad():
+                    out = self.model(
+                        input_ids=next_token,
+                        past_key_values=running_cache,
+                        position_ids=torch.tensor([[cur_pos]], device=self.device),
+                        use_cache=True,
+                    )
+                running_cache = out.past_key_values
+                next_logits = out.logits[:, -1, :]
+                cur_pos += 1
 
         generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
         return self._to_tuple(running_cache), last_hidden, generated_text

@@ -55,6 +55,7 @@ from transformers import DynamicCache
 # run directly) by entry-point scripts (benchmark.py, sanity_test.py,
 # diagnostic_test.py) that already put the repo root on sys.path first.
 from lakv.kv_compressor import KVCompressor, KVMessage
+from lakv.pipeline import timed_section
 from lakv.layer_selector import LayerSelector, SelectionMask
 
 
@@ -148,6 +149,15 @@ class SharedPrefixResult:
     anchor_pool_size: int = 0
     anchor_cumulative_hit_rate: float = 0.0
 
+    # Sync-bracketed sub-timers, measurement only — see lakv.pipeline
+    # .timed_section(). Does not affect latency_s's existing meaning
+    # (unchanged: whole-run wall clock). Keys populated depend on
+    # transfer_mode/use_kv_injection: "solver_prefill"/"solver_decode"
+    # always; "anchor_update"/"layer_select"/"compress"/
+    # "decompress_reconstruct"/"offset_correct"/"finalizer_prefill"/
+    # "finalizer_decode" only when the corresponding step actually runs.
+    component_timings: Dict[str, float] = field(default_factory=dict)
+
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +203,9 @@ class SharedPrefixPipeline:
 
     def run(self, question: str) -> SharedPrefixResult:
         t0 = time.time()
+        # Sync-bracketed sub-timers, measurement only — see
+        # SharedPrefixResult.component_timings and lakv.pipeline.timed_section.
+        component_timings: Dict[str, float] = {}
 
         # ── Phase 1: Build shared prefix ──────────────────────────────────
         messages = [
@@ -216,11 +229,12 @@ class SharedPrefixPipeline:
                 self.model, self.tokenizer, question, self.device)
 
         # ── Phase 2: Solver forward pass on prefix → then greedy decode ───
-        with torch.no_grad():
-            prefix_out = self.model(
-                input_ids=prefix_ids,
-                use_cache=True,
-            )
+        with timed_section(component_timings, "solver_prefill"):
+            with torch.no_grad():
+                prefix_out = self.model(
+                    input_ids=prefix_ids,
+                    use_cache=True,
+                )
         running_cache = prefix_out.past_key_values  # DynamicCache after prefix
         next_logits = prefix_out.logits[:, -1, :]   # logits for first new token
 
@@ -228,23 +242,24 @@ class SharedPrefixPipeline:
         generated_ids: List[int] = []
 
         cur_pos = prefix_len
-        for _ in range(self.config.solver_max_new_tokens):
-            next_token = next_logits.argmax(-1, keepdim=True)  # (1,1)
-            tok_id = next_token.item()
-            if tok_id == eos_id:
-                break
-            generated_ids.append(tok_id)
-            position_ids_t = torch.tensor([[cur_pos]], device=self.device, dtype=torch.long)
-            with torch.no_grad():
-                out = self.model(
-                    input_ids=next_token,
-                    past_key_values=running_cache,
-                    position_ids=position_ids_t,
-                    use_cache=True,
-                )
-            running_cache = out.past_key_values
-            next_logits = out.logits[:, -1, :]
-            cur_pos += 1
+        with timed_section(component_timings, "solver_decode"):
+            for _ in range(self.config.solver_max_new_tokens):
+                next_token = next_logits.argmax(-1, keepdim=True)  # (1,1)
+                tok_id = next_token.item()
+                if tok_id == eos_id:
+                    break
+                generated_ids.append(tok_id)
+                position_ids_t = torch.tensor([[cur_pos]], device=self.device, dtype=torch.long)
+                with torch.no_grad():
+                    out = self.model(
+                        input_ids=next_token,
+                        past_key_values=running_cache,
+                        position_ids=position_ids_t,
+                        use_cache=True,
+                    )
+                running_cache = out.past_key_values
+                next_logits = out.logits[:, -1, :]
+                cur_pos += 1
 
         solver_reasoning = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
         solver_gen_len = len(generated_ids)
@@ -257,9 +272,10 @@ class SharedPrefixPipeline:
         if self.config.anchor_table is not None and base_kv is not None:
             from lakv.anchor_table import question_key as make_key
             q_key = make_key(question)
-            self.config.anchor_table.update(
-                q_key, "solver_to_finalizer", base_kv, full_kv_tuple, base_hidden,
-                prompt_seq_len=prefix_len)
+            with timed_section(component_timings, "anchor_update"):
+                self.config.anchor_table.update(
+                    q_key, "solver_to_finalizer", base_kv, full_kv_tuple, base_hidden,
+                    prompt_seq_len=prefix_len)
 
         if self.config.verbose:
             print(f"  [Solver] prefix_len={prefix_len} | generated={solver_gen_len} tokens")
@@ -282,20 +298,22 @@ class SharedPrefixPipeline:
             # Layer selection
             selection_mask: Optional[SelectionMask] = None
             tier_info: Optional[Dict[int, int]] = None
-            if self.selector is not None:
-                kv_to_transfer, selection_mask = self.selector.select(kv_to_transfer)
-                tier_info = selection_mask.tier_per_kept_layer
-                n_transferred = len(selection_mask.kept_layer_indices)
-            else:
-                n_transferred = self.N_LAYERS
+            with timed_section(component_timings, "layer_select"):
+                if self.selector is not None:
+                    kv_to_transfer, selection_mask = self.selector.select(kv_to_transfer)
+                    tier_info = selection_mask.tier_per_kept_layer
+                    n_transferred = len(selection_mask.kept_layer_indices)
+                else:
+                    n_transferred = self.N_LAYERS
 
             # Compression
             layer_indices = selection_mask.kept_layer_indices if selection_mask else None
-            kv_message = self.compressor.compress(
-                kv_to_transfer,
-                tier_info=tier_info,
-                layer_indices=layer_indices,
-            )
+            with timed_section(component_timings, "compress"):
+                kv_message = self.compressor.compress(
+                    kv_to_transfer,
+                    tier_info=tier_info,
+                    layer_indices=layer_indices,
+                )
             original_mb = kv_message.original_bytes / 1e6
             compressed_mb = kv_message.compressed_bytes / 1e6
             compression_ratio = kv_message.compression_ratio
@@ -307,15 +325,16 @@ class SharedPrefixPipeline:
                       f"ratio={compression_ratio:.2f}x")
 
             # Decompression
-            decompressed = self.compressor.decompress(kv_message, device=self.device)
+            with timed_section(component_timings, "decompress_reconstruct"):
+                decompressed = self.compressor.decompress(kv_message, device=self.device)
 
-            # Reconstruct full 28-layer tuple for dropped layers
-            if self.selector is not None and selection_mask is not None:
-                decompressed = self.selector.reconstruct(
-                    decompressed,
-                    selection_mask,
-                    strategy=self.config.reconstruction_strategy,
-                )
+                # Reconstruct full 28-layer tuple for dropped layers
+                if self.selector is not None and selection_mask is not None:
+                    decompressed = self.selector.reconstruct(
+                        decompressed,
+                        selection_mask,
+                        strategy=self.config.reconstruction_strategy,
+                    )
 
             # ── Anchor table: query correction before injecting into finalizer
             anchor_hit = False
@@ -323,9 +342,10 @@ class SharedPrefixPipeline:
             if self.config.anchor_table is not None and base_hidden is not None:
                 from lakv.anchor_table import question_key as make_key
                 q_key = make_key(question)
-                result = self.config.anchor_table.query_correction(
-                    q_key, "solver_to_finalizer", base_hidden,
-                    device=self.device, target_prompt_len=prefix_len)
+                with timed_section(component_timings, "offset_correct"):
+                    result = self.config.anchor_table.query_correction(
+                        q_key, "solver_to_finalizer", base_hidden,
+                        device=self.device, target_prompt_len=prefix_len)
                 if result is not None:
                     decompressed, anchor_confidence = result
                     anchor_hit = True
@@ -338,6 +358,7 @@ class SharedPrefixPipeline:
                 prefix_ids,
                 prefix_len,
                 solver_reasoning=solver_reasoning,
+                component_timings=component_timings,
             )
         else:
             # Text-only mode: concatenate solver reasoning + suffix and process as fresh prompt
@@ -345,7 +366,8 @@ class SharedPrefixPipeline:
             compression_ratio = 0.0
             anchor_hit = False
             anchor_confidence = 0.0
-            answer = self._run_finalizer_text_only(solver_reasoning)
+            with timed_section(component_timings, "finalizer_generate"):
+                answer = self._run_finalizer_text_only(solver_reasoning)
 
         if self.config.print_raw_outputs:
             print(f"\n[RAW Solver]    {solver_reasoning}")
@@ -396,6 +418,7 @@ class SharedPrefixPipeline:
             anchor_confidence=anchor_confidence,
             anchor_pool_size=at.pool_size() if at is not None else 0,
             anchor_cumulative_hit_rate=at.hit_rate() if at is not None else 0.0,
+            component_timings=component_timings,
         )
 
     # ── debug helpers ─────────────────────────────────────────────────────
@@ -532,6 +555,7 @@ class SharedPrefixPipeline:
         prefix_ids: torch.Tensor,
         prefix_len: int,
         solver_reasoning: str = "",
+        component_timings: Optional[Dict[str, float]] = None,
     ) -> str:
         """
         Finalizer: process the suffix tokens as a CONTINUATION of injected_kv.
@@ -562,13 +586,14 @@ class SharedPrefixPipeline:
         # eager attn internally creates a full-attend mask for cached positions.
         # Passing a 2D (1, cache_seq_len+suffix_len) mask was blocking cache
         # attention due to how _prepare_4d_causal_attention_mask processes it.
-        with torch.no_grad():
-            out = self.model(
-                input_ids=suffix_ids,
-                past_key_values=cache,
-                position_ids=position_ids,
-                use_cache=True,
-            )
+        with timed_section(component_timings, "finalizer_prefill"):
+            with torch.no_grad():
+                out = self.model(
+                    input_ids=suffix_ids,
+                    past_key_values=cache,
+                    position_ids=position_ids,
+                    use_cache=True,
+                )
 
         running_cache = out.past_key_values
         next_logits = out.logits[:, -1, :]
@@ -578,23 +603,24 @@ class SharedPrefixPipeline:
         generated: List[int] = []
 
         fin_pos = cache_seq_len + suffix_len
-        for _ in range(self.config.finalizer_max_new_tokens):
-            next_token = next_logits.argmax(-1, keepdim=True)
-            tok_id = next_token.item()
-            if tok_id == eos_id:
-                break
-            generated.append(tok_id)
-            position_ids_t = torch.tensor([[fin_pos]], device=self.device, dtype=torch.long)
-            with torch.no_grad():
-                out = self.model(
-                    input_ids=next_token,
-                    past_key_values=running_cache,
-                    position_ids=position_ids_t,
-                    use_cache=True,
-                )
-            running_cache = out.past_key_values
-            next_logits = out.logits[:, -1, :]
-            fin_pos += 1
+        with timed_section(component_timings, "finalizer_decode"):
+            for _ in range(self.config.finalizer_max_new_tokens):
+                next_token = next_logits.argmax(-1, keepdim=True)
+                tok_id = next_token.item()
+                if tok_id == eos_id:
+                    break
+                generated.append(tok_id)
+                position_ids_t = torch.tensor([[fin_pos]], device=self.device, dtype=torch.long)
+                with torch.no_grad():
+                    out = self.model(
+                        input_ids=next_token,
+                        past_key_values=running_cache,
+                        position_ids=position_ids_t,
+                        use_cache=True,
+                    )
+                running_cache = out.past_key_values
+                next_logits = out.logits[:, -1, :]
+                fin_pos += 1
 
         answer = self.tokenizer.decode(generated, skip_special_tokens=True)
 

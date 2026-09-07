@@ -499,6 +499,11 @@ class Evaluator:
                 remaining = samples[start_idx:]
                 for i_rel, s in enumerate(tqdm(remaining, desc=f"Config {cfg_name}", initial=start_idx, total=len(samples))):
                     i = start_idx + i_rel
+                    # Explicit sync before starting the timer too, not just
+                    # before stopping it — otherwise leftover async work from
+                    # the previous sample could bleed into this sample's t0.
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
                     t0 = time.time()
 
                     try:
@@ -506,6 +511,8 @@ class Evaluator:
                         gold = str(s["answer"]).strip()
                         if pipe_type == "single":
                             raw_answer = pipe.run(s["question"])
+                            if torch.cuda.is_available():
+                                torch.cuda.synchronize()
                             elapsed = time.time() - t0
                             pred, ok, f1 = score_sample(dataset_name, raw_answer, gold)
                             if ok: correct += 1
@@ -518,6 +525,8 @@ class Evaluator:
                             tot_lat += elapsed
                         elif pipe_type == "text":
                             r = pipe.run(s["question"])
+                            if torch.cuda.is_available():
+                                torch.cuda.synchronize()
                             elapsed = time.time() - t0
                             pred, ok, f1 = score_sample(dataset_name, r.answer, gold)
                             if ok: correct += 1
@@ -547,6 +556,8 @@ class Evaluator:
                             tot_lat += elapsed
                         else:
                             r = pipe.run(s["question"])
+                            if torch.cuda.is_available():
+                                torch.cuda.synchronize()
                             elapsed = time.time() - t0
                             pred, ok, f1 = score_sample(dataset_name, r.answer, gold)
                             if ok: correct += 1
@@ -566,6 +577,7 @@ class Evaluator:
                                 "compression_ratio":r.overall_compression_ratio,"latency_s":elapsed,
                                 "hop_stats":[asdict(h) for h in r.hop_stats],
                                 "finalizer_latency_s":r.finalizer_latency_seconds,
+                                "finalizer_component_timings":r.finalizer_component_timings,
                                 "offset_logs":list(pipe.last_run_offset_logs)})
                             tot_comp += r.total_compressed_mb/nh
                             tot_orig += r.total_original_mb/nh
