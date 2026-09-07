@@ -98,6 +98,22 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="zeros",
         outlier_clipping=True,
     ),
+    # Diagnostic pair, not a "real" config to report (same convention as
+    # E_strict/E_nodelta above) — B_int4_turboquant produced wildly out-of-
+    # distribution decoded tokens on a real n=100 HotpotQA run (literal Java
+    # class names, random CJK characters), a failure SHAPE inconsistent with
+    # ordinary quantization noise. Leading hypothesis: rotating K interacts
+    # badly with RoPE, which is already applied to K before it's cached (V
+    # has no RoPE). This isolates that: only V is rotated, K goes through
+    # the exact same code path as plain B_int4 (verified bit-identical by
+    # tests/test_kv_compressor_rotation.py). If this config's failure mode
+    # looks like B_int4's ordinary degradation instead of turboquant's
+    # bizarre one, that confirms the RoPE-interaction hypothesis.
+    "B_int4_turboquant_vonly": PipelineConfig(
+        use_layer_selection=False, compression_mode="uniform_int4_rotated_v_only",
+        use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
+    ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",

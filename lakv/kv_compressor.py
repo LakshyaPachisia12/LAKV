@@ -179,7 +179,8 @@ class KVCompressor:
             clip_percentile: the percentile to clip to when outlier_clipping
                 is enabled. Default 99.5 (i.e. clip to the 0.5th/99.5th range).
         """
-        if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated", "adaptive"):
+        if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated",
+                        "uniform_int4_rotated_v_only", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
         if mode == "adaptive" and profile is None:
             raise ValueError("'adaptive' mode requires a LayerProfile")
@@ -193,7 +194,7 @@ class KVCompressor:
             return 16
         if self.mode == 'uniform_int8':
             return 8
-        if self.mode in ('uniform_int4', 'uniform_int4_rotated'):
+        if self.mode in ('uniform_int4', 'uniform_int4_rotated', 'uniform_int4_rotated_v_only'):
             return 4
         
         # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
@@ -260,12 +261,29 @@ class KVCompressor:
                 compressed_bytes += k.nbytes + v.nbytes
             else:
                 clip_pct = self.clip_percentile if (self.outlier_clipping and bits == 4) else None
-                # Rotate BEFORE quantizing (uniform_int4_rotated only) —
-                # spreads outlier magnitude evenly across head_dim so
-                # per-head min-max quantization has less to lose. See the
-                # rotation section above for why this is lossless on its own.
-                k_in = _rotate(k) if self.mode == "uniform_int4_rotated" else k
-                v_in = _rotate(v) if self.mode == "uniform_int4_rotated" else v
+                # Rotate BEFORE quantizing (uniform_int4_rotated /
+                # uniform_int4_rotated_v_only) — spreads outlier magnitude
+                # evenly across head_dim so per-head min-max quantization has
+                # less to lose. See the rotation section above for why this
+                # is lossless on its own — FOR A GENERIC TENSOR. K is NOT a
+                # generic tensor: RoPE (rotary position embeddings) is
+                # already applied to K before it's cached, pairing up
+                # dimensions with a position-and-frequency-dependent phase.
+                # A real-model test of uniform_int4_rotated (both K and V
+                # rotated) produced wildly out-of-distribution decoded tokens
+                # (literal Java class names, random CJK characters) — a
+                # failure SHAPE inconsistent with ordinary quantization noise
+                # and consistent with this second, RoPE-agnostic rotation
+                # scrambling RoPE's paired-dimension phase structure in K.
+                # uniform_int4_rotated_v_only exists to isolate this: rotate
+                # V (no RoPE applied to V, so no equivalent risk) but leave K
+                # unrotated, as a diagnostic before attempting any RoPE-aware
+                # fix. See lakv_research_extensions_prompt.md Phase 3 update,
+                # 2026-09-07.
+                rotate_k = self.mode == "uniform_int4_rotated"
+                rotate_v = self.mode in ("uniform_int4_rotated", "uniform_int4_rotated_v_only")
+                k_in = _rotate(k) if rotate_k else k
+                v_in = _rotate(v) if rotate_v else v
                 k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
                 v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
 
@@ -317,6 +335,8 @@ class KVCompressor:
                 )
                 if message.mode == "uniform_int4_rotated":
                     k = _unrotate(k)
+                    v = _unrotate(v)
+                elif message.mode == "uniform_int4_rotated_v_only":
                     v = _unrotate(v)
 
             assert k.shape == torch.Size(cl.shape), f"Shape mismatch: {k.shape} vs {cl.shape}"

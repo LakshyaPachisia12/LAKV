@@ -116,6 +116,44 @@ def test_full_compressor_round_trip_uniform_int4_rotated():
     assert mse < 5.0  # sanity ceiling, not a tight bound -- just catches a broken pipeline
 
 
+def test_v_only_mode_leaves_k_bit_identical_to_plain_int4():
+    """uniform_int4_rotated_v_only must leave K on the EXACT same code path
+    as plain uniform_int4 (no rotation at all) -- only V gets rotated. This
+    is the isolating diagnostic added after a real-model run of the full
+    (K+V rotated) mode produced out-of-distribution tokens plausibly caused
+    by the rotation interacting with K's already-applied RoPE encoding."""
+    t_k = _make_synthetic_kv(seed=6)
+    t_v = _make_synthetic_kv(seed=7)
+    kv = ((t_k, t_v),)
+
+    comp_plain = KVCompressor(mode="uniform_int4")
+    comp_vonly = KVCompressor(mode="uniform_int4_rotated_v_only")
+
+    msg_plain = comp_plain.compress(kv)
+    msg_vonly = comp_vonly.compress(kv)
+
+    # K's quantized bytes, scale, and zero-point must be BIT IDENTICAL
+    # between the two modes -- if they're not, K is being touched by the
+    # rotation somehow, which would defeat the whole point of this isolating
+    # test before it's even run on GPU.
+    k_plain, k_vonly = msg_plain.layers[0], msg_vonly.layers[0]
+    assert torch.equal(k_plain.k_q, k_vonly.k_q)
+    assert torch.equal(k_plain.k_scale, k_vonly.k_scale)
+    assert torch.equal(k_plain.k_zp, k_vonly.k_zp)
+
+    # V, by contrast, must differ (it went through rotation before quant).
+    v_plain, v_vonly = msg_plain.layers[0], msg_vonly.layers[0]
+    assert not torch.equal(v_plain.v_q, v_vonly.v_q)
+
+    # Round trip still reconstructs the right shape and a sane error level.
+    recon = comp_vonly.decompress(msg_vonly, device="cpu")
+    assert recon[0][0].shape == t_k.shape
+    assert recon[0][1].shape == t_v.shape
+    # K reconstruction must match plain int4's reconstruction exactly too.
+    recon_plain = comp_plain.decompress(msg_plain, device="cpu")
+    assert torch.equal(recon[0][0], recon_plain[0][0])
+
+
 def test_compressed_layer_shape_field_unaffected_by_rotation():
     # CompressedLayer.shape is used by decompress()'s own shape assertion --
     # rotation only touches the LAST axis in place, must not change it.
