@@ -170,6 +170,19 @@ The paper is publishable at an NLP workshop (NeurIPS Efficient NLP / ACL SRW) if
 - [ ] EXP-5: Anchor table hit rate >30% by question 100, accuracy maintained
 
 Stretch (main conference track):
-- [ ] Second dataset (MATH or MMLU subset)
+- [ ] Second dataset: **HotpotQA (distractor config)** — live in the codebase
+  (`run.py::load_hotpotqa`, `lakv/qa_scoring.py` for EM/F1) since the folder
+  reorg, but had zero run provenance until `run_metadata.json` (git commit,
+  dataset/split/n_samples, `datasets`/`transformers`/`torch` versions) was
+  added to every `--mode experiment` output folder — see README.md's
+  "HotpotQA" subsection for the worked command. No HotpotQA results were
+  committed as of this note; MATH/MMLU are not implemented at all.
 - [ ] Latency numbers (TTFT ms, not just MB)
 - [ ] Theoretical bound on correction error vs anchor pool size
+
+**Note on this document's staleness**: several sections above (the Gaps list,
+the target results table, EXP-1's "~75%+" ceiling) predate a number of real
+fixes landed since (OffsetCorrector's layer-index/base-content bugs,
+`AnchorTable`'s `prompt_seq_len` alignment, the folder reorg, HotpotQA
+support) — treat specific numbers/claims above as historical unless verified
+against current code and a real run, not as current targets.

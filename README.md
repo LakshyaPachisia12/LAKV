@@ -240,17 +240,51 @@ python run.py --mode experiment \
   --arch two_agent
 ```
 
+### 4. HotpotQA
+
+Same pipeline, `--dataset hotpotqa` instead of the `gsm8k` default (distractor
+config — each question already bundles its 10 candidate context passages, no
+retrieval step). Calibration is dataset-aware (`mode_calibrate` reads
+`--dataset`), so calibrate separately for HotpotQA rather than reusing a
+GSM8K profile — a profile calibrated on one dataset silently applied to the
+other was a real, since-fixed bug.
+
+```bash
+python run.py --mode calibrate \
+  --dataset hotpotqa --task hotpotqa \
+  --n_calibration 50 \
+  --device cuda
+
+python run.py --mode experiment \
+  --dataset hotpotqa \
+  --profile_path profiles/run_<timestamp>/qwen_hotpotqa.json \
+  --n_samples 100 \
+  --output_dir results \
+  --device cuda
+```
+
+Every `--mode experiment` run (either dataset) now writes a `run_metadata.json`
+into its output folder alongside `experiment_results.json`/`results_table.csv`
+— git commit, model id, dataset/split/n_samples/configs, and the installed
+`datasets`/`transformers`/`torch` versions — specifically so a HotpotQA (or
+any) results folder is reproducible without having to reconstruct what
+produced it after the fact. `load_hotpotqa`'s sample selection is a plain
+`data[:n]` slice (no shuffling), so no seed is needed for sample selection
+itself; `run_metadata.json`'s `datasets_version` is what pins reproducibility
+of the underlying HF dataset content given `load_dataset()` itself doesn't
+take a revision pin here.
+
 Full `run.py` flag reference:
 
 | Flag                  | Default                                     | Meaning                                            |
 | --------------------- | ------------------------------------------- | -------------------------------------------------- |
 | `--model`             | `Qwen/Qwen2.5-7B-Instruct`                  | HF model id                                        |
 | `--task`              | `gsm8k`                                     | Dataset tag (used for profile naming only)         |
-| `--dataset`           | `gsm8k`                                     | `gsm8k` \| `hotpotqa` — which dataset to load       |
+| `--dataset`           | `gsm8k`                                     | `gsm8k` \| `hotpotqa` — which dataset to load, for calibration too |
 | `--mode`              | `calibrate`                                 | `calibrate` \| `sanity` \| `experiment`            |
-| `--n_samples`         | `100`                                       | GSM8K test questions to evaluate (experiment mode) |
-| `--n_calibration`     | `50`                                        | GSM8K train questions used for calibration         |
-| `--configs`           | `single_agent A B_int8 B_int4 C D E E_int8` | Which presets to run                               |
+| `--n_samples`         | `100`                                       | Test/validation questions to evaluate (experiment mode) — GSM8K test split or HotpotQA validation split, per `--dataset` |
+| `--n_calibration`     | `50`                                        | Train questions used for calibration, per `--dataset` |
+| `--configs`           | `single_agent A B_int8 B_int4 C D E E_int8` | Which presets to run — also available: `single_agent_matched`/`text_agent_matched` (final-hop budget capped at 512 to match the KV-relay configs, for an apples-to-apples comparison; see [config presets](#v1-config-presets)) |
 | `--profile_dir`       | `profiles`                                  | Base dir for new calibration profiles              |
 | `--profile_path`      | *(required for sanity/experiment)*          | Path to an existing `LayerProfile` JSON            |
 | `--output_dir`        | `results`                                   | Base dir for experiment results                    |
@@ -285,6 +319,16 @@ cross-question KV-drift corrections as the run progresses.
 There are also ablation presets (random/fixed layer-index selections) available
 via `--configs C_random_20_s0 C_top20 C_bottom20 ...` — see
 `lakv/evaluator.py::ABLATION_CONFIGS`.
+
+`single_agent_matched`/`text_agent_matched` run the same `single_agent`/
+`text_agent` pipelines but with `final_max_new_tokens` capped at 512 —
+matching every KV-relay config's final-hop budget, which is kept at 512
+rather than `single_agent`/`text_agent`'s default 1536 because raising it
+OOMs Config A on a ~14.56GB GPU after a handful of samples (see
+`PipelineConfig.final_max_new_tokens`). Use the `_matched` variants for the
+primary, apples-to-apples comparison against KV-relay configs; the plain
+`single_agent`/`text_agent` (1536) remain available as a secondary,
+unconstrained-ceiling reference, not the headline number.
 
 ### Alternate v1 entry point: `run_best.py`
 
