@@ -226,7 +226,14 @@ just underpowered noise (see finding 5 above).
 yet run on GPU — no result yet on whether relayed KV demonstrably carries
 real content beyond "having some cache." This is now the single biggest
 remaining gap before the paper's Results section is complete (see
-`docs/naacl2027_paper_draft.md`). Orthogonal Backfill was deliberately
+`docs/naacl2027_paper_draft.md`). **Before interpreting these results once
+they land:** literature search this session confirmed zero-ablation is a
+known-imperfect causal baseline (pushes activations off-distribution,
+which can produce large behavior changes unrelated to whether the zeroed
+content actually mattered) — weight `_audit_random` and `_audit_mismatched`
+as the primary evidence, treat `_audit_zeroed` as a supplementary sanity
+floor, and don't be surprised or over-interpret if `_audit_zeroed` diverges
+more sharply from the other two than expected. Orthogonal Backfill was deliberately
 scoped out (not attempted) rather than left open — see that same draft's
 Limitations section for the reasoning (its real formula needs attention
 weights this pipeline's fast `sdpa` decode path doesn't expose, and

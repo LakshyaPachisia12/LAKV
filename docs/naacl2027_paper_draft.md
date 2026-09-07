@@ -211,6 +211,26 @@ the scored evaluation set, so no scored question's content can leak back to
 itself). We apply this to our three strongest configurations (`A`,
 `B_int8`, `D`).
 
+We deliberately do not treat these three conditions as interchangeable
+evidence for the same claim. Zero-ablation is a known-imperfect causal
+baseline in the broader interpretability literature: it pushes activations
+off the distribution the model was trained on, which can produce large
+behavioral changes for reasons unrelated to whether the zeroed content
+carried meaningful information, rather than acting as a clean stand-in for
+"no information." We treat the moment-matched-random and mismatched-example
+conditions — which preserve realistic activation statistics or substitute
+another real, in-distribution cache respectively — as the more informative
+evidence for our causal claim, and zero-ablation as a supplementary sanity
+floor; if the zeroed condition alone diverges sharply from the other two,
+we attribute that to the out-of-distribution-activation effect rather than
+to content-dependence. We further note that a fully rigorous treatment of
+"no difference" would use a pre-registered equivalence margin (as in the
+causal-audit methodology we adapt this design from) rather than the
+absence of significance under our paired test; we did not have the
+evaluation budget to pre-register and power such a test here, and report
+our significance/CI results with that caveat rather than as a substitute
+for a formal equivalence test.
+
 ## 4. Results
 
 **Table 1: Established results (Qwen2.5-7B-Instruct, HotpotQA, n=100).**
