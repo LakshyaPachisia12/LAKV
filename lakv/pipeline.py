@@ -374,19 +374,53 @@ class LAKVPipeline:
                 injected_kv_tuple = decompressed
 
             if is_last:
+                # Only the last agent in an n_agents != 2 chain is missing its
+                # own anchor channel (every non-last agent already records one
+                # below) — n_agents == 2 keeps its existing shared-channel
+                # behavior untouched (see channel_key formula below).
+                capture_for_anchor = (
+                    self.anchor_table is not None and base_kv is not None
+                    and self.config.n_agents != 2
+                )
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 _t0 = time.perf_counter()
-                answer = self._generate(
+                gen_result = self._generate(
                     input_ids,
                     injected_kv_tuple,
                     max_new_tokens=self.config.final_max_new_tokens,
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
+                    capture_for_anchor=capture_for_anchor,
                 )
+                if capture_for_anchor:
+                    answer, agent_raw_kv, agent_hidden_last = gen_result
+                else:
+                    answer = gen_result
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 finalizer_latency = time.perf_counter() - _t0
+
+                # Populate this (last) agent's own anchor channel — see
+                # AnchorTable.update()'s docstring: every agent's own
+                # actual-vs-base KV offset should be recorded under its own
+                # channel so a *future* run() call (a different question, or
+                # a different config's run over the same question, sharing
+                # this AnchorTable) can query_correction() when handing off
+                # into this agent. Previously only non-last agents did this,
+                # so the last agent's channel (e.g. "agent_2" in a 3-agent
+                # chain) was never written and its query always missed.
+                if capture_for_anchor and agent_raw_kv is not None:
+                    channel_key = (
+                        self.config.anchor_channel_key
+                        if self.config.n_agents == 2 else f"agent_{agent_idx}"
+                    )
+                    injected_len = injected_kv_tuple[0][0].shape[2] if injected_kv_tuple is not None else 0
+                    hop_prompt_seq_len = injected_len + input_ids.shape[1]
+                    self.anchor_table.update(
+                        q_key, channel_key, base_kv, agent_raw_kv, agent_hidden_last,
+                        prompt_seq_len=hop_prompt_seq_len,
+                        rope_theta=self._get_rope_theta())
 
             else:
                 # Intermediate agent: generate reasoning, KV includes generated tokens
@@ -683,7 +717,8 @@ class LAKVPipeline:
         max_new_tokens: Optional[int] = None,
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
-    ) -> str:
+        capture_for_anchor: bool = False,
+    ):
         """Run generation for the final agent.
 
         When KV is injected from a prior agent, model.generate() can't be called
@@ -704,6 +739,19 @@ class LAKVPipeline:
         where generate()'s default position handling doesn't know about the
         custom RoPE-offset trick those configs apply. When there is no KV to
         inject at all, this skips straight to plain model.generate().
+
+        capture_for_anchor: when True, also return this agent's own (K,V)
+        tuple and last-layer hidden states as captured immediately after the
+        priming forward pass (before any decoding) — i.e. exactly the
+        actual_kv/hidden_states AnchorTable.update() expects, so the last
+        agent in the chain can record its own channel just like every
+        non-last agent already does via _generate_intermediate_with_hidden.
+        Only supported on the KV-injection path (the only path the last
+        agent in a real multi-agent run actually takes); the no-injection
+        branch below returns (text, None, None) since there's no prior
+        context to compute an offset against. Return type is `str` when
+        False (unchanged contract), `(str, Optional[tuple], Optional[Tensor])`
+        when True.
         """
         eos_ids = self._eos_ids
         if max_new_tokens is None:
@@ -722,7 +770,8 @@ class LAKVPipeline:
                     **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
                 )
             new_tokens = output_ids[0, input_ids.shape[1]:]
-            return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            return (text, None, None) if capture_for_anchor else text
 
         # ── KV injection: forward-prime then manual greedy decode ─────
         cache = self._to_dynamic_cache(injected_kv_tuple)
@@ -747,10 +796,20 @@ class LAKVPipeline:
                 position_ids=position_ids,
                 attention_mask=attention_mask,
                 use_cache=True,
+                output_hidden_states=capture_for_anchor,
             )
         running_cache = out.past_key_values          # natural DynamicCache
         next_logits   = out.logits[:, -1, :]         # logits for the next token
         cur_pos = position_start + prompt_len
+
+        # Captured once, right after priming and before any decoding — this
+        # agent's own actual_kv/hidden_states for AnchorTable.update(), see
+        # the capture_for_anchor docstring above.
+        anchor_kv = self._to_tuple(running_cache) if capture_for_anchor else None
+        anchor_hidden = out.hidden_states[-1] if capture_for_anchor else None
+
+        def _finish(text: str):
+            return (text, anchor_kv, anchor_hidden) if capture_for_anchor else text
 
         if position_offset == 0:
             # position_start == cache_seq_len exactly (no RoPE-offset trick in
@@ -782,7 +841,7 @@ class LAKVPipeline:
                         **{"repetition_penalty": 1.0, **self.config.generation_kwargs},
                     )
                 generated_ids = gen_out.sequences[0].tolist()
-            return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            return _finish(self.tokenizer.decode(generated_ids, skip_special_tokens=True))
 
         # ── position_offset != 0 (offset-corrected configs): keep the exact
         # manual loop — generate() doesn't know about the custom RoPE-offset
@@ -806,7 +865,7 @@ class LAKVPipeline:
             next_logits   = out.logits[:, -1, :]
             cur_pos += 1
 
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        return _finish(self.tokenizer.decode(generated, skip_special_tokens=True))
 
 
 
