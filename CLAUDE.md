@@ -58,11 +58,18 @@ section may not apply to what's currently checked out.
   just from having *some* non-empty cache. Reachable via config names
   `<base>_audit_zeroed` / `_audit_random` / `_audit_mismatched`, base in
   `("A", "D", "B_int8")` — see `lakv/evaluator.py::AUDIT_MODE_SUFFIXES`.
-- `lakv/kv_compressor.py`'s `uniform_int4_rotated` mode (same branch) —
-  rotates K/V by a fixed Hadamard matrix before int4 quantizing
-  (TurboQuant/PolarQuant-inspired; does NOT include TurboQuant's QJL
-  correction — see the file's own comments for exactly what is and isn't a
-  faithful reproduction). Preset: `B_int4_turboquant`.
+- `lakv/kv_compressor.py`'s int4 variants for fixing `B_int4`'s collapse
+  (same branch, chronological order tried): `uniform_int4_rotated` (Hadamard
+  rotation of both K/V, TurboQuant/PolarQuant-inspired — **broken**, produces
+  out-of-distribution tokens from disrupting K's RoPE encoding, preset
+  `B_int4_turboquant`, kept only as a documented negative result);
+  `uniform_int4_rotated_v_only` (isolating diagnostic, confirmed the K/RoPE
+  diagnosis, preset `B_int4_turboquant_vonly`); **`uniform_int4_kivi_k_channel`
+  (the actual fix — K quantized per-channel instead of per-head, KIVI-
+  inspired, preset `B_int4_kivi`, use this one)**; `uniform_int4_hybrid`
+  (KIVI's K fix + rotated V, preset `B_int4_hybrid` — tested equivalent to
+  `B_int4_kivi` with no benefit, don't use, kept for the record). See
+  "Research-extensions findings" below for the real-model results.
 
 ## Configs (`lakv/evaluator.py::PRESETS`)
 
@@ -151,17 +158,45 @@ don't just trust this summary if more data has come in since):
    2605.16234) finds layer redundancy is architecture/protocol-dependent
    across Qwen3-8B/Llama-3.1-8B/Mistral-7B — consistent with, not just
    coincidentally matching, this finding.
+4. **`B_int4`'s total collapse (0.0%/0.0%) is a fixable RoPE-interaction bug
+   in the quantization SCHEME, not an intrinsic 4-bit ceiling.** Root-caused
+   this session, not just patched: K is cached post-RoPE, and RoPE mixes
+   channel pairs by a position-dependent amount, which per-head (whole-range)
+   min-max quantization is defenseless against at only 16 quantization
+   levels. Confirmed two ways before trusting it: (a) a real-model test of
+   naive Hadamard-rotation quantization (`B_int4_turboquant`, TurboQuant/
+   PolarQuant-inspired) produced bizarre out-of-distribution tokens (literal
+   `.HttpServletResponse`, random CJK characters) — a failure SHAPE
+   inconsistent with ordinary quantization noise, consistent with the
+   rotation scrambling RoPE's paired-dimension structure specifically; (b) an
+   isolating diagnostic (`B_int4_turboquant_vonly`, K untouched, only V
+   rotated) reverted to ORDINARY `B_int4`-style repetition-loop garbage
+   (`"2 2 2 2"`, `"0 0 0 0"`) instead of the bizarre pattern — direct
+   real-model confirmation that rotating K specifically was the problem, not
+   int4 precision in general. Fix: `B_int4_kivi` (KIVI-inspired, Liu et al.
+   ICML'24 — quantize K per-channel instead of per-head, V unchanged) went
+   from 0.0%/0.0% to **30.0%/39.4% at n=10** (small-n, needs a larger run to
+   trust the precise number — see below — but the qualitative shift from
+   corrupted/garbled output to coherent, plausible near-miss answers is not
+   n=10 noise). `B_int4_hybrid` (K per-channel + V also rotated) was built to
+   test whether rotating V on top adds anything — it doesn't: 0 discordant
+   pairs vs `B_int4_kivi` (p=1.0, identical per-example outcomes), F1
+   slightly *lower* (37.5% vs 39.4%) from one example where the extra
+   rotation produced a more verbose, lower-precision answer with no
+   accuracy benefit. **Use `B_int4_kivi`, not `B_int4_hybrid` — simpler,
+   same accuracy, better F1.**
 
 **Not yet statistically established, don't overclaim these:** `D` vs `C` on
 Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
-`A` vs `D` on Qwen alone without the cross-model framing (p=0.34, 15% power).
+`A` vs `D` on Qwen alone without the cross-model framing (p=0.34, 15%
+power); `B_int4_kivi`'s 30.0%/39.4% (n=10 only — needs at least n=50-100
+before citing as a real number, though the qualitative fix is solid).
 
 **Still open / in progress on this branch:** the causal audit
 (`*_audit_zeroed/random/mismatched`) has been built and unit-tested but not
 yet run on GPU — no result yet on whether relayed KV demonstrably carries
-real content beyond "having some cache." `B_int4_turboquant` is built,
-unit-tested (93.6% MSE reduction on a synthetic outlier tensor) but not yet
-run on GPU — open question whether it fixes `B_int4`'s real-model collapse.
+real content beyond "having some cache." `B_int4_kivi` needs a larger run
+(n=50-100) before its accuracy number is trustworthy enough to cite.
 Orthogonal Backfill (a 4th `D` reconstruction strategy) is blocked on a
 design decision: the paper's real formula needs attention weights, which
 this pipeline's fast `sdpa` decode path doesn't provide (only `eager` does,
@@ -198,14 +233,17 @@ carve-out for that one config or an explicitly-labeled simplified version.
   implemented. It may have been more viable on the original GSM8K target
   (more homogeneous question structure) — never tested.
 - **`B_int4` (uniform 4-bit, no layer-selection tiering) collapses to pure
-  noise output.** Checked the quantize/dequantize math — it's shared,
-  bit-width-generic code that works fine for `D`'s adaptive int4 subset, so
-  probably not a code bug. Most likely explanation: forcing *every* layer
-  (including whichever ones calibration flagged as too important for
-  aggressive compression) down to 4 bits, with no int8 safety net for
-  sensitive layers, is simply too lossy. Not independently confirmed via the
-  calibration profile's tier distribution — worth checking if this needs a
-  firmer answer.
+  noise output — RESOLVED on `feat/research-extensions`, root cause was NOT
+  "4 bits is just too lossy."** The original hypothesis in this section
+  (forcing every layer to 4 bits with no int8 safety net) turned out to be
+  wrong, or at least not the dominant factor — the real cause is that K is
+  cached post-RoPE, and per-head (whole-range) min-max quantization at only
+  16 levels is defenseless against RoPE's position-dependent channel mixing.
+  Use `B_int4_kivi` (K quantized per-channel instead) — see "Research-
+  extensions findings" below for the full diagnosis and real-model numbers
+  (0.0%/0.0% → 30.0%/39.4% at n=10, needs a larger run to confirm the exact
+  figure but the qualitative fix — coherent output instead of corrupted
+  garbage — is solid).
 - **`A` vs `text_agent` latency gap** (~7.8s vs ~6.7s) is real but doesn't
   close further with the current decode-loop optimization
   (`position_offset == 0` hops fast-path to `model.generate()` instead of a

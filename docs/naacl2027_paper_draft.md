@@ -1,10 +1,12 @@
 # NAACL 2027 Draft — Related Work + Limitations
 
 > Status: first-pass draft of two sections, written 2026-09-07 on branch
-> `feat/research-extensions`. Everything else (Abstract, Introduction,
-> Method, Results) is not drafted yet — these two sections don't depend on
-> results still pending (causal audit, TurboQuant GPU runs), so they're safe
-> to write now. Bracketed notes mark anything that needs a final number or a
+> `feat/research-extensions`, updated same day after real GPU results came
+> in for the rotation-vs-KIVI quantization work. Everything else (Abstract,
+> Introduction, Method, Results) is not drafted yet. Causal audit still has
+> no GPU results at all. `B_int4_kivi`'s fix is confirmed at n=10 (needs
+> n=50-100 before the precise number is citable — see the Limitations note
+> below). Bracketed notes mark anything that needs a final number or a
 > decision before submission. Freely rewrite — this is a starting point, not
 > a locked draft.
 
@@ -35,16 +37,48 @@ agents is a natural complement to relay itself. We adopt two families of
 technique: layer-wise selection, which drops calibration-identified
 low-importance transformer layers before transmission and reconstructs them
 at the receiver, and per-head quantization, which reduces numeric precision.
-For the latter, we additionally implement a rotation-based quantization
-scheme in the style of TurboQuant/PolarQuant (Zandieh et al., ICLR'26),
-which applies a fixed orthonormal Hadamard rotation before quantizing to
-redistribute per-head outlier magnitude — our implementation covers the
-PolarQuant rotation-and-quantize step but not TurboQuant's additional QJL
-bias-correction term [confirm this framing is still accurate if QJL gets
-added later]. [If Orthogonal Backfill is implemented: cite "When Less Latent
-Leads to Better Relay" (arXiv 2604.13349) here as a third reconstruction
-strategy that injects a low-rank residual of discarded content orthogonal to
-what is retained, rather than substituting or discarding it outright.]
+[If Orthogonal Backfill is implemented: cite "When Less Latent Leads to
+Better Relay" (arXiv 2604.13349) here as a third reconstruction strategy
+that injects a low-rank residual of discarded content orthogonal to what is
+retained, rather than substituting or discarding it outright.]
+
+**Rotation-based quantization interacts badly with RoPE-encoded keys — a
+finding, not just an implementation note.** We initially implemented a
+rotation-based quantization scheme in the style of TurboQuant/PolarQuant
+(Zandieh et al., ICLR'26), applying a fixed orthonormal Hadamard rotation to
+both keys and values before quantizing to redistribute per-head outlier
+magnitude (covering PolarQuant's rotate-then-quantize step, not TurboQuant's
+additional QJL bias-correction term). On our real model, this produced
+severely out-of-distribution decoded output — not the graceful accuracy
+degradation a generic rotation-based scheme predicts, but qualitatively
+different failures (out-of-vocabulary tokens unrelated to the input). We
+traced this to key vectors' rotary position embeddings (RoPE): K is cached
+*after* RoPE is applied, which mixes channel pairs by a position-dependent
+phase, and a second, RoPE-agnostic rotation on top disrupts that structure
+rather than merely redistributing outlier magnitude. An isolating ablation
+(rotating only V, leaving K on the unrotated code path) reverted the failure
+to ordinary quantization-noise degradation, confirming the interaction was
+with K specifically. This is consistent with an established, independently
+documented interaction in the KV-quantization literature — see the RoPE-
+aware quantization paragraph below — and we report it as a specific,
+diagnosed negative result about combining generic outlier-redistribution
+rotation with RoPE-encoded keys, not merely an implementation detail.
+
+**RoPE-aware KV cache quantization.** A separate line of work addresses
+exactly this interaction directly. KIVI (Liu et al., ICML'24) quantizes the
+key cache per-channel and the value cache per-token — motivated by RoPE
+leaving channel-wise magnitude more consistent across positions than
+uniform per-head ranges assume — rather than by rotating. RotateKV
+(IJCAI'25) instead applies rotation *before* RoPE via Pre-RoPE Grouped-Head
+Rotation, explicitly designed to avoid the interaction we observed. KVQuant
+and related work similarly identify post-RoPE key quantization as harder
+than value quantization for exactly this reason. We adopt a scoped,
+KIVI-inspired fix (per-channel key quantization only, no group-wise
+windowing or streaming residual buffer from the original method) and find
+it resolves the collapse [insert final n=100 accuracy once the larger run
+completes] — direct empirical confirmation, on our pipeline and task, of
+what this literature identifies as the correct axis for addressing the
+problem, rather than the rotation-based axis we tried first.
 
 **Auditing whether KV reuse does what it claims.** A recent line of work
 interrogates cross-agent KV/latent reuse mechanisms critically rather than
@@ -137,16 +171,29 @@ than with a full one.
 
 **Partial reproduction of cited compression techniques.** Our rotation-based
 quantization implementation covers the core rotate-then-quantize mechanism
-of PolarQuant but omits TurboQuant's QJL bias-correction term [update once
-finalized]. [If applicable: our Orthogonal Backfill implementation
-approximates the source paper's attention-weighted residual averaging with
-uniform averaging, since faithful reproduction would require switching this
+of PolarQuant but omits TurboQuant's QJL bias-correction term. Our
+KIVI-inspired fix (Section [X]) omits the original method's group-wise
+windowing over sequence chunks and its fp16 residual buffer for the most
+recent tokens — we implement full-sequence per-channel quantization only,
+the minimal change that isolates and addresses the specific RoPE-interaction
+mechanism we diagnosed, not a complete reproduction of KIVI's system.
+[If applicable: our Orthogonal Backfill implementation approximates the
+source paper's attention-weighted residual averaging with uniform
+averaging, since faithful reproduction would require switching this
 pipeline's decode path from `sdpa` to `eager` attention specifically to
 expose attention weights, at a latency cost we did not have time to fully
-characterize before submission.] We report these as what they are —
-inspired-by implementations, not certified reproductions — and encourage
-readers who want the original techniques' full guarantees to consult the
-primary sources directly.
+characterize before submission.] We report all of these as what they are —
+inspired-by implementations scoped to test a specific hypothesis, not
+certified reproductions — and encourage readers who want the original
+techniques' full guarantees to consult the primary sources directly.
+
+**`B_int4_kivi`'s reported accuracy is from a small evaluation (n=10) at the
+time of writing this section** [remove this note once the larger run
+referenced elsewhere in this draft completes and the final n=50-100 number
+is inserted throughout] **— the qualitative finding (coherent, on-topic
+output replacing corrupted/repetitive generation) is not attributable to
+n=10 sampling noise, but the precise accuracy figure should not be treated
+as final until confirmed at larger n.**
 
 **Compute constraints.** All experiments were run on a single RTX 4090.
 This bounded both the sample sizes reported above and the number of
