@@ -118,8 +118,10 @@ was being force-disabled on both decode paths instead of applied
 consistently — see git history on this branch) and predates any paired
 significance testing. Refreshed n=100 HotpotQA/Qwen numbers, same profile,
 current code: `single_agent` 57.0%/68.4%, `text_agent` 54.0%/68.3%, `A`
-56.0%/69.1%, `B_int8` 57.0%/70.5%, `B_int4` 0.0%/0.0% (still collapses),
-`C` 43.0%/57.8%, `D` 50.0%/61.9%, `E` 9.0%/17.4%, `E_int8` 1.0%/6.2%.
+56.0%/69.1%, `B_int8` 57.0%/70.5%, `B_int4` 0.0%/0.0% (collapses as originally
+coded — **fixed variant `B_int4_kivi` reaches 52.0%/64.1%, see finding 4/5
+below, don't stop reading at this row**), `C` 43.0%/57.8%, `D` 50.0%/61.9%,
+`E` 9.0%/17.4%, `E_int8` 1.0%/6.2%.
 
 **Important honesty note:** D's move (44%→50%) and E's move (12%→9%) from
 the repetition_penalty fix are NOT statistically significant against the old
@@ -175,33 +177,49 @@ don't just trust this summary if more data has come in since):
    real-model confirmation that rotating K specifically was the problem, not
    int4 precision in general. Fix: `B_int4_kivi` (KIVI-inspired, Liu et al.
    ICML'24 — quantize K per-channel instead of per-head, V unchanged) went
-   from 0.0%/0.0% to **30.0%/39.4% at n=10** (small-n, needs a larger run to
-   trust the precise number — see below — but the qualitative shift from
-   corrupted/garbled output to coherent, plausible near-miss answers is not
-   n=10 noise). `B_int4_hybrid` (K per-channel + V also rotated) was built to
-   test whether rotating V on top adds anything — it doesn't: 0 discordant
+   from 0.0%/0.0% to **52.0%/64.1% at n=100** (confirmed, real, trustworthy
+   number — first seen at 30.0%/39.4% at n=10, which was correctly flagged
+   as too small to trust; the n=100 run resolved it, no corruption at either
+   scale). `B_int4_hybrid` (K per-channel + V also rotated) was built to test
+   whether rotating V on top adds anything — it doesn't (n=10): 0 discordant
    pairs vs `B_int4_kivi` (p=1.0, identical per-example outcomes), F1
    slightly *lower* (37.5% vs 39.4%) from one example where the extra
-   rotation produced a more verbose, lower-precision answer with no
-   accuracy benefit. **Use `B_int4_kivi`, not `B_int4_hybrid` — simpler,
-   same accuracy, better F1.**
+   rotation produced a more verbose, lower-precision answer with no accuracy
+   benefit. **Use `B_int4_kivi`, not `B_int4_hybrid` — simpler, same
+   accuracy, better F1.** `B_int4_kivi_full` (K per-channel + V per-token,
+   KIVI's other asymmetric half) is built and unit-tested but not yet run on
+   GPU — open question whether V's own axis fix adds anything on top of K's.
+5. **`B_int4_kivi` (52.0%/64.1%, n=100) is statistically indistinguishable
+   from `D` (50.0%/61.9%)** — McNemar p=0.86, F1 delta +2.2 pts [-8.2,
+   +12.8] — **while compressing harder (3.99x vs D's 2.76x) and needing none
+   of D's machinery** (no calibration profile, no layer-selection tiering,
+   just a fixed quantization scheme). Also not significantly different from
+   `A` (56.0%, p=0.50) or `B_int8` (57.0%, p=0.36) — but don't overclaim this
+   as "free" the way `B_int8` vs `A` is: those comparisons had 0-3 discordant
+   examples (an extremely tight match); `B_int4_kivi` vs `A`/`B_int8` has
+   7-12 discordant examples and point estimates that trend real (52% vs
+   56-57%) — the honest statement is "not yet distinguishable from a real
+   cost at this n," not "no cost." Likely candidate for the paper's
+   strongest positive compression result once `B_int4_kivi_full` is checked
+   and the write-up locks in a final config.
 
 **Not yet statistically established, don't overclaim these:** `D` vs `C` on
 Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
 `A` vs `D` on Qwen alone without the cross-model framing (p=0.34, 15%
-power); `B_int4_kivi`'s 30.0%/39.4% (n=10 only — needs at least n=50-100
-before citing as a real number, though the qualitative fix is solid).
+power); whether `B_int4_kivi`'s trend below `A`/`B_int8` is a real cost or
+just underpowered noise (see finding 5 above).
 
 **Still open / in progress on this branch:** the causal audit
 (`*_audit_zeroed/random/mismatched`) has been built and unit-tested but not
 yet run on GPU — no result yet on whether relayed KV demonstrably carries
-real content beyond "having some cache." `B_int4_kivi` needs a larger run
-(n=50-100) before its accuracy number is trustworthy enough to cite.
-Orthogonal Backfill (a 4th `D` reconstruction strategy) is blocked on a
-design decision: the paper's real formula needs attention weights, which
-this pipeline's fast `sdpa` decode path doesn't provide (only `eager` does,
-currently reserved for calibration) — needs either an `eager`-backend
-carve-out for that one config or an explicitly-labeled simplified version.
+real content beyond "having some cache." `B_int4_kivi_full` is built,
+unit-tested (99.8% MSE reduction on the mirror-image synthetic test to
+`B_int4_kivi`'s) but not yet run on GPU. Orthogonal Backfill (a 4th `D`
+reconstruction strategy) is blocked on a design decision: the paper's real
+formula needs attention weights, which this pipeline's fast `sdpa` decode
+path doesn't provide (only `eager` does, currently reserved for
+calibration) — needs either an `eager`-backend carve-out for that one config
+or an explicitly-labeled simplified version.
 
 ## Known issues / settled questions (read before re-investigating)
 

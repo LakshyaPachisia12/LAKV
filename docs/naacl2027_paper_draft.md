@@ -4,9 +4,14 @@
 > `feat/research-extensions`, updated same day after real GPU results came
 > in for the rotation-vs-KIVI quantization work. Everything else (Abstract,
 > Introduction, Method, Results) is not drafted yet. Causal audit still has
-> no GPU results at all. `B_int4_kivi`'s fix is confirmed at n=10 (needs
-> n=50-100 before the precise number is citable — see the Limitations note
-> below). Bracketed notes mark anything that needs a final number or a
+> no GPU results at all. `B_int4_kivi` is now CONFIRMED at n=100: 52.0%
+> accuracy / 64.1% F1 — statistically indistinguishable from `D` (McNemar
+> p=0.86) while compressing harder (3.99x vs `D`'s 2.76x) and needing no
+> calibration profile at all. Strong candidate for the paper's headline
+> positive compression result — see CLAUDE.md's "Research-extensions
+> findings" section for the full stats. `B_int4_kivi_full` (adds per-token V
+> quantization on top) is built but not yet run — may or may not improve
+> further. Bracketed notes mark anything that needs a final number or a
 > decision before submission. Freely rewrite — this is a starting point, not
 > a locked draft.
 
@@ -75,10 +80,16 @@ and related work similarly identify post-RoPE key quantization as harder
 than value quantization for exactly this reason. We adopt a scoped,
 KIVI-inspired fix (per-channel key quantization only, no group-wise
 windowing or streaming residual buffer from the original method) and find
-it resolves the collapse [insert final n=100 accuracy once the larger run
-completes] — direct empirical confirmation, on our pipeline and task, of
-what this literature identifies as the correct axis for addressing the
-problem, rather than the rotation-based axis we tried first.
+it resolves the collapse: 0.0%/0.0% (0% F1) to 52.0% accuracy / 64.1% F1 at
+n=100, statistically indistinguishable from our strongest layer-selection
+config (`D`, 50.0%/61.9%; McNemar p=0.86) while achieving higher compression
+(3.99x vs 2.76x) with no calibration profile required — direct empirical
+confirmation, on our pipeline and task, of what this literature identifies
+as the correct axis for addressing the problem, rather than the
+rotation-based axis we tried first. [If B_int4_kivi_full — adding per-token
+value quantization, KIVI's other asymmetric half — improves further once
+run: report that number instead/in addition, and note it as the more
+complete asymmetric reproduction.]
 
 **Auditing whether KV reuse does what it claims.** A recent line of work
 interrogates cross-agent KV/latent reuse mechanisms critically rather than
@@ -187,13 +198,14 @@ inspired-by implementations scoped to test a specific hypothesis, not
 certified reproductions — and encourage readers who want the original
 techniques' full guarantees to consult the primary sources directly.
 
-**`B_int4_kivi`'s reported accuracy is from a small evaluation (n=10) at the
-time of writing this section** [remove this note once the larger run
-referenced elsewhere in this draft completes and the final n=50-100 number
-is inserted throughout] **— the qualitative finding (coherent, on-topic
-output replacing corrupted/repetitive generation) is not attributable to
-n=10 sampling noise, but the precise accuracy figure should not be treated
-as final until confirmed at larger n.**
+**`B_int4_kivi`'s accuracy is now confirmed at n=100 (52.0%/64.1%) — the
+n=10 pilot's 30.0%/39.4% was, as flagged at the time, not yet trustworthy;
+n=100 is the number to cite.** Its comparison against `D` (statistically
+indistinguishable, McNemar p=0.86) rests on a single n=100 run each; a
+replication run, or reporting the confidence interval directly rather than
+only the point estimate and p-value, would strengthen this claim further
+before treating "matches `D`" as a settled fact rather than the current
+best estimate.
 
 **Compute constraints.** All experiments were run on a single RTX 4090.
 This bounded both the sample sizes reported above and the number of
