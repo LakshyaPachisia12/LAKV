@@ -137,6 +137,19 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="zeros",
         outlier_clipping=True,
     ),
+    # KIVI's OTHER asymmetric half, not yet tried: real KIVI quantizes K
+    # per-channel AND V per-token (not per-head for either) — every config
+    # above left V on the original per-head path. Per-token gives each
+    # sequence position its own quant range, motivated by V's real variation
+    # (unlike K's) living across positions rather than channels — some
+    # tokens' content simply matters more than others. Compare against
+    # B_int4_kivi to see whether V's own axis fix adds anything on top of
+    # K's, the same "let the data decide" discipline as B_int4_hybrid.
+    "B_int4_kivi_full": PipelineConfig(
+        use_layer_selection=False, compression_mode="uniform_int4_kivi_full",
+        use_offset_correction=False, reconstruction_strategy="zeros",
+        outlier_clipping=True,
+    ),
     "C": PipelineConfig(
         use_layer_selection=True, compression_mode="none",
         use_offset_correction=False, reconstruction_strategy="zeros",

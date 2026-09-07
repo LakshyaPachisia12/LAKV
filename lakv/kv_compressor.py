@@ -146,6 +146,60 @@ def _dequantize_per_channel(q: torch.Tensor, scale: torch.Tensor, zero_point: to
     return t.to(torch.bfloat16)
 
 
+def _quantize_per_token(tensor: torch.Tensor, bits: int, clip_percentile: Optional[float] = None):
+    """Per-(head, token/position) min-max quantization — one scale/zero-point
+    per (batch, head, seq) triple, reducing over head_dim only (the mirror
+    image of _quantize_per_channel, which reduces over seq and keeps
+    head_dim separate).
+
+    KIVI-inspired (Liu et al., ICML'24) — this is the OTHER half of KIVI's
+    asymmetric design, intended for V specifically. V has no RoPE applied
+    (unlike K, so it isn't implicated in the RoPE-interaction failure
+    _quantize_per_channel addresses), but the paper's motivation for
+    per-token V grouping is a different, real structural property: some
+    token positions contribute consistently larger-magnitude value vectors
+    than others (some tokens' content simply matters more), which per-head
+    quantization forces every position to share one range for. Per-token
+    quantization gives each position its own range instead — the same fix
+    idea as per-channel, applied to the axis where V's real variation lives
+    rather than the axis where K's does.
+
+    Simplified relative to the original KIVI paper: no group-wise windowing
+    over sequence chunks, no fp16 residual buffer for the most recent
+    tokens. Verify against the primary source before treating this as a
+    faithful reproduction.
+
+    tensor shape: (batch, heads, seq, dim)
+    Returns: (quantized_uint8, scale[b,h,s], zero_point[b,h,s])
+    """
+    t = tensor.detach().float()
+    qmax = (1 << bits) - 1
+
+    if clip_percentile is not None:
+        lo_q = (100.0 - clip_percentile) / 100.0
+        hi_q = clip_percentile / 100.0
+        t_min = torch.quantile(t, lo_q, dim=-1, keepdim=True)  # reduce over dim only
+        t_max = torch.quantile(t, hi_q, dim=-1, keepdim=True)
+    else:
+        t_min = t.amin(dim=-1, keepdim=True)  # (b, h, s, 1)
+        t_max = t.amax(dim=-1, keepdim=True)
+
+    same = (t_max == t_min)
+    scale = torch.where(same, torch.ones_like(t_max), (t_max - t_min) / qmax)
+    zero_point = t_min
+
+    q = ((t - zero_point) / scale).round().clamp(0, qmax).to(torch.uint8)
+    return q, scale.squeeze(-1), zero_point.squeeze(-1)  # (b, h, s)
+
+
+def _dequantize_per_token(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) -> torch.Tensor:
+    """Inverse of _quantize_per_token. scale/zero_point shape (b, h, s)."""
+    s = scale.unsqueeze(-1).float()        # (b, h, s, 1)
+    zp = zero_point.unsqueeze(-1).float()  # (b, h, s, 1)
+    t = q.to(torch.float32) * s + zp
+    return t.to(torch.bfloat16)
+
+
 # ─── rotation (TurboQuant/PolarQuant-inspired int4 quantization) ──────────────
 #
 # Phase 3 of the research-extensions plan. Rotating a tensor by a fixed
@@ -233,7 +287,7 @@ class KVCompressor:
         """
         if mode not in ("none", "uniform_int8", "uniform_int4", "uniform_int4_rotated",
                         "uniform_int4_rotated_v_only", "uniform_int4_kivi_k_channel",
-                        "uniform_int4_hybrid", "adaptive"):
+                        "uniform_int4_hybrid", "uniform_int4_kivi_full", "adaptive"):
             raise ValueError(f"Unknown compression mode: {mode}")
         if mode == "adaptive" and profile is None:
             raise ValueError("'adaptive' mode requires a LayerProfile")
@@ -248,7 +302,7 @@ class KVCompressor:
         if self.mode == 'uniform_int8':
             return 8
         if self.mode in ('uniform_int4', 'uniform_int4_rotated', 'uniform_int4_rotated_v_only',
-                         'uniform_int4_kivi_k_channel', 'uniform_int4_hybrid'):
+                         'uniform_int4_kivi_k_channel', 'uniform_int4_hybrid', 'uniform_int4_kivi_full'):
             return 4
         
         # adaptive: Tier 1 → INT8 (high-importance layers, best fidelity)
@@ -343,28 +397,38 @@ class KVCompressor:
                 # parts, not a new untested idea, but it should still only be
                 # trusted over uniform_int4_kivi_k_channel alone if the real
                 # numbers show it earns the extra complexity.
+                # uniform_int4_kivi_full: KIVI's OTHER asymmetric half — K
+                # per-channel (same as uniform_int4_kivi_k_channel) AND V
+                # per-token (new — see _quantize_per_token's docstring for
+                # why V's real variation is expected to live across
+                # positions, the mirror of K's across-channel variation).
+                # No rotation involved anywhere in this mode.
                 rotate_k = self.mode == "uniform_int4_rotated"
                 rotate_v = self.mode in ("uniform_int4_rotated", "uniform_int4_rotated_v_only",
                                           "uniform_int4_hybrid")
                 k_in = _rotate(k) if rotate_k else k
                 v_in = _rotate(v) if rotate_v else v
 
-                use_k_per_channel = self.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid")
+                use_k_per_channel = self.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid",
+                                                   "uniform_int4_kivi_full")
+                use_v_per_token = self.mode == "uniform_int4_kivi_full"
                 if use_k_per_channel:
                     # KIVI-inspired: K quantized per-channel (reduces over
                     # sequence only, keeps head_dim separate) instead of
                     # per-head — see _quantize_per_channel's docstring for
                     # why this targets K's RoPE-induced quantization
-                    # difficulty specifically. In uniform_int4_kivi_k_channel,
-                    # V is unchanged (plain per-head _quantize, v_in == v);
-                    # in uniform_int4_hybrid, V is additionally rotated
-                    # (v_in was already set above) before this same per-head
-                    # _quantize call — the two knobs (K's axis, V's rotation)
-                    # are independent of each other.
+                    # difficulty specifically. What happens to V depends on
+                    # mode: unchanged in uniform_int4_kivi_k_channel, rotated
+                    # in uniform_int4_hybrid, per-token in
+                    # uniform_int4_kivi_full — K's axis and V's treatment are
+                    # independent knobs.
                     k_q, k_scale, k_zp = _quantize_per_channel(k_in, bits, clip_percentile=clip_pct)
                 else:
                     k_q, k_scale, k_zp = _quantize(k_in, bits, clip_percentile=clip_pct)
-                v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
+                if use_v_per_token:
+                    v_q, v_scale, v_zp = _quantize_per_token(v_in, bits, clip_percentile=clip_pct)
+                else:
+                    v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
 
                 cl = CompressedLayer(
                     # Same reasoning as the bits==16 branch above — no .cpu().
@@ -402,7 +466,8 @@ class KVCompressor:
                 k = cl.k_q.to(device)
                 v = cl.v_q.to(device)
             else:
-                if message.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid"):
+                if message.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid",
+                                     "uniform_int4_kivi_full"):
                     k = _dequantize_per_channel(
                         cl.k_q.to(device),
                         cl.k_scale.to(device),
@@ -414,11 +479,18 @@ class KVCompressor:
                         cl.k_scale.to(device),
                         cl.k_zp.to(device)
                     )
-                v = _dequantize(
-                    cl.v_q.to(device),
-                    cl.v_scale.to(device),
-                    cl.v_zp.to(device)
-                )
+                if message.mode == "uniform_int4_kivi_full":
+                    v = _dequantize_per_token(
+                        cl.v_q.to(device),
+                        cl.v_scale.to(device),
+                        cl.v_zp.to(device)
+                    )
+                else:
+                    v = _dequantize(
+                        cl.v_q.to(device),
+                        cl.v_scale.to(device),
+                        cl.v_zp.to(device)
+                    )
                 if message.mode == "uniform_int4_rotated":
                     k = _unrotate(k)
                     v = _unrotate(v)
