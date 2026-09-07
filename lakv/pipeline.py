@@ -157,6 +157,15 @@ class PipelineConfig:
     # just one candidate, which is the common case here). None = disabled.
     # See AnchorTable.__init__ / query_correction for the full reasoning.
     anchor_max_distance: Optional[float] = None
+    # Diagnostic multiplier on the anchor-derived delta before it's added to
+    # the query's own base_kv. 1.0 = full delta (current behavior). 0.0 =
+    # delta disabled entirely — pure query base_kv + RoPE position-shift,
+    # no anchor-transferred content at all. Added to isolate whether a
+    # transferred delta is itself the source of E's post-fix garbage output
+    # (n=35 HotpotQA, 2026-09-03/04 investigation) from a separate alignment
+    # bug in the RoPE-shift math — NOT meant as a tunable "quality" knob,
+    # it's a yes/no diagnostic for whether delta-transfer works at all here.
+    anchor_delta_scale: float = 1.0
     profile_path: Optional[str] = None
     # Was 200 (a Kaggle OOM workaround that outlived its reason once moved to a
     # 4090 with headroom to spare). Measured this was truncating the Reasoner/
@@ -285,6 +294,7 @@ class LAKVPipeline:
                 min_confidence=config.anchor_min_confidence,
                 graceful_degradation=config.anchor_graceful_degradation,
                 max_distance=config.anchor_max_distance,
+                delta_scale=config.anchor_delta_scale,
             )
             self.corrector = OffsetCorrector(anchor_table=self.anchor_table)
 
@@ -402,8 +412,24 @@ class LAKVPipeline:
                         self.config.anchor_channel_key
                         if self.config.n_agents == 2 else f"agent_{agent_idx}"
                     )
+                    # Where THIS hop's own reasoning begins within raw_kv_tuple
+                    # — everything injected (if any) plus this agent's own
+                    # prompt tokens, before it started generating. Without
+                    # this, update() defaults to using the FULL length
+                    # (including the just-generated reasoning), which shifts
+                    # its comparison window by however many reasoning tokens
+                    # were produced — comparing base_kv (bare question) against
+                    # a window that's offset into or past the reasoning text
+                    # instead of the same context+question content. That
+                    # misalignment was baked into every delta this session,
+                    # independent of how the delta later gets applied — the
+                    # likely reason delta-transfer kept corrupting output even
+                    # after fixing what it gets added to and how it's aligned.
+                    injected_len = injected_kv_tuple[0][0].shape[2] if injected_kv_tuple is not None else 0
+                    hop_prompt_seq_len = injected_len + input_ids.shape[1]
                     self.anchor_table.update(
                         q_key, channel_key, base_kv, raw_kv_tuple, agent_hidden,
+                        prompt_seq_len=hop_prompt_seq_len,
                         rope_theta=self._get_rope_theta())
 
                 # layer selection
@@ -441,7 +467,8 @@ class LAKVPipeline:
                         question=question,
                         channel_key=receiver_id,
                         query_hidden=base_hidden,
-                        query_base_kv=base_kv,
+                        real_kv=filtered_kv,
+                        real_kv_layer_indices=(selection_mask.kept_layer_indices if selection_mask else None),
                         device=self.device,
                         rope_theta=self._get_rope_theta(),
                     )

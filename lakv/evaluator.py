@@ -106,6 +106,11 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_offset_correction=False, reconstruction_strategy="nearest",
         outlier_clipping=True,
     ),
+    "D_interpolate": PipelineConfig(
+        use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=False, reconstruction_strategy="interpolate",
+        outlier_clipping=True,
+    ),
     "E": PipelineConfig(
         use_layer_selection=True, compression_mode="adaptive",
         use_offset_correction=True, reconstruction_strategy="zeros",
@@ -129,6 +134,18 @@ PRESETS: Dict[str, Optional[PipelineConfig]] = {
         use_layer_selection=True, compression_mode="uniform_int8",
         use_offset_correction=True, reconstruction_strategy="zeros",
         anchor_graceful_degradation=False,
+    ),
+    # No longer just a diagnostic — after fixing query_correction to apply
+    # the delta on top of the REAL relayed KV (matching the actual KVCOMM
+    # reference design) instead of a substitute reconstruction, this is now
+    # a legitimate config in its own right: D's real content, plus a pure
+    # RoPE position-shift, with the anchor-transferred delta switched off.
+    # Useful to isolate delta's own contribution once E's baseline (delta on)
+    # is trustworthy. See PipelineConfig.anchor_delta_scale.
+    "E_nodelta": PipelineConfig(
+        use_layer_selection=True, compression_mode="adaptive",
+        use_offset_correction=True, reconstruction_strategy="zeros",
+        outlier_clipping=True, anchor_delta_scale=0.0,
     ),
 }
 
