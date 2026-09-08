@@ -1,29 +1,91 @@
 # NAACL 2027 Draft — Related Work, Method, Results, Limitations
 
-> Status: Related Work, Method, Results (all 6 findings, no placeholders
-> left), and Limitations are drafted (last updated 2026-09-08, branch
-> `feat/research-extensions`). **Abstract and Introduction are the only
-> sections left — write them now, the headline claim is fully locked.**
+> Status: reframed 2026-09-08 around the **non-exchangeability hypothesis**
+> (branch `feat/research-extensions`) after two adversarial self-reviews
+> found the prior "transferability audit" framing novelty-weak. This is a
+> **provisional reframe, not a locked one** — the decision gate for
+> confirming it is the `D`/`B_int8` causal audit run (currently in
+> progress). If that run shows content-identity stops mattering once the
+> cache is compressed, the framing below needs to narrow; if it confirms the
+> pattern, this becomes the paper's real thesis. Do not treat the
+> Introduction draft below as final until that result is in.
 >
-> The two candidate headline claims, both fully confirmed with statistics:
-> (1) `B_int4_kivi` matches `D` (McNemar p=0.86) at higher compression
-> (3.99x vs 2.76x) with no calibration profile, after root-causing and
-> fixing `B_int4`'s original collapse; (2) the causal audit proves relayed
-> KV carries real, specific content — a full three-tier significant ordering
-> (`A` 50.0% > `A_audit_mismatched` 28.0% > `A_audit_zeroed`/`A_audit_random`
-> 0.0%, every pairwise comparison p<0.05, most p<0.001) — which is the
-> mechanistic result every compression claim in this paper depends on.
-> Recommend leading the Introduction with (2) as the framing device (it's
-> what makes the whole paper's premise credible) and (1) as the strongest
-> concrete payoff.
+> **Central hypothesis (H1):** KV-cache information is not freely
+> interchangeable along depth, positional structure, and content identity —
+> techniques fail when they implicitly assume otherwise, and this is not
+> visible from a technique's own internal confidence signal. Sub-hypotheses
+> H1a (depth) through H1e (calibration) — see the failure matrix in Results.
 >
-> `B_int4_kivi_full` and `B_int4_hybrid` (two independent attempts to also
-> improve the value side) both failed to help — reported as a strength (the
-> mechanism is fully isolated to keys), not a gap. Orthogonal Backfill was
-> deliberately scoped out. Causal audit not yet extended to `D`/`B_int8` —
-> noted as a Limitations item, not a blocker; `A` alone establishes the
-> mechanism. Bracketed notes mark anything still needing a decision before
-> submission. Freely rewrite — this is a draft, not locked.
+> **Newly written this pass:** the Related Work reconciliation with "The
+> Pitfalls of KV Cache Compression" (ACL 2026), "Rethinking Layer Redundancy"
+> (2026), and AdaK (2026) — all three anticipate pieces of this argument and
+> must be engaged with directly, not cited in passing. Also newly written:
+> the falsified calibration-confidence-predictor result, and the quantified
+> Qwen-vs-Mistral failure-texture comparison (both real analyses of existing
+> data, no new GPU time). Abstract/Introduction below are a **draft for the
+> non-exchangeability framing specifically** — keep or discard based on the
+> decision gate, don't treat as committed.
+>
+> Still pending: causal audit on `D`/`B_int8` (running), bleed-through
+> analysis on `A_audit_mismatched` (running). `B_int4_kivi_full` and
+> `B_int4_hybrid` both failed to improve on the key-only fix — reported as
+> strength (mechanism fully isolated to keys). Orthogonal Backfill scoped
+> out. Bracketed notes mark anything needing a final decision.
+
+---
+
+## 1. Introduction [PROVISIONAL — pending decision gate, do not finalize]
+
+Efficient key-value cache relay between agents in a multi-agent LLM
+pipeline rests on an assumption that is rarely stated and, to our
+knowledge, never directly tested: that some dimension of the cache — which
+transformer layer, which channel within a head, which question's content —
+can be treated as generic or interchangeable for the purpose of
+compression, reconstruction, or reuse. This paper tests that assumption
+directly, across three structurally distinct axes, within one multi-agent
+pipeline, and finds it false along all three: dropped transformer layers
+are not safely approximated by their neighbors; key vectors' channels
+cannot be freely mixed once rotary position embeddings have imposed
+position-dependent structure on them; and a receiving agent's accuracy
+depends on the specific content of the relayed cache, not merely on
+receiving *some* non-empty cache, as we show with direct causal evidence.
+
+We call this **non-exchangeability**: efficiency techniques for KV-cache
+relay fail in proportion to how much they implicitly assume exchangeability
+along an axis the underlying representation does not actually support, and
+this failure is not visible from the technique's own internal confidence
+signals — a calibration procedure can be more, not less, confident about a
+ranking on the model where that ranking is less trustworthy. We
+demonstrate this concretely by diagnosing and, where possible, correcting
+four published KV-relay efficiency techniques within a sequential
+three-agent (Reasoner–Verifier–Finalizer) pipeline on multi-hop
+question-answering: a cross-agent offset-correction method (KVCOMM) fails
+because it assumes a delta observed for one question transfers to another;
+a rotation-based quantization scheme (in the style of TurboQuant/PolarQuant)
+fails specifically on key vectors because it assumes head dimensions are
+interchangeable, disrupting the position-dependent structure RoPE imposes on
+them; a per-channel quantization fix (KIVI-inspired) resolves this by
+respecting that structure instead; and layer-selection's accuracy cost is
+architecture-dependent in ways a calibration signal's own confidence does
+not predict. [Once the `D`/`B_int8` causal audit lands: add one sentence
+here stating whether content-identity non-exchangeability holds under
+compression too, which is what determines whether this paragraph's claims
+can be stated for compression broadly or must be scoped to uncompressed
+relay specifically.]
+
+Three recent papers anticipate pieces of this argument from different
+angles — that compression misses task-specific information ("The Pitfalls
+of KV Cache Compression," ACL 2026), that layer redundancy depends on the
+calibration objective rather than being a fixed property ("Rethinking Layer
+Redundancy," 2026), and that adaptive, non-fixed-ranking methods can
+generalize across architectures where fixed ones might not (AdaK, 2026). We
+position this paper's contribution as the causal, cross-axis synthesis
+these three approach separately: direct causal validation (not inference
+from compression metrics) on the content-identity axis, replicated evidence
+across depth and position axes within one system, and a falsified-predictor
+result showing the failure is invisible from a technique's own confidence
+signal. [Abstract to be written last, once the sentence above is resolved —
+see status note at top of file.]
 
 ---
 
@@ -136,6 +198,60 @@ proportion of dropped layers produces a substantially larger accuracy cost
 on Mistral-7B-Instruct-v0.3 than on Qwen2.5-7B-Instruct, and offers one
 candidate mechanism (architecture-dependent, not universal, layer
 redundancy) for why.
+
+**Three 2026 papers anticipate pieces of this paper's argument, and we
+engage with each directly rather than citing them in passing.**
+"Rethinking Layer Redundancy: Calibration Objectives Matter More Than
+Search" goes a step further than "No Free Swap," arguing that redundancy is
+a joint function of model *and calibration objective* specifically, and
+that "a universal layer ranking may not exist." This motivates a question
+our own evidence directly speaks to: is our cross-architecture gap really
+about the model, or about our calibration procedure's ranking failing to
+transfer? We tested the most direct available proxy — whether the
+calibration signal's own internal confidence (the separation between
+scores assigned to kept vs. dropped layers) predicts which model is safe to
+compress — and found it does not, and fails in the *wrong* direction:
+Mistral's tier separation (mean gap between kept and dropped layer
+importance scores: 0.673) is larger, not smaller, than Qwen's (0.491),
+despite Mistral being the more fragile model when that ranking is acted
+upon. This is, to our knowledge, a direct empirical test of exactly the
+concern "Rethinking Layer Redundancy" raises in the abstract, and it
+supports the stronger reading: not merely that redundancy is calibration-
+objective-dependent, but that the objective's own confidence is not a
+reliable signal of when its ranking is safe to trust — consistent with our
+broader claim that non-exchangeability is not visible from a technique's
+internal signals.
+
+AdaK reports that adaptive KV-budget estimation *does* generalize cleanly
+across Qwen, Mistral, and Llama architectures, which on its face looks like
+a counterexample to our claim that layer-selection cost is architecture-
+dependent. We do not believe it is. AdaK's method estimates budget
+per-instance and per-model at inference time rather than committing to a
+single calibration-time ranking applied uniformly thereafter — which is to
+say it does not assume a fixed, transferable layer ranking is safe to act
+on. Read this way, AdaK's success is a positive instance of our principle,
+not a counterexample: it works specifically because it avoids the fixed-
+ranking assumption our own `D` configuration (and the KVCOMM-style,
+calibration-profile-driven approaches this paper otherwise studies) makes.
+We report this as our reading of the mechanism, not as something we have
+independently verified by reimplementing AdaK ourselves — a direct
+head-to-head comparison would strengthen this argument further and is
+noted as a natural extension in Limitations.
+
+Finally, "The Pitfalls of KV Cache Compression" (ACL 2026) makes a general
+version of the point this paper investigates concretely: that compression
+methods optimize for aggregate metrics while implicitly equating token
+retention with functional preservation, missing task- and context-specific
+information needs. Our contribution relative to this line of work is not
+the abstract observation — it is a causally-grounded, cross-axis
+demonstration of it within one system: we show the same failure pattern
+recurring across three structurally distinct axes of KV-cache structure
+(depth, position, content-identity) in a single multi-agent pipeline, and,
+via our causal audit, we causally validate the content-identity axis rather
+than inferring non-exchangeability from compression metrics alone. We
+position this paper as the causal, cross-axis synthesis these three papers
+each gesture toward from a different angle, not as the first to observe
+that KV-cache compression can miss what matters.
 
 ---
 
@@ -336,7 +452,55 @@ exploratory observation, not a claim we have isolated further.
 We have not yet extended this audit to `D` or `B_int8`; establishing the
 mechanism on `A` was treated as sufficient given evaluation time
 constraints, and we note this as a direction for the compression-specific
-configurations specifically, in Limitations.
+configurations specifically, in Limitations. [Update once the `D`/`B_int8`
+audit run completes — this is the paper's central open result at time of
+writing and directly determines how strongly the non-exchangeability
+framing can be stated.]
+
+**Finding 6 — a calibration signal's own confidence does not predict
+downstream layer-selection safety, and fails in the wrong direction.** We
+tested the most direct available proxy for whether our cross-architecture
+gap (Finding 3) reflects the model or merely our calibration procedure: the
+separation between calibration-importance scores assigned to kept
+(tier-1/2) versus dropped (tier-3) layers, as a measure of how confidently
+the calibration ranks layers. Qwen's mean separation is 0.491 (tier-1 mean
+0.737, tier-3 mean 0.246); Mistral's is *larger*, 0.673 (tier-1 mean 0.851,
+tier-3 mean 0.178) — Mistral's calibration looks more decisive, not less,
+yet Mistral is the model whose accuracy collapses harder when that ranking
+is acted upon (Finding 3). This rules out the more mundane explanation for
+Finding 3 (a noisier or less-confident calibration signal for Mistral) and
+supports a sharper one: the calibration objective can be equally or more
+internally confident while being less reliable, and this is not detectable
+from the calibration output alone. We are explicit that this is a single
+comparison across two models and not a validated general predictor — see
+Limitations — but it is a real, falsified hypothesis test, not an assumed
+conclusion, and we report it as such.
+
+**Finding 7 — architecture-dependent layer-selection failures differ in
+kind, not only in rate.** Beyond the accuracy gap already reported (Finding
+3), we compared the *character* of `D`'s incorrect answers between models.
+Qwen's incorrect predictions are short (mean 18 characters, 2% exceed 150
+characters) and are overwhelmingly close, traceable near-misses — reformatted
+dates, dropped honorifics, one-character typos, answers that would likely
+score correctly under a less strict metric than exact match. Mistral's
+incorrect predictions are markedly longer (mean 109 characters, 15% exceed
+150 characters, maximum 1,454) and include a genuine long tail of severe
+failures: fluent but entirely fabricated tangents (e.g., a full invented
+biography of an unrelated historical figure) and degenerate repetition
+loops, neither of which appear in Qwen's failure set at comparable rates.
+Before attributing this to the compression mechanism itself, we checked an
+obvious alternative explanation: whether we inadvertently under-penalize
+repetition for Mistral relative to its own tuned defaults. We compare our
+uniformly-applied `repetition_penalty=1.05` against each model's own
+published generation defaults and find the opposite of what this
+alternative explanation predicts — Qwen's own default *is* 1.05 (we match
+it exactly), while Mistral's own default configuration specifies no
+repetition penalty at all, meaning our setting applies *more* correction
+for Mistral relative to its own baseline, not less. The long-tail failure
+pattern persists despite this, which weakens rather than supports a
+decoding-hyperparameter confound as the explanation, and is consistent
+instead with the depth-axis non-exchangeability differing in *character*
+across architectures, not only in magnitude.
 
 ---
 

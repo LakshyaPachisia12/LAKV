@@ -235,8 +235,33 @@ don't just trust this summary if more data has come in since):
    (weak key signal, easy to down-weight) while realistic-magnitude random
    noise looks like real signal and actively misdirects attention, a small
    but genuine and explainable mechanistic aside worth a sentence in the
-   paper. Not yet run on `D`/`B_int8` (time-permitting extension, not
-   blocking — `A` alone establishes the mechanism).
+   paper. **`D`/`B_int8` extension currently running — this is the paper's
+   central open result, see docs/naacl2027_paper_draft.md's status header.**
+7. **A calibration signal's own confidence does not predict downstream
+   layer-selection safety — and points the wrong way.** Tested directly
+   (not assumed): mean separation between tier-1/2 (kept) and tier-3
+   (dropped) importance scores is 0.491 for Qwen, 0.673 for Mistral —
+   Mistral's calibration looks *more* decisive, yet Mistral is the model
+   that collapses harder when that ranking is acted on (finding 3). Rules
+   out "noisy calibration signal" as the explanation for the cross-model
+   gap; supports the sharper reading that a technique's internal confidence
+   is not evidence of safety. Single comparison, two models — a real,
+   falsified hypothesis test, not a validated general predictor.
+8. **Layer-selection failures differ in KIND across architectures, not just
+   rate.** Qwen's `D` wrong answers: mean 18 chars, 2% exceed 150 chars,
+   overwhelmingly close near-misses (reformatted dates, dropped honorifics,
+   single-character typos). Mistral's: mean 109 chars, 15% exceed 150 chars,
+   max 1,454 — includes fluent fabricated tangents (a full invented
+   biography of an unrelated person) and degenerate repetition loops, which
+   Qwen's failure set essentially doesn't show. Checked the obvious
+   confound before trusting this: is a uniform `repetition_penalty=1.05`
+   under-penalizing Mistral relative to its own tuned defaults? Checked
+   both models' real HuggingFace `generation_config.json` — Qwen's own
+   default *is* 1.05 (exact match); Mistral's specifies none at all,
+   meaning our setting applies *more* correction for Mistral than its own
+   baseline calls for, the opposite of what the confound would need. The
+   long-tail failure pattern persists anyway — weakens rather than
+   supports a decoding-hyperparameter explanation.
 
 **Not yet statistically established, don't overclaim these:** `D` vs `C` on
 Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
