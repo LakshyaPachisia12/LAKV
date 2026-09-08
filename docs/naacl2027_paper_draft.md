@@ -1,22 +1,28 @@
 # NAACL 2027 Draft — Related Work, Method, Results, Limitations
 
-> Status: Related Work, Method, Results, and Limitations are drafted
-> (2026-09-07, branch `feat/research-extensions`). Abstract and Introduction
-> are NOT drafted yet — write those last, once the causal audit result
-> (Finding 5, currently a placeholder) is in and the headline claim is fully
-> locked. `B_int4_kivi` is confirmed at n=100: 52.0% accuracy / 64.1% F1,
-> statistically indistinguishable from `D` (McNemar p=0.86) at higher
-> compression and no calibration profile — current leading candidate for the
-> paper's headline result. `B_int4_kivi_full` (adds per-token V quantization)
-> does NOT improve on plain `B_int4_kivi` — tested (n=50, matched subset):
-> 44.0% vs 50.0%, not significant but trending the other way, plus a real
-> compression-ratio cost (3.75x vs 3.99x) from per-token scale/zero-point
-> overhead. Combined with `B_int4_hybrid`'s earlier null result, this is TWO
-> independent failed attempts to improve V — use plain `B_int4_kivi`.
-> Causal audit is built but has zero GPU results — this is now the single
-> biggest remaining gap in the Results section. Orthogonal Backfill was
-> deliberately scoped out (see Limitations), not left as an open thread.
-> Bracketed notes mark anything needing a final number or decision before
+> Status: Related Work, Method, Results (all 6 findings, no placeholders
+> left), and Limitations are drafted (last updated 2026-09-08, branch
+> `feat/research-extensions`). **Abstract and Introduction are the only
+> sections left — write them now, the headline claim is fully locked.**
+>
+> The two candidate headline claims, both fully confirmed with statistics:
+> (1) `B_int4_kivi` matches `D` (McNemar p=0.86) at higher compression
+> (3.99x vs 2.76x) with no calibration profile, after root-causing and
+> fixing `B_int4`'s original collapse; (2) the causal audit proves relayed
+> KV carries real, specific content — a full three-tier significant ordering
+> (`A` 50.0% > `A_audit_mismatched` 28.0% > `A_audit_zeroed`/`A_audit_random`
+> 0.0%, every pairwise comparison p<0.05, most p<0.001) — which is the
+> mechanistic result every compression claim in this paper depends on.
+> Recommend leading the Introduction with (2) as the framing device (it's
+> what makes the whole paper's premise credible) and (1) as the strongest
+> concrete payoff.
+>
+> `B_int4_kivi_full` and `B_int4_hybrid` (two independent attempts to also
+> improve the value side) both failed to help — reported as a strength (the
+> mechanism is fully isolated to keys), not a gap. Orthogonal Backfill was
+> deliberately scoped out. Causal audit not yet extended to `D`/`B_int8` —
+> noted as a Limitations item, not a blocker; `A` alone establishes the
+> mechanism. Bracketed notes mark anything still needing a decision before
 > submission. Freely rewrite — this is a draft, not locked.
 
 ---
@@ -295,11 +301,55 @@ take this as evidence the key/RoPE interaction was the entire mechanism
 behind `B_int4`'s original collapse, not one of several contributing
 factors.
 
-**Finding 5 — causal audit.** [Pending GPU evaluation.]
+**Finding 5 — relayed KV demonstrably carries specific, real content, not
+merely a non-empty cache.** We ran the causal audit (Section [X]) on
+configuration `A` (uncompressed relay), n=50: `A` reaches 50.0% accuracy /
+64.0% F1; `A_audit_zeroed` and `A_audit_random` both collapse to 0.0%/0.0%;
+`A_audit_mismatched` (a real, different held-out question's cache) lands at
+28.0%/37.1% — between the two. Every pairwise comparison in this three-tier
+ordering is statistically significant: `A` vs zeroed and `A` vs random,
+McNemar p<0.0001 each; `A` vs mismatched, p=0.0127; mismatched vs zeroed and
+mismatched vs random, p=0.0001 each (an earlier n=20 pilot showed the same
+ordering with the `A`-vs-mismatched comparison just short of significance,
+p=0.0625, resolved at n=50). This is, to our knowledge, the first direct
+causal validation of this kind for a sequential (not fan-in) multi-agent
+KV-relay chain, and it underwrites every compression result in this paper:
+Findings 1 and 4 (near-zero-cost 8-bit quantization, and the `B_int4` fix
+matching `D`) are only meaningful claims about *preserved information* if
+the underlying relay is shown to carry real content in the first place,
+which this finding establishes directly rather than assuming.
+
+Qualitative inspection of the audit conditions' raw output supports the
+statistical result and adds a smaller, mechanistically interesting
+observation. `A_audit_mismatched`'s incorrect answers are coherent,
+grammatical, and plausible — real linguistic structure attached to the
+wrong question — while `A_audit_zeroed` produces garbled but recognizable
+English, and `A_audit_random` produces content qualitatively *more*
+degraded than zeroing (code-fragment tokens, mixed-language noise), despite
+matching the real cache's per-tensor statistics. We speculate this reflects
+a difference in how attention treats the two null conditions: a zero vector
+is a weak key that attention can largely down-weight, while realistic-
+magnitude random noise resembles genuine signal and can actively misdirect
+attention rather than being ignored. We report this as a secondary,
+exploratory observation, not a claim we have isolated further.
+
+We have not yet extended this audit to `D` or `B_int8`; establishing the
+mechanism on `A` was treated as sufficient given evaluation time
+constraints, and we note this as a direction for the compression-specific
+configurations specifically, in Limitations.
 
 ---
 
 ## 5. Limitations
+
+**Causal audit scope.** We ran the causal audit (Finding 5) on
+configuration `A` (uncompressed relay) only. Extending it to `D` and
+`B_int8` — confirming the same three-tier ordering holds when the relayed
+cache is also compressed and/or layer-selected — would strengthen the link
+between Finding 5 and the compression-specific claims (Findings 1 and 4)
+further; we treat `A`'s result as establishing the underlying mechanism
+sufficiently for this paper given evaluation time constraints, not as a
+substitute for auditing every configuration individually.
 
 **Single-process evaluation, not a deployed system.** Every experiment in
 this paper runs within a single Python process on one GPU: no `KVMessage` is

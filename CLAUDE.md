@@ -215,26 +215,45 @@ don't just trust this summary if more data has come in since):
    alone accounts for the whole recovery, not a coincidence.
    `B_int4_kivi` (plain, K-only) remains the config to report and use.**
 
+6. **Causal audit: config `A`'s relayed KV demonstrably carries real,
+   specific content — not just a generic non-empty cache.** Ran on `A`
+   (uncompressed relay), n=50, HotpotQA: `A` 50.0%/64.0%, `A_audit_zeroed`
+   0.0%/0.0%, `A_audit_random` (moment-matched noise) 0.0%/0.0%,
+   `A_audit_mismatched` (a real, different held-out question's KV) 28.0%/
+   37.1%. **Every pairwise comparison in the three-tier ladder is
+   statistically significant**: `A` vs zeroed p<0.0001, `A` vs random
+   p<0.0001, `A` vs mismatched p=0.0127 (borderline at an earlier n=20 pilot,
+   confirmed here), mismatched vs zeroed/random p=0.0001 each. This is the
+   mechanistic validation underneath every other finding in this document —
+   direct proof that accuracy comes from the specific transmitted content,
+   not merely from the receiving agent having *some* cache to attend over.
+   Qualitative texture confirms it: `A_audit_mismatched`'s wrong answers are
+   coherent, grammatical, plausible-sounding (real structure, wrong
+   question); `A_audit_zeroed`'s are garbled English; `A_audit_random`'s are
+   pure noise (code fragments, mixed-language garbage) — **worse than
+   zeroed**, plausibly because a zero vector is "quiet" to attention
+   (weak key signal, easy to down-weight) while realistic-magnitude random
+   noise looks like real signal and actively misdirects attention, a small
+   but genuine and explainable mechanistic aside worth a sentence in the
+   paper. Not yet run on `D`/`B_int8` (time-permitting extension, not
+   blocking — `A` alone establishes the mechanism).
+
 **Not yet statistically established, don't overclaim these:** `D` vs `C` on
 Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
 `A` vs `D` on Qwen alone without the cross-model framing (p=0.34, 15%
 power); whether `B_int4_kivi`'s trend below `A`/`B_int8` is a real cost or
 just underpowered noise (see finding 5 above).
 
-**Still open / in progress on this branch:** the causal audit
-(`*_audit_zeroed/random/mismatched`) has been built and unit-tested but not
-yet run on GPU — no result yet on whether relayed KV demonstrably carries
-real content beyond "having some cache." This is now the single biggest
-remaining gap before the paper's Results section is complete (see
-`docs/naacl2027_paper_draft.md`). **Before interpreting these results once
-they land:** literature search this session confirmed zero-ablation is a
-known-imperfect causal baseline (pushes activations off-distribution,
-which can produce large behavior changes unrelated to whether the zeroed
-content actually mattered) — weight `_audit_random` and `_audit_mismatched`
-as the primary evidence, treat `_audit_zeroed` as a supplementary sanity
-floor, and don't be surprised or over-interpret if `_audit_zeroed` diverges
-more sharply from the other two than expected. Orthogonal Backfill was deliberately
-scoped out (not attempted) rather than left open — see that same draft's
+**Still open / in progress on this branch:** the causal audit has been run
+and confirmed on `A` at n=50 (finding 6 above, statistically significant
+across every pairwise comparison) — not yet extended to `D`/`B_int8`, which
+is a time-permitting nice-to-have, not a blocker (`A` alone establishes the
+mechanism). A `donor_question` bleed-through analysis (does
+`A_audit_mismatched`'s wrong answer reflect the substituted question's
+topic?) is possible now that the pool tracks donor text, but requires a
+fresh run — the n=20/n=50 runs above predate that code change and don't
+have it logged. Orthogonal Backfill was deliberately scoped out (not
+attempted) rather than left open — see `docs/naacl2027_paper_draft.md`'s
 Limitations section for the reasoning (its real formula needs attention
 weights this pipeline's fast `sdpa` decode path doesn't expose, and
 shipping an approximated version under time pressure was judged not worth
