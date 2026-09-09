@@ -1,0 +1,95 @@
+# LAKV — Results Summary (quick reference)
+
+> Purpose: a scannable table of every confirmed number, distinct from
+> `CLAUDE.md` (dense technical narrative, read that for the *why*) and
+> `docs/naacl2027_paper_draft.md` (academic prose for the actual paper).
+> Last updated 2026-09-09, branch `feat/research-extensions`. Every number
+> here has a source file and a significance test behind it — see the
+> "source" column, or re-run `python -m lakv.stats <file> <cfgA> <cfgB>` to
+> reproduce any comparison.
+
+## 1. Established baseline (Qwen2.5-7B-Instruct, HotpotQA, n=100)
+
+Source: `results/run_20260907_141517`
+
+| Config | Accuracy | F1 | Latency | KV/hop |
+|---|---|---|---|---|
+| single_agent | 57.0% | 68.4% | 1.6s | — |
+| text_agent | 54.0% | 68.3% | 7.2s | — |
+| **A** (uncompressed relay) | 56.0% | 69.1% | 8.6s | 144.35 MB |
+| **B_int8** | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
+| B_int4 (broken) | 0.0% | 0.0% | 39.4s | 41.36 MB (4.00x) |
+| C | 43.0% | 57.8% | 10.0s | 104.16 MB |
+| **D** | 50.0% | 61.9% | 10.2s | 37.82 MB (2.76x) |
+| E | 9.0% | 17.4% | 19.8s | 35.63 MB |
+| E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
+
+## 2. Second model — Mistral-7B-Instruct-v0.3 (n=50)
+
+Source: `results/run_20260907_130646`
+
+| Config | Accuracy | F1 |
+|---|---|---|
+| single_agent | 42.0% | 53.8% |
+| text_agent | 58.0% | 68.0% |
+| A | 56.0% | 63.3% |
+| B_int8 | 56.0% | 63.3% |
+| **D** | **22.0%** | **32.8%** |
+
+**A vs D: 30.5 F1-point collapse, p=0.0001.** On Qwen, the same comparison isn't significant yet (p=0.34). Cross-model asymmetry is the finding, not either number alone.
+
+## 3. The B_int4 fix journey (Qwen, n=100 unless noted)
+
+| Variant | Accuracy | F1 | Verdict |
+|---|---|---|---|
+| B_int4 (original) | 0.0% | 0.0% | Collapses — root cause: RoPE/quantization interaction |
+| B_int4_turboquant (rotate K+V) | 0.0% | 0.0% | **Broken worse** — bizarre out-of-vocab tokens |
+| B_int4_turboquant_vonly (rotate V only) | 0.0% | 0.0% | Confirms K-rotation was the specific problem |
+| **B_int4_kivi (K per-channel)** | **52.0%** | **64.1%** | **The fix — use this one** |
+| B_int4_hybrid (K per-channel + rotate V) | ~50% (n=50 matched) | lower F1 than kivi | No better than kivi alone |
+| B_int4_kivi_full (K per-channel + V per-token) | 44.0% (n=50 matched) | lower than kivi | No better than kivi alone |
+
+**B_int4_kivi vs D: statistically indistinguishable (p=0.86), at higher compression (3.99x vs 2.76x), no calibration profile needed.**
+
+## 4. Causal audit — the central mechanistic result
+
+| Config | Real | Zeroed | Random | Mismatched | n |
+|---|---|---|---|---|---|
+| A (uncompressed) | 50.0%/64.0% | 0.0%/0.0% | 0.0%/0.0% | 28.0%/37.1% | 50 |
+| D (compressed) | 54.0%/60.2% | 0.0%/0.0% | 0.0%/0.2% | 26.0%/32.2% | 50 |
+| B_int8 (compressed) | 54.0%/68.0% | 0.0%/0.0% | 0.0%/0.0% | 24.0%/34.4% | 50 |
+
+Source: `results/run_20260907_222745` (A), `results/run_20260909_080434` (D, B_int8)
+
+**Every pairwise comparison across all three configs is statistically significant** (real vs zeroed/random: p<0.0001 in all three; real vs mismatched: p=0.0127 (A), p=0.0013 (D), p=0.0003 (B_int8); mismatched vs zeroed/random: p≤0.0005 in all three). The three-tier ordering (real > mismatched > zeroed=random) holds regardless of compression — this is the mechanistic proof underneath every other claim in this project.
+
+## 5. Two secondary analyses (no new GPU time — analysis of existing data)
+
+**Calibration confidence does not predict cross-architecture safety (and points the wrong way):**
+
+| Model | Tier-1 (kept) mean importance | Tier-3 (dropped) mean importance | Separation |
+|---|---|---|---|
+| Qwen | 0.737 | 0.246 | 0.491 |
+| Mistral | 0.851 | 0.178 | **0.673 (larger)** |
+
+Mistral's calibration looks *more* confident, yet Mistral is the *more* fragile model when it's acted on.
+
+**Layer-selection failures differ in kind, not just rate (D config, wrong answers only):**
+
+| Model | Mean length | % over 150 chars | Character |
+|---|---|---|---|
+| Qwen | 18 chars | 2% | Close near-misses (reformatted dates, typos) |
+| Mistral | 109 chars | 15% | Fabricated tangents, repetition loops (max 1,454 chars) |
+
+Repetition-penalty confound checked and ruled out (Mistral's own default has *no* penalty; our uniform 1.05 applies *more* correction to Mistral than its own baseline, not less — the pattern persists anyway).
+
+## 6. What's still open
+
+- `donor_question` bleed-through analysis — built, not yet re-run with tracking active.
+- Causal audit not yet run on `C` or the `B_int4` family.
+- `B_int4_kivi`'s trend below `A`/`B_int8` (52% vs 56-57%) is not yet statistically confirmed as a real cost (7-12 discordant examples, p=0.36-0.50).
+- `D` vs `C` on Qwen not significant (p=0.14, underpowered at n=100).
+
+---
+
+**For the "why" behind any of these numbers, see `CLAUDE.md`'s "Research-extensions findings" section. For how these are framed as a paper, see `docs/naacl2027_paper_draft.md`.**
