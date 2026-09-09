@@ -442,9 +442,16 @@ class KVCompressor:
                     bits=bits,
                     layer_idx=layer_idx
                 )
-                bytes_per_el = 1 if bits == 8 else 0.5
-                n_el = k.numel() + v.numel()
-                compressed_bytes += int(n_el * bytes_per_el)
+                # k_q/v_q are always stored as torch.uint8 (see _quantize /
+                # _quantize_per_channel / _quantize_per_token) -- no nibble-
+                # packing exists anywhere in this file, so a 4-bit value
+                # occupies the same one full byte an 8-bit value does. Bill
+                # the real stored size (k_q.nbytes + v_q.nbytes), not a
+                # bits==4 -> 0.5-bytes-per-element formula that assumes
+                # packing that never happens. Real nibble-packing to achieve
+                # genuine additional int4 compression is a separate,
+                # deliberately deferred effort.
+                compressed_bytes += k_q.nbytes + v_q.nbytes
                 # Overhead for scale/zp per head
                 compressed_bytes += (k_scale.numel() + v_scale.numel()) * 4 * 2
 

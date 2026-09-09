@@ -18,11 +18,16 @@ Source: `results/run_20260907_141517`
 | text_agent | 54.0% | 68.3% | 7.2s | — |
 | **A** (uncompressed relay) | 56.0% | 69.1% | 8.6s | 144.35 MB |
 | **B_int8** | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
-| B_int4 (broken) | 0.0% | 0.0% | 39.4s | 41.36 MB (4.00x) |
+| B_int4 (broken) | 0.0% | 0.0% | 39.4s | ~76.8 MB (2.00x, corrected) |
 | C | 43.0% | 57.8% | 10.0s | 104.16 MB |
-| **D** | 50.0% | 61.9% | 10.2s | 37.82 MB (2.76x) |
-| E | 9.0% | 17.4% | 19.8s | 35.63 MB |
+| **D** | 50.0% | 61.9% | 10.2s | ~52.2 MB (2.00x self-ref / 2.77x vs `A`, corrected) |
+| E | 9.0% | 17.4% | 19.8s | ~49.1 MB (2.00x, corrected) |
 | E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
+
+**MB/ratio columns for `B_int4`/`D`/`E` corrected 2026-09-09** — see §3 note
+below for the bug and exact recomputation method. `A`/`B_int8`/`C`/`E_int8`
+were never affected (no int4 tier involved). Accuracy/F1/latency unaffected
+either way.
 
 ## 2. Second model — Mistral-7B-Instruct-v0.3 (n=50)
 
@@ -49,7 +54,17 @@ Source: `results/run_20260907_130646`
 | B_int4_hybrid (K per-channel + rotate V) | ~50% (n=50 matched) | lower F1 than kivi | No better than kivi alone |
 | B_int4_kivi_full (K per-channel + V per-token) | 44.0% (n=50 matched) | lower than kivi | No better than kivi alone |
 
-**B_int4_kivi vs D: statistically indistinguishable (p=0.86), at higher compression (3.99x vs 2.76x), no calibration profile needed.**
+**B_int4_kivi vs D: statistically indistinguishable (p=0.86), no calibration
+profile needed.** **CORRECTED 2026-09-09:** the "higher compression" half
+of this claim was wrong — `kv_compressor.py` billed 4-bit tensors at half
+the real byte cost (they're stored as `torch.uint8` with no nibble-packing,
+same as 8-bit). Fixed; exact recomputation (pure shape/architecture math,
+no GPU rerun needed) gives `B_int4_kivi` ≈72.6 MB/hop (≈2.00x vs `A`) and
+`D` ≈52.2 MB/hop (≈2.00x self-ref / ≈2.77x vs `A`) — **`D` is now ~39%
+smaller than `B_int4_kivi`, the opposite of what was previously reported.**
+`B_int4_kivi`'s real, defensible claim: matches `D`'s accuracy at
+`B_int8`-level compression with no calibration profile — not "beats `D`'s
+compression." See `scripts/correct_compression_ratios.py`.
 
 ## 4. Causal audit — the central mechanistic result
 

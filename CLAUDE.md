@@ -96,19 +96,26 @@ prompts as `text_agent`, so any accuracy/latency delta between a KV config and
 | text_agent | 54.0% | 68.3% | 6.7s | — |
 | **A** | 57.0% | 69.6% | 7.8s | 143.98 MB |
 | **B_int8** | 56.0% | 68.6% | 8.0s | 72.07 MB (2.00x) |
-| B_int4 | 0.0% | 0.0% | 35.0s | 38.34 MB (4.00x) — **collapses, see below** |
+| B_int4 | 0.0% | 0.0% | 35.0s | ~76.7 MB (2.00x, corrected — see below) — **collapses, see below** |
 | C | 47.0% | 59.8% | 10.6s | 104.26 MB |
 | C_nearest / C_interpolate | 33.0% / 36.0% | 48.3% / 44.7% | 9.2s / 8.5s | ~103 MB |
-| **D** | 44.0% | 58.3% | 9.6s | 37.69 MB (2.76x) |
-| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~37.5 MB |
-| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~36-49 MB |
+| **D** | 44.0% | 58.3% | 9.6s | ~52.0 MB (2.00x self-ref / ~2.77x vs `A`, corrected — see below) |
+| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~37.5 MB, uncorrected (not yet recomputed for this row) |
+| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~36-49 MB, uncorrected (not yet recomputed for this row) |
+
+**MB/ratio columns above predate the 2026-09-09 int4 byte-accounting fix
+(see "Research-extensions findings" below) for every row involving int4 —
+`B_int4`/`D`/`D_nearest`/`D_interpolate`/`E` are corrected or flagged as
+not yet recomputed; `B_int8`/`A`/`C` were never affected. Accuracy/F1/
+latency in this whole table are unaffected either way (compression byte
+accounting is independent of generation).**
 
 **Bottom line: `D` and `B_int8` are the strongest defensible KV-relay
 results.** `A` matches `single_agent`'s accuracy and is close to (but ~15%
 slower than) `text_agent`'s latency — the "avoid recomputation" win is real
 but small, since decode time dominates total latency far more than prefill for
 this task (hops run 100-500+ generated tokens). `D` trades ~13 accuracy points
-for a 2.76x smaller relayed cache; `B_int8` gets 2x compression for
+for a ~2.77x smaller relayed cache (vs `A`, corrected); `B_int8` gets 2x compression for
 essentially no accuracy cost.
 
 ## Research-extensions findings (branch `feat/research-extensions`, as of 2026-09-07)
@@ -191,29 +198,55 @@ don't just trust this summary if more data has come in since):
    GPU — open question whether V's own axis fix adds anything on top of K's.
 5. **`B_int4_kivi` (52.0%/64.1%, n=100) is statistically indistinguishable
    from `D` (50.0%/61.9%)** — McNemar p=0.86, F1 delta +2.2 pts [-8.2,
-   +12.8] — **while compressing harder (3.99x vs D's 2.76x) and needing none
-   of D's machinery** (no calibration profile, no layer-selection tiering,
-   just a fixed quantization scheme). Also not significantly different from
-   `A` (56.0%, p=0.50) or `B_int8` (57.0%, p=0.36) — but don't overclaim this
-   as "free" the way `B_int8` vs `A` is: those comparisons had 0-3 discordant
-   examples (an extremely tight match); `B_int4_kivi` vs `A`/`B_int8` has
-   7-12 discordant examples and point estimates that trend real (52% vs
-   56-57%) — the honest statement is "not yet distinguishable from a real
-   cost at this n," not "no cost." **`B_int4_kivi_full` (adds per-token V
-   quantization on top of K's fix) does NOT improve on `B_int4_kivi` — tested
-   at n=50 (`results/run_20260907_203253`), same idx range as a matched
-   subset of `B_int4_kivi`'s n=100 run: 44.0% vs 50.0%, McNemar p=0.51 (not
+   +12.8] — **and needs none of D's machinery** (no calibration profile, no
+   layer-selection tiering, just a fixed quantization scheme). Also not
+   significantly different from `A` (56.0%, p=0.50) or `B_int8` (57.0%,
+   p=0.36) — but don't overclaim this as "free" the way `B_int8` vs `A` is:
+   those comparisons had 0-3 discordant examples (an extremely tight match);
+   `B_int4_kivi` vs `A`/`B_int8` has 7-12 discordant examples and point
+   estimates that trend real (52% vs 56-57%) — the honest statement is "not
+   yet distinguishable from a real cost at this n," not "no cost."
+   **CORRECTED 2026-09-09 — the "compresses harder than `D`" half of this
+   finding was WRONG, root cause found via `feat/lakv_nvidia`:**
+   `kv_compressor.py::compress()` billed 4-bit layers at 0.5 bytes/element,
+   but `_quantize()`/`_quantize_per_channel()`/`_quantize_per_token()` all
+   store the result as `torch.uint8` regardless of `bits` — no nibble-
+   packing exists anywhere in this file, so a 4-bit value has always taken
+   the same one full byte an 8-bit value does. Fixed to bill
+   `k_q.nbytes + v_q.nbytes` directly. Corrected numbers (exact, recomputed
+   from stored per-hop shapes, no GPU rerun needed since byte accounting is
+   independent of generation): `B_int4_kivi` is **~72.6 MB/hop (≈2.00x vs
+   `A`)**, not the previously-reported 36.43 MB (3.99x). `D` is **~52.2
+   MB/hop (≈2.00x self-referential to its own transmitted layers, ≈2.77x
+   vs `A`)**, not the previously-reported 37.82 MB (2.76x) — `D`'s number
+   happens to land close to its old (wrong) value because its real
+   advantage was always the layers it drops entirely, a genuine saving the
+   old bug didn't touch, coincidentally offsetting the int4-tier
+   undercounting. **Net effect: `D` now produces a ~39% SMALLER cache than
+   `B_int4_kivi` (52.2 MB vs 72.6 MB) — the exact opposite of what was
+   previously claimed.** `B_int4_kivi`'s real, defensible selling point is
+   "matches `D`'s accuracy with `B_int8`-level compression and no
+   calibration profile," not "higher compression than `D`." See
+   `scripts/correct_compression_ratios.py` for the exact recomputation
+   method (pure architecture/shape math — compressed size never depended
+   on tensor values, so no rerun was needed to get exact, not approximate,
+   corrected numbers). **`B_int4_kivi_full` (adds per-token V quantization
+   on top of K's fix) does NOT improve on `B_int4_kivi`** — tested at n=50
+   (`results/run_20260907_203253`), same idx range as a matched subset of
+   `B_int4_kivi`'s n=100 run: 44.0% vs 50.0%, McNemar p=0.51 (not
    significant, but trending toward plain `B_int4_kivi` being better, not
-   worse). Its compression ratio is also WORSE (3.75x vs 3.99x) for a
-   real, mechanical reason, not noise: per-token quantization stores a
-   scale/zero-point pair per sequence position, and sequence length (hundreds
-   to low thousands of tokens) vastly exceeds K's per-channel grouping
-   (128 channels) — real overhead, no accuracy benefit. Combined with
-   `B_int4_hybrid`'s earlier null result (rotating V didn't help either),
-   this is now TWO independent, differently-motivated attempts to improve V
-   that both failed — strong, replicated evidence that K's per-channel fix
-   alone accounts for the whole recovery, not a coincidence.
-   `B_int4_kivi` (plain, K-only) remains the config to report and use.**
+   worse). Its compression is also still WORSE after correction (≈1.94x vs
+   `B_int4_kivi`'s ≈2.00x, corrected from the old 3.75x-vs-3.99x framing)
+   for a real, mechanical reason unrelated to the packing bug: per-token
+   quantization stores a scale/zero-point pair per sequence position, and
+   sequence length (hundreds to low thousands of tokens) vastly exceeds K's
+   per-channel grouping (128 channels) — real overhead, no accuracy
+   benefit. Combined with `B_int4_hybrid`'s earlier null result (rotating V
+   didn't help either), this is now TWO independent, differently-motivated
+   attempts to improve V that both failed — strong, replicated evidence
+   that K's per-channel fix alone accounts for the whole recovery, not a
+   coincidence. `B_int4_kivi` (plain, K-only) remains the config to report
+   and use — just not with the "beats `D`'s compression" claim.**
 
 6. **Causal audit: config `A`'s relayed KV demonstrably carries real,
    specific content — not just a generic non-empty cache.** Ran on `A`

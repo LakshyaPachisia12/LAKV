@@ -56,7 +56,7 @@ position embeddings impose position-dependent structure on them: a
 rotation-based quantization scheme that assumes otherwise collapses into
 out-of-distribution output, while a channel-respecting fix recovers
 accuracy statistically indistinguishable from our strongest layer-selection
-baseline, at higher compression and no calibration overhead. Two results
+baseline, at comparable compression and no calibration overhead. Two results
 sit at the center of this paper. First, a causal audit — substituting the
 relayed cache with zeroed, random, or another question's real content —
 shows a receiving agent's accuracy depends on the specific transmitted
@@ -200,7 +200,7 @@ KIVI-inspired fix (per-channel key quantization only, no group-wise
 windowing or streaming residual buffer from the original method) and find
 it resolves the collapse — 0.0%/0.0% to 52.0%/64.1% F1 at n=100,
 statistically indistinguishable from our strongest layer-selection config
-(`D`; McNemar p=0.86) at higher compression (3.99x vs 2.76x) with no
+(`D`; McNemar p=0.86) at `B_int8`-level compression (≈2.00x) with no
 calibration profile required — direct empirical confirmation, on our
 pipeline and task, of what this literature identifies as the correct axis
 for addressing the problem, rather than the rotation-based axis we tried
@@ -392,12 +392,23 @@ findings characterize specific published techniques against this backdrop.
 | text_agent | 54.0% | 68.3% | 7.2s | — |
 | A | 56.0% | 69.1% | 8.6s | 144.35 MB |
 | B_int8 | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
-| B_int4 (original) | 0.0% | 0.0% | 39.4s | 41.36 MB (4.00x) |
-| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | 9.6s | 36.43 MB (3.99x) |
+| B_int4 (original) | 0.0% | 0.0% | 39.4s | ~76.8 MB (2.00x) |
+| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | 9.6s | ~72.6 MB (2.00x) |
 | C | 43.0% | 57.8% | 10.0s | 104.16 MB |
-| D | 50.0% | 61.9% | 10.2s | 37.82 MB (2.76x) |
-| E | 9.0% | 17.4% | 19.8s | 35.63 MB |
+| D | 50.0% | 61.9% | 10.2s | ~52.2 MB (2.77x vs `A`) |
+| E | 9.0% | 17.4% | 19.8s | ~49.1 MB (2.00x) |
 | E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
+
+Ratios are compressed-vs-`A`'s 144.35 MB except where a config's own
+transmitted-layer set differs from `A`'s (`D`/`C`/`E` drop layers before
+compressing; for those the parenthetical is that config's self-referential
+transmitted-original-vs-compressed ratio, which for `D` is 2.00x — its
+2.77x-vs-`A` figure is shown instead since that is the number a reader
+actually wants: how much smaller than uncompressed relay). MB/ratio figures
+for every int4-touching config (`B_int4`, `B_int4_kivi`, `D`, `E`) were
+corrected 2026-09-09 after finding `kv_compressor.py` billed 4-bit tensors
+at half their real stored size (they are stored as `torch.uint8` with no
+nibble-packing, identical footprint to 8-bit) — see Limitations.
 
 **Finding 1 — uniform 8-bit KV quantization is statistically indistinguishable
 from uncompressed relay.** `A` vs `B_int8`: McNemar p=1.0, only 3 discordant
@@ -426,19 +437,38 @@ transformer layer redundancy to be architecture- and protocol-dependent
 rather than a fixed property of a given compression ratio.
 
 **Finding 4 — `B_int4`'s fixed variant matches our strongest
-layer-selection configuration, at higher compression and lower complexity.**
+layer-selection configuration's accuracy at `B_int8`-level compression and
+lower complexity — but not at higher compression than `D`.**
 `B_int4_kivi` (52.0%/64.1%) vs `D` (50.0%/61.9%): McNemar p=0.86, F1 delta
-+2.2 points [95% CI: -8.2, +12.8] — statistically indistinguishable — while
-achieving 3.99x compression versus `D`'s 2.76x, and requiring no per-model
-calibration profile. It trends below `A`/`B_int8` (52% vs 56-57%), but this
-gap is not yet statistically confirmed at n=100 (7-12 discordant examples,
-p=0.36-0.50); we report this as an open question, not as cost-free the way
-Finding 1 establishes for `B_int8`. Also fixing the value side
-(`B_int4_kivi_full`, per-token quantization) does not improve on this
-further (44.0% vs 50.0% on a matched 50-example subset, p=0.51, trending
-the other way) and costs compression ratio (3.75x vs 3.99x) for the extra
-per-position bookkeeping it requires. Together with an earlier null result
-for rotating values instead, two independently-motivated value-side
++2.2 points [95% CI: -8.2, +12.8] — statistically indistinguishable — and
+requiring no per-model calibration profile. On compression specifically we
+correct an earlier claim here: this codebase's quantized tensors are always
+stored as `torch.uint8` regardless of bit-width (no nibble-packing is
+implemented for either 4-bit or 8-bit), so `B_int4_kivi`'s real footprint is
+≈72.6 MB/hop (≈2.00x vs `A`) — matching `B_int8`, not the 3.99x we
+originally (incorrectly) reported from a byte-accounting bug in
+`kv_compressor.py`. `D`'s real footprint, once corrected the same way, is
+≈52.2 MB/hop (≈2.77x vs `A`) — **`D` produces a ~39% smaller cache than
+`B_int4_kivi`**, the opposite of what we previously claimed, because `D`'s
+real compression advantage was never int4's precision but layer-selection's
+genuine, uncorrected-by-this-bug savings from dropping layers entirely.
+`B_int4_kivi`'s defensible claim is therefore narrower than originally
+stated: it matches `D`'s accuracy at `B_int8`-level compression with no
+calibration profile, which is a real, useful simplicity/compression
+trade-off — not a compression *win* over `D`. It also trends below
+`A`/`B_int8` on accuracy (52% vs 56-57%), but this gap is not yet
+statistically confirmed at n=100 (7-12 discordant examples, p=0.36-0.50);
+we report this as an open question, not as cost-free the way Finding 1
+establishes for `B_int8`. Also fixing the value side (`B_int4_kivi_full`,
+per-token quantization) does not improve on this further (44.0% vs 50.0%
+on a matched 50-example subset, p=0.51, trending the other way) and, even
+after the same correction, is still worse on compression (≈1.94x vs
+`B_int4_kivi`'s ≈2.00x) for a real, mechanical reason unrelated to the
+byte-accounting bug: per-token quantization stores a scale/zero-point pair
+per sequence position, and sequence length (hundreds to low thousands of
+tokens) vastly exceeds K's per-channel grouping (128 channels) — real
+overhead, no accuracy benefit. Together with an earlier null result for
+rotating values instead, two independently-motivated value-side
 interventions both failed — evidence the key/RoPE interaction was the
 entire mechanism behind `B_int4`'s collapse, not one of several factors.
 
@@ -620,6 +650,27 @@ it was originally validated on remains open. All results additionally use
 greedy decoding (`do_sample=False`); we did not evaluate under sampling or
 self-consistency, which could interact differently with a degraded or
 compressed relayed context than with a full one.
+
+**No bit-packing: reported compression ratios reflect quantization
+granularity, not physical storage savings beyond bf16→8-bit.** Every
+quantized tensor in this codebase — 4-bit and 8-bit alike — is stored as
+`torch.uint8`; no nibble-packing is implemented. A 4-bit value therefore
+occupies the same one byte an 8-bit value does, so any config whose
+transmitted layers are entirely quantized (`B_int8`, `B_int4`,
+`B_int4_kivi` and its variants, and the quantized-tier layers of `D`/`E`)
+achieves the same ≈2.00x compression relative to bf16 regardless of
+nominal bit-width; a version with real nibble-packing would compress
+4-bit layers roughly twice as far as reported here. We caught and fixed a
+byte-accounting bug that had been silently assuming this packing existed
+(originally reporting `B_int4_kivi` at 3.99x and `D` at 2.76x self-
+referential, both wrong) before this draft's numbers were finalized — see
+Table 1's footnote and Finding 4 for the corrected figures and what
+changed as a result (`D` produces a smaller cache than `B_int4_kivi`, not
+a larger one). `D`'s real compression advantage over `B_int8`/`B_int4_kivi`
+is entirely attributable to layer selection dropping layers outright, not
+to its adaptive quantization tier; implementing genuine 4-bit packing is
+future work that would benefit every quantized configuration in this
+paper equally, not change any of its comparative claims.
 
 **Partial reproduction of adapted and considered techniques.** Our
 rotation-based quantization covers PolarQuant's core rotate-then-quantize
