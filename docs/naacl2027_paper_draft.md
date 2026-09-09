@@ -154,11 +154,12 @@ latent thought generation; and we evaluate on multi-hop question answering
 agents is a natural complement to relay itself. We adopt two families of
 technique: layer-wise selection, which drops calibration-identified
 low-importance transformer layers before transmission and reconstructs them
-at the receiver, and per-head quantization, which reduces numeric precision.
-[If Orthogonal Backfill is implemented: cite "When Less Latent Leads to
-Better Relay" (arXiv 2604.13349) here as a third reconstruction strategy
-that injects a low-rank residual of discarded content orthogonal to what is
-retained, rather than substituting or discarding it outright.]
+at the receiver via `zeros`, `nearest`, or `interpolate`, and per-head
+quantization, which reduces numeric precision. A third reconstruction
+strategy, Orthogonal Backfill ("When Less Latent Leads to Better Relay,"
+arXiv 2604.13349), injects a low-rank residual of discarded content
+orthogonal to what is retained rather than substituting or discarding it
+outright; we considered but did not implement it (see Limitations for why).
 
 **Rotation-based quantization interacts badly with RoPE-encoded keys — a
 finding, not just an implementation note.** We initially implemented a
