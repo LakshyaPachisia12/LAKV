@@ -585,7 +585,13 @@ evidence that donor bleed-through can occur, illustrated by one unambiguous
 example — not a validated estimate of how often it occurs; a rigorous
 version would require an automated or multiply-annotated classification
 over the full set of incorrect examples, which we did not have the budget
-to complete.
+to complete. Topology is also fixed: every result in this paper is on a
+sequential, non-adversarial chain. "When Latent Agents Lie" audits an
+adversarial fan-in topology instead (Section 2), and LatentMAS collaborates
+via layer-wise KV concatenation across a different multi-agent structure
+than our hop-by-hop handoff; whether the same three-tier causal ordering
+holds under a fan-in or concatenation-based topology is a natural, cited
+extension we did not attempt, not one we found and characterized.
 
 **Single-process, single-GPU evaluation.** Every experiment runs within one
 Python process on one RTX 4090: no `KVMessage` is ever serialized or
@@ -624,8 +630,22 @@ diversity at comparable scale); whether findings — particularly
 layer-selection's architecture-dependence — extend to substantially larger
 or smaller models, mixture-of-experts architectures, or models outside this
 decoder-only, grouped-query-attention, RoPE lineage is untested (Candidate
-model families for this extension are in progress at time of writing).
-Nearly all results are on HotpotQA (distractor configuration); we ran one
+model families for this extension are in progress at time of writing;
+one methodological risk worth flagging in advance: "When Does Latent
+Communication Pay?" reports at least one model pairing where the receiver
+could not consume a relayed cache at all, i.e. cross-architecture relay
+can fail at the precondition stage, not just on accuracy — a null result
+under those conditions would itself be informative, not a bug). All of
+our own architecture variation is *between* pipeline runs (the same model
+family fills every agent role within a given run); whether a single
+pipeline mixing architectures across agent roles — a Qwen Reasoner
+handing its cache to a Mistral Verifier, for instance — is even viable is
+untested and, to our knowledge, an open problem in this literature more
+broadly: KVCOMM itself flags relay between "agents with identical
+architectures but different weights" and agents with "different attention
+formulations" as work it leaves for future exploration, and we inherit
+that same gap rather than closing it. Nearly all results are on HotpotQA
+(distractor configuration); we ran one
 n=50 confirmatory check on GSM8K (Qwen, `A`/`D`/full causal audit on `A`)
 and both headline findings replicated cleanly — `D` matched `A`'s accuracy
 exactly (McNemar p=1.0, more decisively free than on HotpotQA) and the

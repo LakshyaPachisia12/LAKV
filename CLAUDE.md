@@ -382,6 +382,22 @@ pressure was judged not worth the risk given this project's own evidence
 that unfaithful reproductions can actively mislead). Causal audit not yet
 run on `C` or the `B_int4` family.
 
+**Well-grounded future-work seeds identified 2026-09-09 (not started, not
+planned before the Oct 12 deadline — logged so they don't get lost):**
+(1) Heterogeneous-architecture relay within a single live pipeline (e.g. a
+Qwen Reasoner handing its cache to a Mistral Verifier) — KVCOMM itself
+flags this ("agents with identical architectures but different weights,"
+"different attention formulations") as unexplored, and we don't close
+that gap either; all our own architecture variation is between separate
+pipeline runs, never mixed within one. (2) Whether the causal audit's
+three-tier ordering holds under a different topology — "When Latent
+Agents Lie" audits an adversarial fan-in structure, LatentMAS collaborates
+via layer-wise KV concatenation across a different multi-agent structure
+than our sequential hop-by-hop handoff; neither has been tested against
+our specific causal-audit methodology. Both are real, citable directions,
+not vague "future work" filler — see `docs/naacl2027_paper_draft.md`'s
+Limitations section for how they're framed in the paper itself.
+
 ## Known issues / settled questions (read before re-investigating)
 
 - **Reconstruction strategy: `zeros` beats `nearest`/`interpolate`, by a lot**
