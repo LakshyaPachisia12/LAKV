@@ -100,15 +100,19 @@ prompts as `text_agent`, so any accuracy/latency delta between a KV config and
 | C | 47.0% | 59.8% | 10.6s | 104.26 MB |
 | C_nearest / C_interpolate | 33.0% / 36.0% | 48.3% / 44.7% | 9.2s / 8.5s | ~103 MB |
 | **D** | 44.0% | 58.3% | 9.6s | ~52.0 MB (2.00x self-ref / ~2.77x vs `A`, corrected — see below) |
-| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~37.5 MB, uncorrected (not yet recomputed for this row) |
-| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~36-49 MB, uncorrected (not yet recomputed for this row) |
+| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~51.8 MB / ~51.7 MB (2.00x self-ref, corrected) |
+| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~49.7 MB (E, corrected) / 48.85 MB (E_int8, never affected) |
 
 **MB/ratio columns above predate the 2026-09-09 int4 byte-accounting fix
-(see "Research-extensions findings" below) for every row involving int4 —
-`B_int4`/`D`/`D_nearest`/`D_interpolate`/`E` are corrected or flagged as
-not yet recomputed; `B_int8`/`A`/`C` were never affected. Accuracy/F1/
-latency in this whole table are unaffected either way (compression byte
-accounting is independent of generation).**
+(see "Research-extensions findings" below) — every row involving int4
+(`B_int4`, `D`, `D_nearest`, `D_interpolate`, `E`) is now corrected via the
+same closed-form method (`scripts/correct_compression_ratios.py`: real
+original_mb was never affected by the bug, corrected compressed_mb =
+original_mb / 2 for any config whose transmitted layers are entirely
+quantized); `B_int8`/`A`/`C`/`E_int8` were never affected. Source for
+`D_nearest`/`D_interpolate`/this row's `E`: `results/run_20260904_123559`.
+Accuracy/F1/latency in this whole table are unaffected either way
+(compression byte accounting is independent of generation).**
 
 **Bottom line: `D` and `B_int8` are the strongest defensible KV-relay
 results.** `A` matches `single_agent`'s accuracy and is close to (but ~15%
