@@ -166,6 +166,18 @@ strategy, Orthogonal Backfill ("When Less Latent Leads to Better Relay,"
 arXiv 2604.13349), injects a low-rank residual of discarded content
 orthogonal to what is retained rather than substituting or discarding it
 outright; we considered but did not implement it (see Limitations for why).
+KV-cache compression is also under active industrial development: KVTC
+(Staniszewski and Łańcucki, NVIDIA, ICLR'26) applies transform coding —
+PCA-based decorrelation, adaptive quantization, and entropy coding,
+drawing on techniques from media compression — to reach up to 20x
+compression, a third compression paradigm distinct from both the uniform
+quantization we and KIVI use and the rotation-based approach we diagnose
+below; NVIDIA's kvpress library packages over 30 published compression
+methods as drop-in HuggingFace hooks, and TensorRT-LLM ships paged,
+quantized, and reuse-aware KV cache as production inference features. We
+take this as evidence that the efficiency question motivating this paper
+is not a narrow academic concern but an actively contested axis of
+real deployed systems.
 
 **Rotation-based quantization interacts badly with RoPE-encoded keys — a
 finding, not just an implementation note.** We initially implemented a
