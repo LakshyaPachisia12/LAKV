@@ -394,6 +394,39 @@ just underpowered noise (see finding 5 above).
     Limitation — a single n=50 run on one additional task, not a full
     generalization claim, but a real, statistically solid one.
 
+11. **Third model family for the cross-architecture generalization check
+    (Candidate 1): Qwen3-8B, HotpotQA, n=50** (`results/run_20260909_143518`
+    — note: this run originally landed in a misnamed `result/` (singular)
+    folder from a typo'd `--output_dir`, moved into `results/` for
+    consistency with every other script/doc's assumption). `A` 54.0%/67.2%,
+    `D` 56.0%/71.2% — **`D` "beating" `A` is noise, not a real effect**:
+    McNemar p=1.0, only 3 discordant pairs, F1 bootstrap CI crosses zero.
+    Read correctly, this is a clean THIRD data point for Finding 3
+    (architecture-dependent layer-selection cost): Qwen3-8B joins Qwen2.5
+    (small, not-yet-significant cost) as a model where `D` costs
+    essentially nothing, unlike Mistral's large, significant collapse.
+    Verified before trusting any of this: raw `raw_answer` text confirms
+    the `enable_thinking=False` fix works in the live pipeline (zero
+    `<think>` tags across every sample checked, matching the earlier
+    tokenizer-only verification), 0 parse failures, 0% malformed output on
+    both configs. **Compression-ratio note:** run started 14:35, after the
+    byte-accounting fix (12:40) but before real nibble-packing (15:01) —
+    reported `D` (140.84 MB, 2.00x self-ref) is the honest-but-unpacked
+    intermediate number. Corrected using Qwen3-8B's actual tier split (11
+    int8 / 15 int4 / 10 dropped, of 36 layers): **~100.20 MB (2.81x
+    self-ref, 3.93x vs `A`)** — stronger than Qwen2.5's 3.82x, since
+    Qwen3-8B's calibration skews further toward the int4 tier.
+
+    **First real cross-model correlation for Finding 6** (was n=2, now
+    n=3 via `lakv/generalization.py`): tier-separation vs. degradation —
+    Qwen 0.491/0.072, Mistral 0.673/0.305, Qwen3-8B 0.591/-0.040 (D
+    slightly *beats* A, within noise). Pearson r=0.619, Spearman r=0.500.
+    **Trending in the predicted direction, but n=3 is barely more
+    informative than n=2 — do not cite this r value as meaningful yet.**
+    Needs at least 2-3 more model families (Phi-3.5-mini-instruct next,
+    ungated and small; Llama-3.1-8B-Instruct pending gated access) before
+    this correlation means anything statistically.
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
