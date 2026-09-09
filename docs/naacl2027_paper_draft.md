@@ -26,12 +26,20 @@
 > quantified Qwen-vs-Mistral failure-texture comparison are written into
 > Results as Findings 6-7.
 >
-> Still pending: the `donor_question` bleed-through analysis on
-> `A_audit_mismatched` (built, not yet re-run with tracking active).
-> `B_int4_kivi_full` and `B_int4_hybrid` both failed to improve on the
-> key-only fix — reported as strength (mechanism fully isolated to keys).
-> Orthogonal Backfill scoped out. Abstract still needs writing now that the
-> gate has passed — it's genuinely writable, nothing scientific blocks it.
+> Bleed-through analysis done (`results/run_20260909_104129`): manually
+> reviewed 20/36 wrong `A_audit_mismatched` examples against their logged
+> donor question(s). Found one unambiguous case (a Kansas fight-song
+> question producing "Ellie Goulding" in the answer, traceable only to the
+> donor) and one weaker ambiguous case — but the other ~18 are ordinary
+> confusion on the real question's own topic, not donor substitution.
+> **Honest finding: bleed-through is real but rare, not the dominant
+> failure mode** — report it as a qualitative, exploratory data point (one
+> concrete example), not a quantified rate from an unvalidated manual
+> subset. `B_int4_kivi_full` and `B_int4_hybrid` both failed to improve on
+> the key-only fix — reported as strength (mechanism fully isolated to
+> keys). Orthogonal Backfill scoped out. Abstract still needs writing now
+> that the gate has passed — it's genuinely writable, nothing scientific
+> blocks it.
 
 ---
 
@@ -518,6 +526,29 @@ decoding-hyperparameter confound as the explanation, and is consistent
 instead with the depth-axis non-exchangeability differing in *character*
 across architectures, not only in magnitude.
 
+**Finding 8 — donor-question content occasionally, but rarely, bleeds
+through under mismatched substitution.** Unlike "When Latent Agents Lie,"
+which studies an adversarial agent deliberately substituting or optimizing
+hidden state to deceive a coordinator in a fan-in topology, our setting is
+non-adversarial: the substitution is an experimental intervention for
+measurement, in a sequential chain, and we ask a narrower descriptive
+question — when the receiving agent is wrong, does its answer reflect the
+substituted donor's content specifically, or ordinary confusion on the real
+question? We manually reviewed 20 of 36 incorrect `A_audit_mismatched`
+answers against their logged donor question(s) (`results/run_20260909_104129`,
+the config's `donor_question` field). We find one unambiguous instance: a
+question about a Kansas university's fight song produced a wrong answer
+containing "Ellie Goulding" — an entity with no relationship to the real
+question, traceable only to a donor question about the singer Ellie
+Goulding — and one weaker, ambiguous case. The remaining examples reviewed
+show ordinary failure on the real question's own topic (flipped
+comparisons, fabricated but topically-appropriate answers, generic
+hallucination), not donor-topic substitution. We report this as a genuine
+but rare phenomenon in this sample, not the dominant explanation for
+`A_audit_mismatched`'s accuracy loss, and note explicitly that this was a
+manual review of a subset, not an automated or exhaustive classification —
+see Limitations.
+
 ---
 
 ## 5. Limitations
@@ -532,6 +563,17 @@ would be a natural next step but is not treated as blocking given the
 consistency observed across the three architecturally-distinct conditions
 already tested (no compression, compression only, compression plus layer
 selection).
+
+**Bleed-through analysis is a manual, non-exhaustive classification.**
+Finding 8's review covered 20 of 36 incorrect examples from a single
+condition (`A_audit_mismatched`) by one annotator, with no automated
+classifier, no inter-annotator agreement check, and no statistical test on
+the resulting rate. We report it as a qualitative, exploratory
+observation — evidence that donor bleed-through can occur, illustrated by
+one unambiguous example — not as a validated estimate of how often it
+occurs. A rigorous version of this claim would require an automated or
+multiply-annotated classification over the full set of incorrect examples,
+which we did not have the evaluation budget to complete.
 
 **Single-process evaluation, not a deployed system.** Every experiment in
 this paper runs within a single Python process on one GPU: no `KVMessage` is

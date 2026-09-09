@@ -282,21 +282,38 @@ Qwen (p=0.14, only 32% power at n=100 — would need ~n=300 for 82% power);
 power); whether `B_int4_kivi`'s trend below `A`/`B_int8` is a real cost or
 just underpowered noise (see finding 5 above).
 
-**Still open / in progress on this branch:** the causal audit has been run
-and confirmed on `A` at n=50 (finding 6 above, statistically significant
-across every pairwise comparison) — not yet extended to `D`/`B_int8`, which
-is a time-permitting nice-to-have, not a blocker (`A` alone establishes the
-mechanism). A `donor_question` bleed-through analysis (does
-`A_audit_mismatched`'s wrong answer reflect the substituted question's
-topic?) is possible now that the pool tracks donor text, but requires a
-fresh run — the n=20/n=50 runs above predate that code change and don't
-have it logged. Orthogonal Backfill was deliberately scoped out (not
-attempted) rather than left open — see `docs/naacl2027_paper_draft.md`'s
-Limitations section for the reasoning (its real formula needs attention
-weights this pipeline's fast `sdpa` decode path doesn't expose, and
-shipping an approximated version under time pressure was judged not worth
-the risk given this project's own evidence that unfaithful reproductions
-can actively mislead).
+9. **Content bleed-through from the donor question is real but rare, not
+   the dominant failure mode.** Ran `A_audit_mismatched` again
+   (`results/run_20260909_104129`, n=50 — bit-identical accuracy/F1 to the
+   earlier run, as expected: this pipeline is fully deterministic under
+   greedy decoding plus a seeded donor-selection RNG) specifically to get
+   `donor_question` logged, then manually compared 20 of 36 wrong answers
+   against both the real question and the logged donor question(s). Found
+   one unambiguous case: real question about a Kansas university fight
+   song, donor question about the singer Ellie Goulding, wrong prediction
+   literally contains "Ellie Goulding" — an entity with zero connection to
+   the real question, traceable only to the donor. One weaker, more
+   ambiguous second case (a sports-figure name appearing near a
+   racing-themed donor). **The other ~18 examples reviewed show ordinary
+   confusion on the REAL question's own topic — near-misses, flipped
+   comparisons, generic hallucination — not donor-topic substitution.**
+   Honest read: bleed-through is a real, demonstrable phenomenon (this
+   isn't a null result), but it is not what's driving most of
+   `A_audit_mismatched`'s accuracy loss in this sample — that's still
+   better explained by the receiving agent working from wrong/irrelevant
+   real content in general, only occasionally manifesting as a literal
+   named-entity leak. This was a manual review of a subset (20/36), not an
+   automated, exhaustive, or statistically tested classification — treat as
+   a qualitative, exploratory finding, not a quantified rate.
+
+**Still open / in progress on this branch:** Orthogonal Backfill was
+deliberately scoped out (not attempted) rather than left open — see
+`docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
+(its real formula needs attention weights this pipeline's fast `sdpa`
+decode path doesn't expose, and shipping an approximated version under time
+pressure was judged not worth the risk given this project's own evidence
+that unfaithful reproductions can actively mislead). Causal audit not yet
+run on `C` or the `B_int4` family.
 
 ## Known issues / settled questions (read before re-investigating)
 

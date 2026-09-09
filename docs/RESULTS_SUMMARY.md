@@ -83,12 +83,14 @@ Mistral's calibration looks *more* confident, yet Mistral is the *more* fragile 
 
 Repetition-penalty confound checked and ruled out (Mistral's own default has *no* penalty; our uniform 1.05 applies *more* correction to Mistral than its own baseline, not less — the pattern persists anyway).
 
+**Donor-question bleed-through (real, rare, not the dominant failure mode):** manually reviewed 20/36 wrong `A_audit_mismatched` answers against their logged donor questions (`results/run_20260909_104129`). One unambiguous case — a Kansas fight-song question produced "Ellie Goulding" in the answer, traceable only to an unrelated donor question about that singer. One weaker, ambiguous second case. The other ~18 reviewed were ordinary confusion on the real question's own topic, not donor substitution. Manual, non-exhaustive, single-annotator — a real qualitative data point, not a quantified rate.
+
 ## 6. What's still open
 
-- `donor_question` bleed-through analysis — built, not yet re-run with tracking active.
 - Causal audit not yet run on `C` or the `B_int4` family.
 - `B_int4_kivi`'s trend below `A`/`B_int8` (52% vs 56-57%) is not yet statistically confirmed as a real cost (7-12 discordant examples, p=0.36-0.50).
 - `D` vs `C` on Qwen not significant (p=0.14, underpowered at n=100).
+- Bleed-through analysis is manual/partial (20 of 36 examples, one annotator) — an automated or fully-annotated version would be needed to turn this into a quantified claim.
 
 ---
 
