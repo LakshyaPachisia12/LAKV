@@ -1,0 +1,165 @@
+% references.bib -- verified citations for naacl2027_paper_draft.md
+% Verified against primary sources (arXiv abstract pages, ACL Anthology, IJCAI/ICML/NeurIPS/ICLR/AISTATS
+% proceedings, OpenReview) on 2026-09-09. See accompanying verification report for corrections made
+% relative to the paper draft's informal in-prose citations.
+
+@inproceedings{kvcomm2025,
+  title     = {{KVCOMM}: Online Cross-context {KV}-cache Communication for Efficient {LLM}-based Multi-agent Systems},
+  author    = {Ye, Hancheng and Gao, Zhengqi and Ma, Mingyuan and Wang, Qinsi and Fu, Yuzhe and Chung, Ming-Yu and Lin, Yueqian and Liu, Zhijian and Zhang, Jianyi and Zhuo, Danyang and Chen, Yiran},
+  booktitle = {Advances in Neural Information Processing Systems 38 (NeurIPS 2025)},
+  year      = {2025},
+  eprint    = {2510.12872},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2510.12872},
+  note      = {OpenReview id yGOytgjurF; code at \url{https://github.com/HankYe/KVCOMM} (mirrored at \url{https://github.com/FastMAS/KVCOMM})}
+}
+
+@inproceedings{latentmas2026,
+  title     = {Latent Collaboration in Multi-Agent Systems},
+  author    = {Zou, Jiaru and Qiu, Ruizhong and Li, Gaotang and Yang, Xiyuan and Tieu, Katherine and Lu, Pan and Shen, Ke and Tong, Hanghang and Choi, Yejin and He, Jingrui and Zou, James and Wang, Mengdi and Yang, Ling},
+  booktitle = {Proceedings of the 43rd International Conference on Machine Learning (ICML 2026)},
+  year      = {2026},
+  note      = {Spotlight},
+  eprint    = {2511.20639},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2511.20639}
+}
+
+@inproceedings{turboquant2026,
+  title     = {{TurboQuant}: Online Vector Quantization with Near-optimal Distortion Rate},
+  author    = {Zandieh, Amir and Daliri, Majid and Hadian, Majid and Mirrokni, Vahab},
+  booktitle = {Proceedings of the 14th International Conference on Learning Representations (ICLR 2026)},
+  year      = {2026},
+  eprint    = {2504.19874},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2504.19874},
+  note      = {OpenReview id tO3ASKZlok. Distinct paper/author list from PolarQuant (Han et al., AISTATS 2026); shares only Zandieh and Mirrokni as authors. See \texttt{polarquant2026}.}
+}
+
+@inproceedings{polarquant2026,
+  title     = {{PolarQuant}: Quantizing {KV} Caches with Polar Transformation},
+  author    = {Han, Insu and Kacham, Praneeth and Karbasi, Amin and Mirrokni, Vahab and Zandieh, Amir},
+  booktitle = {Proceedings of the 29th International Conference on Artificial Intelligence and Statistics (AISTATS 2026)},
+  year      = {2026},
+  volume    = {300},
+  series    = {Proceedings of Machine Learning Research},
+  eprint    = {2502.02617},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2502.02617},
+  note      = {Distinct paper from TurboQuant (Zandieh et al., ICLR 2026); AISTATS 2026, not ICLR. See \texttt{turboquant2026}.}
+}
+
+@inproceedings{kivi2024,
+  title     = {{KIVI}: A Tuning-Free Asymmetric 2bit Quantization for {KV} Cache},
+  author    = {Liu, Zirui and Yuan, Jiayi and Jin, Hongye and Zhong, Shaochen and Xu, Zhaozhuo and Braverman, Vladimir and Chen, Beidi and Hu, Xia},
+  booktitle = {Proceedings of the 41st International Conference on Machine Learning (ICML 2024)},
+  year      = {2024},
+  volume    = {235},
+  series    = {Proceedings of Machine Learning Research},
+  pages     = {32332--32344},
+  url       = {https://proceedings.mlr.press/v235/liu24bz.html}
+}
+
+@inproceedings{rotatekv2025,
+  title     = {{RotateKV}: Accurate and Robust 2-Bit {KV} Cache Quantization for {LLMs} via Outlier-Aware Adaptive Rotations},
+  author    = {Su, Zunhai and Wei, Hanyu and Chen, Zhe and Shen, Wang and Li, Linge and Yu, Huangqi and Yuan, Kehong},
+  booktitle = {Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI 2025)},
+  year      = {2025},
+  pages     = {6200--6208},
+  url       = {https://www.ijcai.org/proceedings/2025/690},
+  eprint    = {2501.16383},
+  archivePrefix = {arXiv},
+  note      = {Introduces Pre-RoPE Grouped-Head Rotation to avoid the RoPE/rotation interaction.}
+}
+
+@inproceedings{kvquant2024,
+  title     = {{KVQuant}: Towards 10 Million Context Length {LLM} Inference with {KV} Cache Quantization},
+  author    = {Hooper, Coleman and Kim, Sehoon and Mohammadzadeh, Hiva and Mahoney, Michael W. and Shao, Yakun Sophia and Keutzer, Kurt and Gholami, Amir},
+  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS 2024)},
+  year      = {2024},
+  eprint    = {2401.18079},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2401.18079},
+  note      = {Identifies post-RoPE key quantization as harder than value quantization due to position-dependent channel mixing; motivates pre-RoPE per-channel key quantization.}
+}
+
+@misc{kvreusefails2026,
+  title     = {When {KV} Cache Reuse Fails in Multi-Agent Systems: Cross-Candidate Interaction is Crucial for {LLM} Judges},
+  author    = {Liang, Sichu and Wang, Zhenglin and Chu, Jiajia and Xia, Pengfei and Zang, Hui and Zhou, Deyu},
+  year      = {2026},
+  eprint    = {2601.08343},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2601.08343},
+  note      = {Introduces the Judge Consistency Rate metric; arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09).}
+}
+
+@misc{latentcommpay2026,
+  title     = {When Does Latent Communication Pay? A Causal Audit of Relayed {KV} Caches in Multi-Agent {LLMs}},
+  author    = {Cheng, Jiaming and Das, Subhransu and Ramnath, Rajiv},
+  year      = {2026},
+  eprint    = {2608.04893},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2608.04893},
+  note      = {Proposes the zeroed / moment-matched-random / mismatched substitution causal-audit methodology this paper adapts. arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09). Note: a separately-authored, similarly-scoped paper "Do Latent Channels Actually Communicate? A Causal Audit of Latent Multi-Agent LLM Communication" (arXiv 2607.26773) also exists -- do not conflate the two.}
+}
+
+@misc{nofreeswap2026,
+  title     = {No Free Swap: Protocol-Dependent Layer Redundancy in Transformers},
+  author    = {Garcia, Gabriel},
+  year      = {2026},
+  eprint    = {2605.16234},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2605.16234},
+  note      = {Confirmed single-author. Distinguishes "replacement" vs. "interchange" layer-equivalence protocols; evaluates Qwen3-8B, Llama-3.1-8B, and Mistral-7B-v0.1 under a matched WikiText-2 contract (Table 6) plus a Pythia (410M/1.4B) training trajectory. arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09).}
+}
+
+@misc{rethinkredundancy2026,
+  title     = {Rethinking Layer Redundancy: Calibration Matters More Than Search in {LLM} Depth Pruning},
+  author    = {Kim, Minkyu and Yun, Vincent-Daniel and Kim, Youngrae and Cho, Suin and Lim, Woosang and Lee, Sunwoo},
+  year      = {2026},
+  eprint    = {2604.24938},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2604.24938},
+  note      = {Title corrected from paper draft's paraphrase "Calibration Objectives Matter More Than Search" -- real title says "Calibration Matters More Than Search"; substance (redundancy is a joint function of model and calibration objective; no universal layer ranking) matches. arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09).}
+}
+
+@article{adak2026,
+  title     = {{AdaK}: Adaptive {KV} Cache Budget Estimation Framework for Analyzing Long-Context Large Language Model Inference},
+  author    = {Shao, Tianjun},
+  year      = {2026},
+  journal   = {Frontiers in Artificial Intelligence},
+  volume    = {9},
+  doi       = {10.3389/frai.2026.1892739},
+  url       = {https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2026.1892739/full},
+  note      = {CORRECTED from paper draft's description: single-authored journal article (not a multi-author conference paper), and evaluated only on Qwen3-4B/Qwen3-8B and Mistral-7B-Instruct-v0.2 -- Llama is NOT among the tested model families, contrary to the "generalizes across Qwen/Mistral/Llama" claim in the draft.}
+}
+
+@inproceedings{pitfallskv2026,
+  title     = {The Pitfalls of {KV} Cache Compression},
+  author    = {Chen, Alex and Geh, Renato and Grover, Aditya and Van den Broeck, Guy and Israel, Daniel},
+  booktitle = {Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (ACL 2026)},
+  year      = {2026},
+  eprint    = {2510.00231},
+  archivePrefix = {arXiv},
+  url       = {https://aclanthology.org/2026.acl-long.1926/}
+}
+
+@misc{latentagentslie2026,
+  title     = {When Latent Agents Lie: {KV}-Cache Integrity in Multi-Agent {LLM} Collaboration},
+  author    = {Brito, Lu{\'\i}s and Baquero, Carlos},
+  year      = {2026},
+  eprint    = {2606.28958},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2606.28958},
+  note      = {Studies an adversarial specialist agent that visibly commits to one message while passing a manipulated hidden KV-cache state to a fan-in coordinator; proposes an HMAC-SHA256 transport-integrity fix. arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09).}
+}
+
+@misc{orthobackfill2026,
+  title     = {When Less Latent Leads to Better Relay: Information-Preserving Compression for Latent Multi-Agent {LLM} Collaboration},
+  author    = {Li, Yiping and An, Zhiyu and Du, Wan},
+  year      = {2026},
+  eprint    = {2604.13349},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2604.13349},
+  note      = {Introduces Orthogonal Backfill (OBF): injects a low-rank orthogonal residual of discarded KV content into the retained cache rather than discarding it outright. Reduces communication cost 79.8-89.4\% vs. full KV relay across nine math/coding/QA benchmarks. arXiv preprint, no peer-reviewed venue confirmed at verification time (2026-09-09).}
+}

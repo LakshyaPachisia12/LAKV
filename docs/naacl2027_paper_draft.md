@@ -110,7 +110,7 @@ published KV-relay efficiency techniques within a sequential three-agent
 (Reasoner–Verifier–Finalizer) pipeline on multi-hop question-answering: a
 cross-agent offset-correction method (KVCOMM) fails because it assumes a
 delta observed for one question transfers to another; a rotation-based
-quantization scheme (in the style of TurboQuant/PolarQuant) fails
+quantization scheme (in the style of TurboQuant and PolarQuant) fails
 specifically on key vectors because it assumes head dimensions are
 interchangeable, disrupting the position-dependent structure RoPE imposes on
 them; a per-channel quantization fix (KIVI-inspired) resolves this by
@@ -146,8 +146,9 @@ computation. KVCOMM (NeurIPS'25) introduced an anchor-based framework that
 estimates and corrects KV-cache "offset drift" when reusing cache across
 different prefix contexts, reporting over 70% cache reuse and up to 7.8×
 prefill speedup on retrieval-augmented generation, math reasoning, and
-coding tasks. LatentMAS extends this to full latent-space collaboration,
-exchanging autoregressively-generated latent "thoughts" via KV-cache
+coding tasks. LatentMAS (Zou et al., ICML'26) extends this to full
+latent-space collaboration, exchanging autoregressively-generated latent
+"thoughts" via KV-cache
 working memory rather than relaying already-decoded text, reporting token
 savings and accuracy gains across nine math/science/code benchmarks. We
 differ from both in relaying real, decoded reasoning text through a fixed
@@ -168,11 +169,13 @@ outright; we considered but did not implement it (see Limitations for why).
 
 **Rotation-based quantization interacts badly with RoPE-encoded keys — a
 finding, not just an implementation note.** We initially implemented a
-rotation-based quantization scheme in the style of TurboQuant/PolarQuant
-(Zandieh et al., ICLR'26), applying a fixed orthonormal Hadamard rotation to
-both keys and values before quantizing to redistribute per-head outlier
-magnitude (covering PolarQuant's rotate-then-quantize step, not TurboQuant's
-QJL bias-correction term). On our real model this produced severely
+rotation-based quantization scheme in the style of TurboQuant (Zandieh et
+al., ICLR'26) and PolarQuant (Han et al., AISTATS'26) — two distinct papers
+sharing only two authors, not one work under two names — applying a fixed
+orthonormal Hadamard rotation to both keys and values before quantizing to
+redistribute per-head outlier magnitude (covering PolarQuant's
+rotate-then-quantize step, not TurboQuant's separate QJL bias-correction
+term). On our real model this produced severely
 out-of-distribution decoded output, not the graceful degradation a generic
 rotation-based scheme predicts. We traced this to keys' rotary position
 embeddings (RoPE): K is cached *after* RoPE is applied, which mixes channel
@@ -207,10 +210,11 @@ adds anything on top is tested in Results, Finding 4.
 **Auditing whether KV reuse does what it claims.** A recent line of work
 interrogates cross-agent KV/latent reuse critically rather than only
 reporting end-task accuracy. "When KV Cache Reuse Fails in Multi-Agent
-Systems" shows reuse strategies effective for generation agents can
-silently corrupt an LLM judge's cross-candidate comparison even when
-end-task accuracy appears stable. "When Does Latent Communication Pay? A
-Causal Audit of Relayed KV Caches in Multi-Agent LLMs" proposes replacing
+Systems" (Liang et al., 2026, arXiv preprint) shows reuse strategies
+effective for generation agents can silently corrupt an LLM judge's
+cross-candidate comparison even when end-task accuracy appears stable.
+"When Does Latent Communication Pay? A Causal Audit of Relayed KV Caches in
+Multi-Agent LLMs" (Cheng et al., 2026, arXiv preprint) proposes replacing
 relayed KV with mismatched, zeroed, or moment-matched-random substitutes to
 test whether accuracy is causally attributable to the specific transmitted
 content rather than to the receiver simply having a non-empty cache — a
@@ -220,18 +224,20 @@ generalization, treating "does the same technique, faithfully reproduced,
 transfer to a different model family" as itself a target of audit.
 
 **Layer redundancy is not universal.** "No Free Swap: Protocol-Dependent
-Layer Redundancy in Transformers" finds that which transformer layers are
-functionally interchangeable across Qwen3-8B, Llama-3.1-8B, and Mistral-7B
-depends on the model and evaluation protocol rather than being a fixed
-architectural property. This is consistent with our own finding (Section
-4, Finding 3) that a near-identical proportion of dropped layers costs
-substantially more accuracy on Mistral-7B-Instruct-v0.3 than on
-Qwen2.5-7B-Instruct, and offers one candidate mechanism for why.
+Layer Redundancy in Transformers" (Garcia, 2026, arXiv preprint) finds that
+which transformer layers are functionally interchangeable across Qwen3-8B,
+Llama-3.1-8B, and Mistral-7B-v0.1 depends on the model and evaluation
+protocol rather than being a fixed architectural property. This is
+consistent with our own finding (Section 4, Finding 3) that a near-identical
+proportion of dropped layers costs substantially more accuracy on
+Mistral-7B-Instruct-v0.3 than on Qwen2.5-7B-Instruct, and offers one
+candidate mechanism for why.
 
 **Three 2026 papers anticipate pieces of this paper's argument.**
-"Rethinking Layer Redundancy: Calibration Objectives Matter More Than
-Search" argues redundancy is a joint function of model *and calibration
-objective*, and that "a universal layer ranking may not exist" — raising
+"Rethinking Layer Redundancy: Calibration Matters More Than Search in LLM
+Depth Pruning" (Kim et al., 2026) argues redundancy is a joint function of
+model *and calibration objective*, and that "a universal layer ranking may
+not exist" — raising
 the question of whether our cross-architecture gap is really about the
 model, or about our calibration ranking failing to transfer. We tested the
 most direct proxy: whether the calibration signal's own confidence (the
@@ -246,18 +252,21 @@ own confidence is not a reliable signal of when its ranking is safe to
 trust — consistent with our broader claim that non-exchangeability is not
 visible from a technique's internal signals.
 
-AdaK reports that adaptive KV-budget estimation generalizes cleanly across
-Qwen, Mistral, and Llama, which on its face looks like a counterexample to
-our architecture-dependence claim. We do not believe it is: AdaK estimates
-budget per-instance and per-model at inference time rather than committing
-to a single calibration-time ranking applied uniformly thereafter, so it
-never assumes a fixed, transferable ranking is safe to act on. Read this
-way, AdaK's success is a positive instance of our principle, not a
-counterexample — it works specifically because it avoids the fixed-ranking
-assumption our own `D` configuration makes. This is our reading of the
-mechanism, not something we verified by reimplementing AdaK ourselves; a
-direct head-to-head comparison is noted as a natural extension in
-Limitations.
+AdaK reports that adaptive KV-budget estimation generalizes across Qwen3
+(4B/8B) and Mistral-7B-Instruct-v0.2 — the same two architecture families
+this paper tests, not a third (Llama is not among AdaK's evaluated models,
+though a superficial reading of the abstract could suggest otherwise) —
+which on its face looks like a counterexample to our architecture-
+dependence claim. We do not believe it is: AdaK estimates budget
+per-instance and per-model at inference time rather than committing to a
+single calibration-time ranking applied uniformly thereafter, so it never
+assumes a fixed, transferable ranking is safe to act on. Read this way,
+AdaK's success is a positive instance of our principle, not a counterexample
+— it works specifically because it avoids the fixed-ranking assumption our
+own `D` configuration makes. This is our reading of the mechanism, not
+something we verified by reimplementing AdaK ourselves; a direct
+head-to-head comparison on our own pipeline is noted as a natural extension
+in Limitations.
 
 Finally, "The Pitfalls of KV Cache Compression" (ACL 2026) makes a general
 version of the point this paper investigates concretely: that compression
@@ -320,7 +329,7 @@ quantization — one shared numeric range across every position and channel
 in a head, at only 16 representable levels for 4-bit — is defenseless
 against the resulting inconsistent channel magnitudes. We confirmed this
 two ways before proposing a fix: applying a generic outlier-redistribution
-technique (Hadamard rotation, in the style of TurboQuant/PolarQuant) to
+technique (Hadamard rotation, in the style of TurboQuant and PolarQuant) to
 both keys and values produced qualitatively different, more severe failures
 (out-of-distribution decoded tokens) than plain `B_int4`'s failure; an
 isolating ablation rotating only values (leaving keys on the unmodified
@@ -521,9 +530,11 @@ non-exchangeability differing in *character* across architectures, not only
 magnitude.
 
 **Finding 8 — donor-question content occasionally, but rarely, bleeds
-through under mismatched substitution.** Unlike "When Latent Agents Lie,"
-which studies an adversarial agent deliberately substituting hidden state
-to deceive a coordinator in a fan-in topology, our substitution is a
+through under mismatched substitution.** Unlike "When Latent Agents Lie:
+KV-Cache Integrity in Multi-Agent LLM Collaboration" (Brito and Baquero,
+2026, arXiv preprint), which studies an adversarial agent deliberately
+substituting hidden state to deceive a coordinator in a fan-in topology,
+our substitution is a
 non-adversarial experimental intervention in a sequential chain, and we ask
 a narrower descriptive question: when the receiving agent is wrong, does
 its answer reflect the substituted donor's content, or ordinary confusion
@@ -632,3 +643,25 @@ a result.
 Limitations — check the current ARR responsible-research checklist before
 submission, since a separate ethics statement may be a distinct required
 section rather than folded into Limitations.]
+
+---
+
+## References
+
+Full BibTeX entries, verified against primary sources (arXiv, ACL
+Anthology, IJCAI/ICML/NeurIPS/ICLR/AISTATS proceedings, OpenReview) on
+2026-09-09, are in `docs/references.bib` — pull that in wholesale for the
+LaTeX submission rather than re-typing citations from this prose draft.
+Two corrections surfaced during verification that are already reflected in
+the prose above and are worth flagging explicitly so they don't regress in
+a later edit: (1) TurboQuant and PolarQuant are two distinct papers with
+different venues (ICLR'26 vs. AISTATS'26) and mostly-different author
+lists, not one work under two names; (2) AdaK's cross-architecture claim is
+tested on Qwen3 and Mistral only, not Llama — the earlier draft's "Qwen,
+Mistral, and Llama" phrasing was incorrect and has been fixed. Six of the
+fourteen cited works are arXiv preprints with no confirmed peer-reviewed
+venue as of this verification pass (`kvreusefails2026`, `latentcommpay2026`,
+`nofreeswap2026`, `rethinkredundancy2026`, `latentagentslie2026`,
+`orthobackfill2026` in the .bib file) — cite them as preprints, not as
+peer-reviewed venue papers, unless a later check finds they've since been
+accepted somewhere.
