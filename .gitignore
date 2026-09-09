@@ -43,6 +43,11 @@ huggingface_cache/
 
 # ── Experiment Artifacts ─────────────────────────────────────────────────────
 *.png
+# Exception: paper figures are a real deliverable, not a regenerable
+# per-run diagnostic plot (unlike calibration's layer_signals.png/
+# score_scatter.png, which this *.png rule is meant to keep out) --
+# regenerate via scripts/make_paper_figures.py.
+!docs/figures/*.png
 *.csv
 wandb/
 runs/
