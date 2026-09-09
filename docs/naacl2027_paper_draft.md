@@ -1,36 +1,37 @@
 # NAACL 2027 Draft — Related Work, Method, Results, Limitations
 
-> Status: reframed 2026-09-08 around the **non-exchangeability hypothesis**
-> (branch `feat/research-extensions`) after two adversarial self-reviews
-> found the prior "transferability audit" framing novelty-weak. This is a
-> **provisional reframe, not a locked one** — the decision gate for
-> confirming it is the `D`/`B_int8` causal audit run (currently in
-> progress). If that run shows content-identity stops mattering once the
-> cache is compressed, the framing below needs to narrow; if it confirms the
-> pattern, this becomes the paper's real thesis. Do not treat the
-> Introduction draft below as final until that result is in.
+> Status: **DECISION GATE PASSED, 2026-09-09 — Option A, non-exchangeability
+> framing CONFIRMED, not narrowed.** The `D`/`B_int8` causal audit
+> (`results/run_20260909_080434`, n=50 each) replicates the exact three-tier
+> ordering found on uncompressed `A`, and more decisively: real vs
+> zeroed/random p<0.0001 (both configs); real vs mismatched p=0.0013 (`D`),
+> p=0.0003 (`B_int8`) — tighter than `A`'s own p=0.0127; mismatched vs
+> zeroed/random p=0.0002-0.0005. Raw text confirms the same failure
+> signatures (zeroed → garbled English, random → multilingual/code garbage,
+> mismatched → coherent-but-wrong). Content-identity non-exchangeability
+> holds under compression, not just uncompressed relay. **The Introduction
+> below is now locked for this claim specifically** — the one remaining
+> bracketed note in it (about whether the claim spans compression) is
+> resolved: yes, it does.
 >
-> **Central hypothesis (H1):** KV-cache information is not freely
-> interchangeable along depth, positional structure, and content identity —
-> techniques fail when they implicitly assume otherwise, and this is not
-> visible from a technique's own internal confidence signal. Sub-hypotheses
-> H1a (depth) through H1e (calibration) — see the failure matrix in Results.
+> **Central hypothesis (H1), confirmed on the content-identity axis, not
+> narrowed:** KV-cache information is not freely interchangeable along
+> depth, positional structure, and content identity — techniques fail when
+> they implicitly assume otherwise, and this is not visible from a
+> technique's own internal confidence signal.
 >
-> **Newly written this pass:** the Related Work reconciliation with "The
-> Pitfalls of KV Cache Compression" (ACL 2026), "Rethinking Layer Redundancy"
-> (2026), and AdaK (2026) — all three anticipate pieces of this argument and
-> must be engaged with directly, not cited in passing. Also newly written:
-> the falsified calibration-confidence-predictor result, and the quantified
-> Qwen-vs-Mistral failure-texture comparison (both real analyses of existing
-> data, no new GPU time). Abstract/Introduction below are a **draft for the
-> non-exchangeability framing specifically** — keep or discard based on the
-> decision gate, don't treat as committed.
+> Related Work reconciliation with "The Pitfalls of KV Cache Compression"
+> (ACL 2026), "Rethinking Layer Redundancy" (2026), and AdaK (2026) is
+> written. Falsified calibration-confidence-predictor result and the
+> quantified Qwen-vs-Mistral failure-texture comparison are written into
+> Results as Findings 6-7.
 >
-> Still pending: causal audit on `D`/`B_int8` (running), bleed-through
-> analysis on `A_audit_mismatched` (running). `B_int4_kivi_full` and
-> `B_int4_hybrid` both failed to improve on the key-only fix — reported as
-> strength (mechanism fully isolated to keys). Orthogonal Backfill scoped
-> out. Bracketed notes mark anything needing a final decision.
+> Still pending: the `donor_question` bleed-through analysis on
+> `A_audit_mismatched` (built, not yet re-run with tracking active).
+> `B_int4_kivi_full` and `B_int4_hybrid` both failed to improve on the
+> key-only fix — reported as strength (mechanism fully isolated to keys).
+> Orthogonal Backfill scoped out. Abstract still needs writing now that the
+> gate has passed — it's genuinely writable, nothing scientific blocks it.
 
 ---
 
@@ -67,11 +68,12 @@ interchangeable, disrupting the position-dependent structure RoPE imposes on
 them; a per-channel quantization fix (KIVI-inspired) resolves this by
 respecting that structure instead; and layer-selection's accuracy cost is
 architecture-dependent in ways a calibration signal's own confidence does
-not predict. [Once the `D`/`B_int8` causal audit lands: add one sentence
-here stating whether content-identity non-exchangeability holds under
-compression too, which is what determines whether this paragraph's claims
-can be stated for compression broadly or must be scoped to uncompressed
-relay specifically.]
+not predict. Critically, the content-identity finding is not an artifact of
+testing only uncompressed relay: we replicate the identical three-tier
+causal ordering on both a layer-selected and quantized configuration and a
+uniformly quantized configuration, and more decisively than on uncompressed
+relay — the claim holds under exactly the conditions a practitioner would
+actually deploy, not only in an idealized uncompressed setting.
 
 Three recent papers anticipate pieces of this argument from different
 angles — that compression misses task-specific information ("The Pitfalls
@@ -449,13 +451,27 @@ magnitude random noise resembles genuine signal and can actively misdirect
 attention rather than being ignored. We report this as a secondary,
 exploratory observation, not a claim we have isolated further.
 
-We have not yet extended this audit to `D` or `B_int8`; establishing the
-mechanism on `A` was treated as sufficient given evaluation time
-constraints, and we note this as a direction for the compression-specific
-configurations specifically, in Limitations. [Update once the `D`/`B_int8`
-audit run completes — this is the paper's central open result at time of
-writing and directly determines how strongly the non-exchangeability
-framing can be stated.]
+**We extended this audit to `D` (layer-selected + quantized) and `B_int8`
+(uniformly quantized), n=50 each, and the identical three-tier ordering
+replicates — more decisively than on uncompressed `A`.** `D`: 54.0%
+accuracy / 60.2% F1, versus `D_audit_zeroed` and `D_audit_random` both at
+0.0% accuracy (F1 0.0% and 0.2% respectively), versus `D_audit_mismatched`
+at 26.0%/32.2%. `B_int8`: 54.0%/68.0% versus zeroed/random both 0.0%/0.0%
+versus mismatched 24.0%/34.4%. Every one of the ten pairwise comparisons
+across both configurations is statistically significant: real vs.
+zeroed/random, p<0.0001 for both configurations; real vs. mismatched,
+p=0.0013 (`D`) and p=0.0003 (`B_int8`) — both tighter than the p=0.0127
+observed on uncompressed `A`; mismatched vs. zeroed/random, p=0.0002-0.0005.
+Manual inspection of the raw generations shows the identical failure
+signatures found on `A`: zeroed conditions produce garbled but
+recognizable English, random conditions produce content qualitatively
+*more* degraded (code-fragment tokens, mixed-language noise) despite
+matching the real cache's statistics, and mismatched conditions produce
+coherent, grammatical, plausible-but-wrong answers. This result is the
+basis for stating the content-identity non-exchangeability claim for
+compressed and layer-selected relay specifically, not only for an idealized
+uncompressed baseline — the condition under which this technique would
+actually be deployed.
 
 **Finding 6 — a calibration signal's own confidence does not predict
 downstream layer-selection safety, and fails in the wrong direction.** We
@@ -506,14 +522,16 @@ across architectures, not only in magnitude.
 
 ## 5. Limitations
 
-**Causal audit scope.** We ran the causal audit (Finding 5) on
-configuration `A` (uncompressed relay) only. Extending it to `D` and
-`B_int8` — confirming the same three-tier ordering holds when the relayed
-cache is also compressed and/or layer-selected — would strengthen the link
-between Finding 5 and the compression-specific claims (Findings 1 and 4)
-further; we treat `A`'s result as establishing the underlying mechanism
-sufficiently for this paper given evaluation time constraints, not as a
-substitute for auditing every configuration individually.
+**Causal audit scope.** We ran the causal audit on `A` (uncompressed relay),
+`D` (layer-selected + quantized), and `B_int8` (uniformly quantized) — the
+three-tier ordering replicates across all three, at n=50 each. We have not
+audited `C` or the `B_int4` family (including the `B_int4_kivi` fix), so we
+do not claim the mechanism is confirmed for every configuration in this
+paper, only for the three tested; extending to the remaining configurations
+would be a natural next step but is not treated as blocking given the
+consistency observed across the three architecturally-distinct conditions
+already tested (no compression, compression only, compression plus layer
+selection).
 
 **Single-process evaluation, not a deployed system.** Every experiment in
 this paper runs within a single Python process on one GPU: no `KVMessage` is

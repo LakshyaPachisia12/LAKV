@@ -235,8 +235,21 @@ don't just trust this summary if more data has come in since):
    (weak key signal, easy to down-weight) while realistic-magnitude random
    noise looks like real signal and actively misdirects attention, a small
    but genuine and explainable mechanistic aside worth a sentence in the
-   paper. **`D`/`B_int8` extension currently running — this is the paper's
-   central open result, see docs/naacl2027_paper_draft.md's status header.**
+   paper. **CONFIRMED, extended to `D`/`B_int8` (n=50 each,
+   `results/run_20260909_080434`): the exact same three-tier ordering holds
+   under compression, and MORE decisively than on uncompressed `A`.**
+   `D`: 54.0%/60.2% vs `D_audit_zeroed`/`D_audit_random` 0.0%/0.0%,0.2% vs
+   `D_audit_mismatched` 26.0%/32.2%. `B_int8`: 54.0%/68.0% vs zeroed/random
+   0.0%/0.0% vs mismatched 24.0%/34.4%. **All 10 pairwise comparisons across
+   both configs are significant** — real vs zeroed/random p<0.0001 each
+   (both configs); real vs mismatched p=0.0013 (`D`), p=0.0003 (`B_int8`) —
+   tighter than `A`'s own p=0.0127; mismatched vs zeroed/random p=0.0002-
+   0.0005. Raw text confirms the same failure signatures as `A`: zeroed →
+   garbled English, random → multilingual/code garbage (worse than zeroed),
+   mismatched → coherent, plausible, wrong. **This is the decision-gate
+   result for the non-exchangeability framing: content-identity
+   non-exchangeability holds under compression, not just uncompressed
+   relay — the framing does NOT need to narrow.**
 7. **A calibration signal's own confidence does not predict downstream
    layer-selection safety — and points the wrong way.** Tested directly
    (not assumed): mean separation between tier-1/2 (kept) and tier-3
