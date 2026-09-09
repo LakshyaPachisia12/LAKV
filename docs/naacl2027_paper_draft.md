@@ -297,9 +297,11 @@ these three papers each gesture toward from a different angle.
 ## 3. Method
 
 **Pipeline.** We study a sequential three-agent pipeline — Reasoner,
-Verifier, Finalizer — answering HotpotQA (distractor configuration)
-questions, where each item bundles its own ten candidate passages and
-requires no retrieval step. Agents share the same prompt structure and
+Verifier, Finalizer — answering HotpotQA (Yang et al., 2018, distractor
+configuration) questions, where each item bundles its own ten candidate
+passages and requires no retrieval step; Section 4's GSM8K generalization
+check (Cobbe et al., 2021) uses the same pipeline structure. Agents share
+the same prompt structure and
 role definitions across every configuration in this paper; the only thing
 that varies between configurations is *how* one agent's output reaches the
 next. In `text_agent`, the Reasoner's decoded text is passed to the
@@ -313,12 +315,13 @@ KV-relay configurations share identical prompts with `text_agent`, so any
 accuracy or latency delta between a KV configuration and `text_agent` is
 attributable to the relay mechanism itself, not to prompt differences.
 
-**Models.** We evaluate on Qwen2.5-7B-Instruct (bf16) as our primary model,
-and — specifically to test whether findings generalize across architecture,
-not just within one model family — Mistral-7B-Instruct-v0.3 (bf16), chosen
-for its architectural differences (distinct layer count, attention head
-configuration, and tokenizer) at comparable parameter scale. Both are
-decoder-only transformers using grouped-query attention and RoPE.
+**Models.** We evaluate on Qwen2.5-7B-Instruct (Qwen Team, 2024, bf16) as
+our primary model, and — specifically to test whether findings generalize
+across architecture, not just within one model family — Mistral-7B-
+Instruct-v0.3 (Jiang et al., 2023, bf16), chosen for its architectural
+differences (distinct layer count, attention head configuration, and
+tokenizer) at comparable parameter scale. Both are decoder-only
+transformers using grouped-query attention and RoPE.
 
 **Compression configurations.** `B_int8`/`B_int4` apply uniform per-head
 min-max quantization to every transmitted layer's key and value tensors
@@ -411,16 +414,11 @@ findings characterize specific published techniques against this backdrop.
 | E | 9.0% | 17.4% | 19.8s | ~49.1 MB (2.00x) |
 | E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
 
-Ratios are compressed-vs-`A`'s 144.35 MB except where a config's own
-transmitted-layer set differs from `A`'s (`D`/`C`/`E` drop layers before
-compressing; for those the parenthetical is that config's self-referential
-transmitted-original-vs-compressed ratio, which for `D` is 2.00x — its
-2.77x-vs-`A` figure is shown instead since that is the number a reader
-actually wants: how much smaller than uncompressed relay). MB/ratio figures
-for every int4-touching config (`B_int4`, `B_int4_kivi`, `D`, `E`) were
-corrected 2026-09-09 after finding `kv_compressor.py` billed 4-bit tensors
-at half their real stored size (they are stored as `torch.uint8` with no
-nibble-packing, identical footprint to 8-bit) — see Limitations.
+Ratios are compressed-vs-`A`'s 144.35 MB, except `D` (which drops layers
+before compressing) shows its ratio vs. `A` rather than its own
+self-referential 2.00x, since vs.-`A` is the number a reader wants. See
+Limitations for why 4-bit and 8-bit configs share the same ≈2.00x ceiling
+here.
 
 **Finding 1 — uniform 8-bit KV quantization is statistically indistinguishable
 from uncompressed relay.** `A` vs `B_int8`: McNemar p=1.0, only 3 discordant
@@ -453,21 +451,18 @@ layer-selection configuration's accuracy at `B_int8`-level compression and
 lower complexity — but not at higher compression than `D`.**
 `B_int4_kivi` (52.0%/64.1%) vs `D` (50.0%/61.9%): McNemar p=0.86, F1 delta
 +2.2 points [95% CI: -8.2, +12.8] — statistically indistinguishable — and
-requiring no per-model calibration profile. On compression specifically we
-correct an earlier claim here: this codebase's quantized tensors are always
-stored as `torch.uint8` regardless of bit-width (no nibble-packing is
-implemented for either 4-bit or 8-bit), so `B_int4_kivi`'s real footprint is
-≈72.6 MB/hop (≈2.00x vs `A`) — matching `B_int8`, not the 3.99x we
-originally (incorrectly) reported from a byte-accounting bug in
-`kv_compressor.py`. `D`'s real footprint, once corrected the same way, is
-≈52.2 MB/hop (≈2.77x vs `A`) — **`D` produces a ~39% smaller cache than
-`B_int4_kivi`**, the opposite of what we previously claimed, because `D`'s
-real compression advantage was never int4's precision but layer-selection's
-genuine, uncorrected-by-this-bug savings from dropping layers entirely.
-`B_int4_kivi`'s defensible claim is therefore narrower than originally
-stated: it matches `D`'s accuracy at `B_int8`-level compression with no
-calibration profile, which is a real, useful simplicity/compression
-trade-off — not a compression *win* over `D`. It also trends below
+requiring no per-model calibration profile. On compression: this
+codebase's quantized tensors are stored as `torch.uint8` regardless of
+bit-width (no nibble-packing for either 4-bit or 8-bit; see Limitations),
+so `B_int4_kivi`'s real footprint is ≈72.6 MB/hop (≈2.00x vs `A`),
+matching `B_int8` — not higher compression than `D`, whose real footprint
+is ≈52.2 MB/hop (≈2.77x vs `A`). **`D` produces a ~39% smaller cache than
+`B_int4_kivi`**, because `D`'s compression advantage is layer-selection's
+savings from dropping layers entirely, not int4 precision.
+`B_int4_kivi`'s defensible claim is therefore: it matches `D`'s accuracy
+at `B_int8`-level compression with no calibration profile — a real,
+useful simplicity trade-off, not a compression *win* over `D`. It also
+trends below
 `A`/`B_int8` on accuracy (52% vs 56-57%), but this gap is not yet
 statistically confirmed at n=100 (7-12 discordant examples, p=0.36-0.50);
 we report this as an open question, not as cost-free the way Finding 1
@@ -689,21 +684,15 @@ granularity, not physical storage savings beyond bf16→8-bit.** Every
 quantized tensor in this codebase — 4-bit and 8-bit alike — is stored as
 `torch.uint8`; no nibble-packing is implemented. A 4-bit value therefore
 occupies the same one byte an 8-bit value does, so any config whose
-transmitted layers are entirely quantized (`B_int8`, `B_int4`,
-`B_int4_kivi` and its variants, and the quantized-tier layers of `D`/`E`)
-achieves the same ≈2.00x compression relative to bf16 regardless of
-nominal bit-width; a version with real nibble-packing would compress
-4-bit layers roughly twice as far as reported here. We caught and fixed a
-byte-accounting bug that had been silently assuming this packing existed
-(originally reporting `B_int4_kivi` at 3.99x and `D` at 2.76x self-
-referential, both wrong) before this draft's numbers were finalized — see
-Table 1's footnote and Finding 4 for the corrected figures and what
-changed as a result (`D` produces a smaller cache than `B_int4_kivi`, not
-a larger one). `D`'s real compression advantage over `B_int8`/`B_int4_kivi`
-is entirely attributable to layer selection dropping layers outright, not
-to its adaptive quantization tier; implementing genuine 4-bit packing is
-future work that would benefit every quantized configuration in this
-paper equally, not change any of its comparative claims.
+transmitted layers are entirely quantized achieves the same ≈2.00x
+compression relative to bf16 regardless of nominal bit-width (see Table
+1's footnote and Finding 4); a version with real nibble-packing would
+compress 4-bit layers roughly twice as far as reported here. `D`'s real
+compression advantage over `B_int8`/`B_int4_kivi` is entirely attributable
+to layer selection dropping layers outright, not to its adaptive
+quantization tier; implementing genuine 4-bit packing is future work that
+would benefit every quantized configuration in this paper equally, not
+change any of its comparative claims.
 
 **Partial reproduction of adapted and considered techniques.** Our
 rotation-based quantization covers PolarQuant's core rotate-then-quantize
@@ -723,10 +712,19 @@ mislead (the rotation-based quantization finding above), we chose not to
 ship an approximated version under time pressure — a scoping decision, not
 a result.
 
-[Ethics/broader-impact note if ARR's checklist requires one beyond
-Limitations — check the current ARR responsible-research checklist before
-submission, since a separate ethics statement may be a distinct required
-section rather than folded into Limitations.]
+**Checked against ARR's actual guidance (2026-09-09):** a dedicated
+"Ethical considerations" section is optional, not required — recommended
+only when a paper raises specific ethical concerns, and (if included)
+titled exactly that so it can be correctly excluded from the page count.
+The Responsible NLP Research checklist itself is a separate structured
+form completed on the submission platform (referencing this Limitations
+section by number where relevant), not additional paper prose. We do not
+include a separate Ethical considerations section: this work uses two
+long-established public benchmarks (HotpotQA, GSM8K), two openly-released
+model checkpoints, no human subjects, no crowdsourcing, and no new data
+collection — we are not aware of a concern specific to this paper beyond
+what Limitations already covers (compute cost, single-GPU deployment
+claims, and the scope caveats above).
 
 ---
 
