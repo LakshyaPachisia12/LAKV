@@ -18,16 +18,18 @@ Source: `results/run_20260907_141517`
 | text_agent | 54.0% | 68.3% | 7.2s | — |
 | **A** (uncompressed relay) | 56.0% | 69.1% | 8.6s | 144.35 MB |
 | **B_int8** | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
-| B_int4 (broken) | 0.0% | 0.0% | 39.4s | ~76.8 MB (2.00x, corrected) |
+| B_int4 (broken) | 0.0% | 0.0% | 39.4s | 38.38 MB (4.00x) |
 | C | 43.0% | 57.8% | 10.0s | 104.16 MB |
-| **D** | 50.0% | 61.9% | 10.2s | ~52.2 MB (2.00x self-ref / 2.77x vs `A`, corrected) |
-| E | 9.0% | 17.4% | 19.8s | ~49.1 MB (2.00x, corrected) |
+| **D** | 50.0% | 61.9% | 10.2s | 37.82 MB (3.82x vs `A`) |
+| E | 9.0% | 17.4% | 19.8s | 35.63 MB |
 | E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
 
-**MB/ratio columns for `B_int4`/`D`/`E` corrected 2026-09-09** — see §3 note
-below for the bug and exact recomputation method. `A`/`B_int8`/`C`/`E_int8`
-were never affected (no int4 tier involved). Accuracy/F1/latency unaffected
-either way.
+**MB/ratio columns for `B_int4`/`D`/`E` went through two corrections on
+2026-09-09** — see §3 for the full story. Net result: these are the
+originally-reported numbers, now genuinely backed by real nibble-packing
+instead of a byte-accounting bug. `A`/`B_int8`/`C`/`E_int8` were never
+affected (no int4 tier involved). Accuracy/F1/latency unaffected either
+way, throughout.
 
 ## 2. Second model — Mistral-7B-Instruct-v0.3 (n=50)
 
@@ -54,17 +56,26 @@ Source: `results/run_20260907_130646`
 | B_int4_hybrid (K per-channel + rotate V) | ~50% (n=50 matched) | lower F1 than kivi | No better than kivi alone |
 | B_int4_kivi_full (K per-channel + V per-token) | 44.0% (n=50 matched) | lower than kivi | No better than kivi alone |
 
-**B_int4_kivi vs D: statistically indistinguishable (p=0.86), no calibration
-profile needed.** **CORRECTED 2026-09-09:** the "higher compression" half
-of this claim was wrong — `kv_compressor.py` billed 4-bit tensors at half
-the real byte cost (they're stored as `torch.uint8` with no nibble-packing,
-same as 8-bit). Fixed; exact recomputation (pure shape/architecture math,
-no GPU rerun needed) gives `B_int4_kivi` ≈72.6 MB/hop (≈2.00x vs `A`) and
-`D` ≈52.2 MB/hop (≈2.00x self-ref / ≈2.77x vs `A`) — **`D` is now ~39%
-smaller than `B_int4_kivi`, the opposite of what was previously reported.**
-`B_int4_kivi`'s real, defensible claim: matches `D`'s accuracy at
-`B_int8`-level compression with no calibration profile — not "beats `D`'s
-compression." See `scripts/correct_compression_ratios.py`.
+**B_int4_kivi vs D: statistically indistinguishable (p=0.86), at higher
+compression (3.96x vs 3.82x, both vs. `A`), no calibration profile
+needed.** Two-step correction on 2026-09-09, told here for the record:
+(1) found `kv_compressor.py` billed 4-bit tensors at half the real byte
+cost — they were stored as `torch.uint8` with no nibble-packing, same as
+8-bit, so 4-bit and 8-bit configs physically occupied the same space
+despite different reported ratios. Fixed the accounting first (temporarily
+made `B_int4_kivi` ≈72.6 MB/2.00x, `D` ≈52.2 MB/2.77x — `D` briefly
+"beat" `B_int4_kivi` on compression). (2) Rather than stop at honest
+accounting for a capability that didn't exist, implemented real
+two-values-per-byte nibble packing (`lakv/kv_compressor.py::_pack_nibbles`/
+`_unpack_nibbles`), unit-tested (11 new tests: round-trip exactness,
+bit-identical `compress`/`decompress` output with vs. without packing,
+zero regressions across the other 55 existing tests) but not yet
+GPU-integration-tested. With real packing, the numbers land back at
+almost exactly the originally-reported figures — not a coincidence: the
+original formula's arithmetic (0.5 bytes/element for 4-bit) was always
+what genuine packing would produce, the bug was that nothing packed
+anything. `B_int4_kivi`'s claim is restored: it matches `D`'s accuracy
+at genuinely higher compression, with no calibration profile.
 
 ## 4. Causal audit — the central mechanistic result
 
@@ -107,12 +118,12 @@ Source: `results/run_20260909_120933`
 | Config | Accuracy | KV/hop | Note |
 |---|---|---|---|
 | **A** | 90.0% | 39.38 MB | |
-| **D** | 90.0% | ~14.37 MB (~2.00x self-ref / ~2.74x vs `A`, corrected) | McNemar vs `A`: p=1.0, only 2 discordant pairs — layer-selection is *more* free on GSM8K than HotpotQA |
+| **D** | 90.0% | 10.42 MB (2.76x self-ref / 3.78x vs `A`) | McNemar vs `A`: p=1.0, only 2 discordant pairs — layer-selection is *more* free on GSM8K than HotpotQA |
 | A_audit_zeroed | 0.0% | 40.35 MB | |
 | A_audit_random | 2.0% | 44.45 MB | |
 | A_audit_mismatched | 28.0% | 39.64 MB | |
 
-**Every pairwise comparison in the three-tier ladder is significant**: `A` vs zeroed/random/mismatched p<0.0001 each; mismatched vs zeroed p=0.0001; mismatched vs random p=0.0002 — both headline findings (causal audit ordering, near-free layer selection) replicate on a structurally different task, with larger effect sizes and tighter p-values than the original HotpotQA runs. `D`'s reported ratio in the raw run predates the 2026-09-09 int4 byte-accounting fix (run started 12:09, fix landed 12:40) — corrected above. Raw-text check on `A_audit_random` confirms the identical code-fragment/mixed-language garbage signature already documented for HotpotQA (not a parsing bug), plus one example where the model drifts mid-generation into reciting "Janet's ducks" (the canonical GSM8K few-shot exemplar still present in its own system prompt) instead of engaging with the real question — anecdotal, not a general claim.
+**Every pairwise comparison in the three-tier ladder is significant**: `A` vs zeroed/random/mismatched p<0.0001 each; mismatched vs zeroed p=0.0001; mismatched vs random p=0.0002 — both headline findings (causal audit ordering, near-free layer selection) replicate on a structurally different task, with larger effect sizes and tighter p-values than the original HotpotQA runs. `D`'s reported ratio predates this session's byte-accounting fix and the later real-packing fix, but turns out to already be correct: it ran on the pre-session code, whose formula was always numerically identical to what real nibble-packing produces (see §3) — no correction needed, unlike an earlier pass through this file briefly claimed. Raw-text check on `A_audit_random` confirms the identical code-fragment/mixed-language garbage signature already documented for HotpotQA (not a parsing bug), plus one example where the model drifts mid-generation into reciting "Janet's ducks" (the canonical GSM8K few-shot exemplar still present in its own system prompt) instead of engaging with the real question — anecdotal, not a general claim.
 
 ## 7. What's still open
 

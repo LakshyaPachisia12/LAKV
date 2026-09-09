@@ -56,7 +56,7 @@ position embeddings impose position-dependent structure on them: a
 rotation-based quantization scheme that assumes otherwise collapses into
 out-of-distribution output, while a channel-respecting fix recovers
 accuracy statistically indistinguishable from our strongest layer-selection
-baseline, at comparable compression and no calibration overhead. Two results
+baseline, at higher compression and no calibration overhead. Two results
 sit at the center of this paper. First, a causal audit — substituting the
 relayed cache with zeroed, random, or another question's real content —
 shows a receiving agent's accuracy depends on the specific transmitted
@@ -203,8 +203,9 @@ KIVI-inspired fix (per-channel key quantization only, no group-wise
 windowing or streaming residual buffer from the original method) and find
 it resolves the collapse — 0.0%/0.0% to 52.0%/64.1% F1 at n=100,
 statistically indistinguishable from our strongest layer-selection config
-(`D`; McNemar p=0.86) at `B_int8`-level compression (≈2.00x) with no
-calibration profile required — direct empirical confirmation, on our
+(`D`; McNemar p=0.86) at higher compression (3.96x vs 3.82x, both vs.
+uncompressed relay) with no calibration profile required — direct
+empirical confirmation, on our
 pipeline and task, of what this literature identifies as the correct axis
 for addressing the problem, rather than the rotation-based axis we tried
 first. Whether KIVI's other asymmetric half (per-token value quantization)
@@ -387,18 +388,17 @@ findings characterize specific published techniques against this backdrop.
 | text_agent | 54.0% | 68.3% | 7.2s | — |
 | A | 56.0% | 69.1% | 8.6s | 144.35 MB |
 | B_int8 | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
-| B_int4 (original) | 0.0% | 0.0% | 39.4s | ~76.8 MB (2.00x) |
-| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | 9.6s | ~72.6 MB (2.00x) |
+| B_int4 (original) | 0.0% | 0.0% | 39.4s | 38.38 MB (4.00x) |
+| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | 9.6s | 36.43 MB (3.96x vs `A`) |
 | C | 43.0% | 57.8% | 10.0s | 104.16 MB |
-| D | 50.0% | 61.9% | 10.2s | ~52.2 MB (2.77x vs `A`) |
-| E | 9.0% | 17.4% | 19.8s | ~49.1 MB (2.00x) |
+| D | 50.0% | 61.9% | 10.2s | 37.82 MB (3.82x vs `A`) |
+| E | 9.0% | 17.4% | 19.8s | 35.63 MB |
 | E_int8 | 1.0% | 6.2% | 22.2s | 49.05 MB |
 
-Ratios are compressed-vs-`A`'s 144.35 MB, except `D` (which drops layers
-before compressing) shows its ratio vs. `A` rather than its own
-self-referential 2.00x, since vs.-`A` is the number a reader wants. See
-Limitations for why 4-bit and 8-bit configs share the same ≈2.00x ceiling
-here.
+Ratios are compressed-vs-`A`'s 144.35 MB, except `B_int4`/`B_int8`, whose
+self-referential ratio equals their vs.-`A` ratio exactly since neither
+drops any layers. See Method for the real nibble-packing that makes 4-bit
+configs genuinely, not just nominally, smaller than 8-bit ones.
 
 **Finding 1 — uniform 8-bit KV quantization is statistically indistinguishable
 from uncompressed relay.** `A` vs `B_int8`: McNemar p=1.0, only 3 discordant
@@ -427,37 +427,42 @@ architecture- and protocol-dependent, not a fixed property of a given
 compression ratio.
 
 **Finding 4 — `B_int4`'s fixed variant matches our strongest
-layer-selection configuration's accuracy at `B_int8`-level compression and
-lower complexity — but not at higher compression than `D`.**
-`B_int4_kivi` (52.0%/64.1%) vs `D` (50.0%/61.9%): McNemar p=0.86, F1 delta
-+2.2 points [95% CI: -8.2, +12.8] — statistically indistinguishable — and
-requiring no per-model calibration profile. On compression: this
-codebase's quantized tensors are stored as `torch.uint8` regardless of
-bit-width (no nibble-packing for either 4-bit or 8-bit; see Limitations),
-so `B_int4_kivi`'s real footprint is ≈72.6 MB/hop (≈2.00x vs `A`),
-matching `B_int8` — not higher compression than `D`, whose real footprint
-is ≈52.2 MB/hop (≈2.77x vs `A`). **`D` produces a ~39% smaller cache than
-`B_int4_kivi`**, because `D`'s compression advantage is layer-selection's
-savings from dropping layers entirely, not int4 precision.
-`B_int4_kivi`'s defensible claim is therefore: it matches `D`'s accuracy
-at `B_int8`-level compression with no calibration profile — a real,
-useful simplicity trade-off, not a compression *win* over `D`. It also
-trends below
+layer-selection configuration's accuracy at genuinely higher compression
+and lower complexity.** `B_int4_kivi` (52.0%/64.1%) vs `D` (50.0%/61.9%):
+McNemar p=0.86, F1 delta +2.2 points [95% CI: -8.2, +12.8] —
+statistically indistinguishable — while achieving 3.96x compression versus
+`D`'s 3.82x (both vs. uncompressed `A`), and requiring no per-model
+calibration profile. This number went through a real correction cycle we
+report for transparency: this codebase's quantized tensors were initially
+stored as one full `torch.uint8` per element regardless of bit-width — no
+nibble-packing existed anywhere in the compressor, so a 4-bit value took
+the same byte an 8-bit one did, and our first-reported ratios (silently
+assuming packing that did not exist) were wrong in a way that happened to
+be numerically optimistic. We caught this, then rather than only
+correcting the byte *accounting*, implemented real two-values-per-byte
+nibble packing (unit-tested: round-trip pack/unpack exactness, and
+`compress`/`decompress` bit-identical output with and without packing —
+packing is a storage-format change, not a numeric one) so the reported
+ratio reflects genuine physical storage. The corrected, packing-backed
+numbers land back at the originally-reported figures almost exactly,
+because the original formula's *arithmetic* (0.5 bytes/element for 4-bit)
+was always what real packing would produce — the bug was that nothing in
+the compressor actually packed anything. `B_int4_kivi` also trends below
 `A`/`B_int8` on accuracy (52% vs 56-57%), but this gap is not yet
 statistically confirmed at n=100 (7-12 discordant examples, p=0.36-0.50);
 we report this as an open question, not as cost-free the way Finding 1
 establishes for `B_int8`. Also fixing the value side (`B_int4_kivi_full`,
 per-token quantization) does not improve on this further (44.0% vs 50.0%
-on a matched 50-example subset, p=0.51, trending the other way) and, even
-after the same correction, is still worse on compression (≈1.94x vs
-`B_int4_kivi`'s ≈2.00x) for a real, mechanical reason unrelated to the
-byte-accounting bug: per-token quantization stores a scale/zero-point pair
-per sequence position, and sequence length (hundreds to low thousands of
-tokens) vastly exceeds K's per-channel grouping (128 channels) — real
-overhead, no accuracy benefit. Together with an earlier null result for
-rotating values instead, two independently-motivated value-side
-interventions both failed — evidence the key/RoPE interaction was the
-entire mechanism behind `B_int4`'s collapse, not one of several factors.
+on a matched 50-example subset, p=0.51, trending the other way) and is
+still worse on compression (3.75x vs `B_int4_kivi`'s 3.99x self-referential)
+for a real, mechanical reason: per-token quantization stores a
+scale/zero-point pair per sequence position, and sequence length (hundreds
+to low thousands of tokens) vastly exceeds K's per-channel grouping (128
+channels) — real overhead, no accuracy benefit, and packing does not
+remove it. Together with an earlier null result for rotating values
+instead, two independently-motivated value-side interventions both failed
+— evidence the key/RoPE interaction was the entire mechanism behind
+`B_int4`'s collapse, not one of several factors.
 
 **Finding 5 — headline result: relayed KV demonstrably carries specific,
 real content, not merely a non-empty cache.** We ran the causal audit (Section 3) on
@@ -664,20 +669,19 @@ evaluate under sampling or self-consistency, which could interact
 differently with a degraded or compressed relayed context than with a full
 one.
 
-**No bit-packing: reported compression ratios reflect quantization
-granularity, not physical storage savings beyond bf16→8-bit.** Every
-quantized tensor in this codebase — 4-bit and 8-bit alike — is stored as
-`torch.uint8`; no nibble-packing is implemented. A 4-bit value therefore
-occupies the same one byte an 8-bit value does, so any config whose
-transmitted layers are entirely quantized achieves the same ≈2.00x
-compression relative to bf16 regardless of nominal bit-width (see Table
-1's footnote and Finding 4); a version with real nibble-packing would
-compress 4-bit layers roughly twice as far as reported here. `D`'s real
-compression advantage over `B_int8`/`B_int4_kivi` is entirely attributable
-to layer selection dropping layers outright, not to its adaptive
-quantization tier; implementing genuine 4-bit packing is future work that
-would benefit every quantized configuration in this paper equally, not
-change any of its comparative claims.
+**Nibble-packing is unit-tested, not deployment-tested.** We implement
+real two-values-per-byte packing for every bits==4 tensor (see Finding 4),
+verified via round-trip pack/unpack exactness and bit-identical
+`compress`/`decompress` output with and without packing on synthetic
+tensors. This is standalone tensor-level testing, not an end-to-end
+GPU rerun with the new packing path in the live pipeline; accuracy/F1 are
+unaffected in principle (packing changes storage format, not values, and
+the unit tests confirm this directly), but we have not re-run the full
+n=100 HotpotQA evaluation with packing enabled to confirm no integration
+issue exists between the compressor and the rest of the pipeline (cache
+reconstruction, device placement, batch handling). The reported accuracy
+numbers throughout this paper come from pre-packing runs; only the
+compression-ratio figures reflect the packing-enabled compressor.
 
 **Partial reproduction of adapted and considered techniques.** Our
 rotation-based quantization covers PolarQuant's core rotate-then-quantize

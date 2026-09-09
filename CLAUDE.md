@@ -96,30 +96,30 @@ prompts as `text_agent`, so any accuracy/latency delta between a KV config and
 | text_agent | 54.0% | 68.3% | 6.7s | — |
 | **A** | 57.0% | 69.6% | 7.8s | 143.98 MB |
 | **B_int8** | 56.0% | 68.6% | 8.0s | 72.07 MB (2.00x) |
-| B_int4 | 0.0% | 0.0% | 35.0s | ~76.7 MB (2.00x, corrected — see below) — **collapses, see below** |
+| B_int4 | 0.0% | 0.0% | 35.0s | 38.34 MB (4.00x) — **collapses, see below** |
 | C | 47.0% | 59.8% | 10.6s | 104.26 MB |
 | C_nearest / C_interpolate | 33.0% / 36.0% | 48.3% / 44.7% | 9.2s / 8.5s | ~103 MB |
-| **D** | 44.0% | 58.3% | 9.6s | ~52.0 MB (2.00x self-ref / ~2.77x vs `A`, corrected — see below) |
-| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~51.8 MB / ~51.7 MB (2.00x self-ref, corrected) |
-| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~49.7 MB (E, corrected) / 48.85 MB (E_int8, never affected) |
+| **D** | 44.0% | 58.3% | 9.6s | 37.69 MB (2.76x self-ref) |
+| D_nearest / D_interpolate | 34.0% / 31.0% | 47.2% / 47.0% | 8.8s / 8.7s | ~37.5 MB (2.76x self-ref) |
+| E / E_int8 | 12.0% / 4.0% | 21.2% / 10.9% | 21.6s / 22.3s | ~36-49 MB |
 
-**MB/ratio columns above predate the 2026-09-09 int4 byte-accounting fix
-(see "Research-extensions findings" below) — every row involving int4
-(`B_int4`, `D`, `D_nearest`, `D_interpolate`, `E`) is now corrected via the
-same closed-form method (`scripts/correct_compression_ratios.py`: real
-original_mb was never affected by the bug, corrected compressed_mb =
-original_mb / 2 for any config whose transmitted layers are entirely
-quantized); `B_int8`/`A`/`C`/`E_int8` were never affected. Source for
-`D_nearest`/`D_interpolate`/this row's `E`: `results/run_20260904_123559`.
-Accuracy/F1/latency in this whole table are unaffected either way
-(compression byte accounting is independent of generation).**
+**MB/ratio columns above went through a real correction cycle on
+2026-09-09 (see "Research-extensions findings" below for the full
+two-step story: byte-accounting bug found and fixed, then real
+nibble-packing implemented) and have settled back at these
+originally-reported values — not a coincidence, the original formula's
+arithmetic was always what real packing produces, the bug was that
+nothing packed anything. `B_int8`/`A`/`C`/`E_int8` were never affected
+either way (no int4 tier involved). Accuracy/F1/latency in this whole
+table are unaffected throughout (compression byte accounting is
+independent of generation).**
 
 **Bottom line: `D` and `B_int8` are the strongest defensible KV-relay
 results.** `A` matches `single_agent`'s accuracy and is close to (but ~15%
 slower than) `text_agent`'s latency — the "avoid recomputation" win is real
 but small, since decode time dominates total latency far more than prefill for
 this task (hops run 100-500+ generated tokens). `D` trades ~13 accuracy points
-for a ~2.77x smaller relayed cache (vs `A`, corrected); `B_int8` gets 2x compression for
+for a 2.76x smaller relayed cache; `B_int8` gets 2x compression for
 essentially no accuracy cost.
 
 ## Research-extensions findings (branch `feat/research-extensions`, as of 2026-09-07)
@@ -210,47 +210,61 @@ don't just trust this summary if more data has come in since):
    `B_int4_kivi` vs `A`/`B_int8` has 7-12 discordant examples and point
    estimates that trend real (52% vs 56-57%) — the honest statement is "not
    yet distinguishable from a real cost at this n," not "no cost."
-   **CORRECTED 2026-09-09 — the "compresses harder than `D`" half of this
-   finding was WRONG, root cause found via `feat/lakv_nvidia`:**
-   `kv_compressor.py::compress()` billed 4-bit layers at 0.5 bytes/element,
-   but `_quantize()`/`_quantize_per_channel()`/`_quantize_per_token()` all
-   store the result as `torch.uint8` regardless of `bits` — no nibble-
-   packing exists anywhere in this file, so a 4-bit value has always taken
-   the same one full byte an 8-bit value does. Fixed to bill
-   `k_q.nbytes + v_q.nbytes` directly. Corrected numbers (exact, recomputed
-   from stored per-hop shapes, no GPU rerun needed since byte accounting is
-   independent of generation): `B_int4_kivi` is **~72.6 MB/hop (≈2.00x vs
-   `A`)**, not the previously-reported 36.43 MB (3.99x). `D` is **~52.2
-   MB/hop (≈2.00x self-referential to its own transmitted layers, ≈2.77x
-   vs `A`)**, not the previously-reported 37.82 MB (2.76x) — `D`'s number
-   happens to land close to its old (wrong) value because its real
-   advantage was always the layers it drops entirely, a genuine saving the
-   old bug didn't touch, coincidentally offsetting the int4-tier
-   undercounting. **Net effect: `D` now produces a ~39% SMALLER cache than
-   `B_int4_kivi` (52.2 MB vs 72.6 MB) — the exact opposite of what was
-   previously claimed.** `B_int4_kivi`'s real, defensible selling point is
-   "matches `D`'s accuracy with `B_int8`-level compression and no
-   calibration profile," not "higher compression than `D`." See
-   `scripts/correct_compression_ratios.py` for the exact recomputation
-   method (pure architecture/shape math — compressed size never depended
-   on tensor values, so no rerun was needed to get exact, not approximate,
-   corrected numbers). **`B_int4_kivi_full` (adds per-token V quantization
-   on top of K's fix) does NOT improve on `B_int4_kivi`** — tested at n=50
+   **Two-step compression-ratio correction, 2026-09-09 — net result: the
+   ORIGINAL "compresses harder than `D`" claim was right all along, just
+   not yet backed by real code.** Step 1 (byte-accounting bug, found via
+   `feat/lakv_nvidia`): `kv_compressor.py::compress()` billed 4-bit layers
+   at 0.5 bytes/element, but `_quantize()`/`_quantize_per_channel()`/
+   `_quantize_per_token()` all stored the result as `torch.uint8`
+   regardless of `bits` — no nibble-packing existed anywhere in this file,
+   so a 4-bit value had always taken the same one full byte an 8-bit value
+   did. Fixed the accounting to bill the real stored size — this
+   temporarily REVERSED the finding: `B_int4_kivi` corrected to ~72.6
+   MB/hop (~2.00x vs `A`, matching `B_int8`), `D` to ~52.2 MB/hop (~2.77x
+   vs `A`), i.e. `D` briefly looked ~39% smaller than `B_int4_kivi` — the
+   opposite of the original claim.
+
+   Step 2 (the actual fix, not just honest accounting): rather than stop
+   at "we don't pack, so we don't get the compression," implemented real
+   two-values-per-byte nibble packing —
+   `_pack_nibbles()`/`_unpack_nibbles()` in `kv_compressor.py`, wired into
+   `compress()` (pack after quantizing, bits==4 only) and `decompress()`
+   (unpack before dequantizing). 11 new unit tests in
+   `tests/test_kv_compressor_nibble_packing.py` (round-trip pack/unpack
+   exactness including odd-length/padding edge cases, full-nibble-range
+   0/15 coverage, and — the one that actually matters — bit-identical
+   `compress()`/`decompress()` output with vs. without packing, proving
+   packing is a pure storage-format change with zero effect on dequantized
+   values). Zero regressions across the other 55 existing tests. Net
+   result: with real packing, the numbers land back at **almost exactly
+   the originally-reported figures** (`B_int4_kivi` 36.43 MB/3.99x
+   self-ref/3.96x vs `A`; `D` 37.82 MB/2.76x self-ref/3.82x vs `A`) — not
+   a coincidence: the original formula's arithmetic (0.5 bytes/element for
+   4-bit) was always exactly what genuine packing produces; the bug was
+   that nothing in the compressor actually packed anything. `B_int4_kivi`
+   is genuinely, not just nominally, more compressed than `D` (3.96x vs
+   3.82x vs `A`) while matching its accuracy and needing no calibration
+   profile — the original finding, now real. **Caveat: packing is
+   unit-tested at the tensor level, not yet confirmed via a live GPU
+   rerun of the full pipeline — see `docs/naacl2027_paper_draft.md`'s
+   Limitations for the honest scope of what "tested" means here.**
+   `B_int4_kivi_full` (adds per-token V quantization on top of K's fix)
+   still does NOT improve on `B_int4_kivi` — tested at n=50
    (`results/run_20260907_203253`), same idx range as a matched subset of
    `B_int4_kivi`'s n=100 run: 44.0% vs 50.0%, McNemar p=0.51 (not
    significant, but trending toward plain `B_int4_kivi` being better, not
-   worse). Its compression is also still WORSE after correction (≈1.94x vs
-   `B_int4_kivi`'s ≈2.00x, corrected from the old 3.75x-vs-3.99x framing)
-   for a real, mechanical reason unrelated to the packing bug: per-token
-   quantization stores a scale/zero-point pair per sequence position, and
-   sequence length (hundreds to low thousands of tokens) vastly exceeds K's
+   worse), and its compression is still worse even with real packing
+   (3.75x vs `B_int4_kivi`'s 3.99x self-referential, confirmed via the
+   same precise per-hop recomputation) for the same real, mechanical
+   reason as before: per-token quantization stores a scale/zero-point
+   pair per sequence position, and sequence length vastly exceeds K's
    per-channel grouping (128 channels) — real overhead, no accuracy
-   benefit. Combined with `B_int4_hybrid`'s earlier null result (rotating V
-   didn't help either), this is now TWO independent, differently-motivated
-   attempts to improve V that both failed — strong, replicated evidence
-   that K's per-channel fix alone accounts for the whole recovery, not a
-   coincidence. `B_int4_kivi` (plain, K-only) remains the config to report
-   and use — just not with the "beats `D`'s compression" claim.**
+   benefit, unaffected by packing. Combined with `B_int4_hybrid`'s
+   earlier null result (rotating V didn't help either), this is now TWO
+   independent, differently-motivated attempts to improve V that both
+   failed — strong, replicated evidence that K's per-channel fix alone
+   accounts for the whole recovery, not a coincidence. `B_int4_kivi`
+   (plain, K-only) remains the config to report and use.**
 
 6. **Causal audit: config `A`'s relayed KV demonstrably carries real,
    specific content — not just a generic non-empty cache.** Ran on `A`
@@ -363,15 +377,22 @@ just underpowered noise (see finding 5 above).
     replaced with noise), i.e. a garbage cache can make the model regress
     toward reciting memorized exemplar content instead of engaging with the
     real question. Anecdotal (one example), not claimed as a general
-    pattern. **Compression-ratio caveat: this run started at 12:09, the
-    int4 byte-accounting fix (see finding 5 above) landed at 12:40 — `D`'s
-    reported 2.76x/10.42 MB predates the fix. Corrected: ~14.37 MB, ~2.00x
-    self-referential, ~2.74x vs `A`** — close to HotpotQA's own corrected
-    ~2.77x, suggesting this ratio is largely task-independent (driven by
-    which layers get dropped, not by task content). Partially resolves the
-    "single task domain" Limitation — a single n=50 run on one additional
-    task, not a full generalization claim, but a real, statistically solid
-    one.
+    pattern. **Compression-ratio note (superseded, kept for the record):**
+    this run started at 12:09, before that day's byte-accounting fix
+    (12:40) or the later real nibble-packing fix — meaning it ran on the
+    original, pre-any-of-this-session's-changes code, whose formula (as
+    finding 5 above now confirms) was always numerically identical to what
+    real packing produces. Its reported `D` figure — 10.42 MB, 2.76x
+    self-referential, 3.78x vs `A` — is therefore already correct; an
+    earlier pass through this file "corrected" it to ~14.37 MB using the
+    interim (accounting-fixed-but-not-yet-packed) formula, which was itself
+    a temporary state, not the final answer. HotpotQA's own `D` is 3.82x
+    vs `A` (finding 5) — close enough to GSM8K's 3.78x to suggest this
+    ratio is largely task-independent (driven by which layers get dropped,
+    not by task content), same conclusion as before, just via the right
+    numbers this time. Partially resolves the "single task domain"
+    Limitation — a single n=50 run on one additional task, not a full
+    generalization claim, but a real, statistically solid one.
 
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see

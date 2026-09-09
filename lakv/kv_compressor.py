@@ -94,6 +94,41 @@ def _dequantize(q: torch.Tensor, scale: torch.Tensor, zero_point: torch.Tensor) 
     return t.to(torch.bfloat16)
 
 
+def _pack_nibbles(q: torch.Tensor) -> torch.Tensor:
+    """Pack a uint8 tensor whose values fit in 4 bits (0-15) two-per-byte.
+
+    This is the real nibble-packing that was previously missing entirely
+    from this file: every 4-bit quantized tensor was stored as one full
+    uint8 per element (see the compress() byte-accounting fix elsewhere in
+    this file's history), which is why 4-bit and 8-bit configs used to
+    report the same physical storage. Packing here actually halves it.
+
+    Returns a 1D uint8 tensor of length ceil(numel/2). Odd-length inputs
+    get one wasted nibble in the final byte (high nibble used, low nibble
+    zero-padded) rather than crashing.
+    """
+    flat = q.reshape(-1).to(torch.uint8)
+    n = flat.numel()
+    if n % 2 == 1:
+        pad = torch.zeros(1, dtype=torch.uint8, device=flat.device)
+        flat = torch.cat([flat, pad])
+    pairs = flat.view(-1, 2)
+    return ((pairs[:, 0] << 4) | pairs[:, 1]).to(torch.uint8)
+
+
+def _unpack_nibbles(packed: torch.Tensor, shape: tuple) -> torch.Tensor:
+    """Inverse of _pack_nibbles. shape is the original (pre-flatten,
+    pre-packing) tensor shape; its element count determines how much of
+    the final (possibly padded) byte to keep."""
+    numel = 1
+    for d in shape:
+        numel *= d
+    high = (packed >> 4) & 0x0F
+    low = packed & 0x0F
+    interleaved = torch.stack([high, low], dim=1).reshape(-1)[:numel]
+    return interleaved.to(torch.uint8).reshape(shape)
+
+
 def _quantize_per_channel(tensor: torch.Tensor, bits: int, clip_percentile: Optional[float] = None):
     """Per-(head, channel) min-max quantization — one scale/zero-point per
     (batch, head, head_dim) triple, reducing over the SEQUENCE axis only
@@ -430,10 +465,26 @@ class KVCompressor:
                 else:
                     v_q, v_scale, v_zp = _quantize(v_in, bits, clip_percentile=clip_pct)
 
+                # Real nibble-packing: previously k_q/v_q were always stored
+                # as one full uint8 per element regardless of bits, so a
+                # 4-bit value took the same byte an 8-bit value did (see git
+                # history for the byte-accounting-bug fix that first caught
+                # this). Packing two 4-bit values per byte here makes bits==4
+                # genuinely half the storage of bits==8, not just nominally.
+                # Only applies to bits==4 -- an 8-bit value already fills a
+                # byte, nothing to pack. decompress() must unpack using the
+                # same shape recorded below before dequantizing.
+                if bits == 4:
+                    k_q_stored = _pack_nibbles(k_q)
+                    v_q_stored = _pack_nibbles(v_q)
+                else:
+                    k_q_stored = k_q
+                    v_q_stored = v_q
+
                 cl = CompressedLayer(
                     # Same reasoning as the bits==16 branch above — no .cpu().
-                    k_q=k_q,
-                    v_q=v_q,
+                    k_q=k_q_stored,
+                    v_q=v_q_stored,
                     k_scale=k_scale,
                     k_zp=k_zp,
                     v_scale=v_scale,
@@ -442,16 +493,7 @@ class KVCompressor:
                     bits=bits,
                     layer_idx=layer_idx
                 )
-                # k_q/v_q are always stored as torch.uint8 (see _quantize /
-                # _quantize_per_channel / _quantize_per_token) -- no nibble-
-                # packing exists anywhere in this file, so a 4-bit value
-                # occupies the same one full byte an 8-bit value does. Bill
-                # the real stored size (k_q.nbytes + v_q.nbytes), not a
-                # bits==4 -> 0.5-bytes-per-element formula that assumes
-                # packing that never happens. Real nibble-packing to achieve
-                # genuine additional int4 compression is a separate,
-                # deliberately deferred effort.
-                compressed_bytes += k_q.nbytes + v_q.nbytes
+                compressed_bytes += k_q_stored.nbytes + v_q_stored.nbytes
                 # Overhead for scale/zp per head
                 compressed_bytes += (k_scale.numel() + v_scale.numel()) * 4 * 2
 
@@ -473,28 +515,35 @@ class KVCompressor:
                 k = cl.k_q.to(device)
                 v = cl.v_q.to(device)
             else:
+                # bits==4 layers were nibble-packed in compress() -- unpack
+                # back to cl.shape before dequantizing. bits==8 was never
+                # packed (a byte already fits an 8-bit value), so k_q/v_q
+                # are already the right shape.
+                k_q = _unpack_nibbles(cl.k_q, cl.shape) if cl.bits == 4 else cl.k_q
+                v_q = _unpack_nibbles(cl.v_q, cl.shape) if cl.bits == 4 else cl.v_q
+
                 if message.mode in ("uniform_int4_kivi_k_channel", "uniform_int4_hybrid",
                                      "uniform_int4_kivi_full"):
                     k = _dequantize_per_channel(
-                        cl.k_q.to(device),
+                        k_q.to(device),
                         cl.k_scale.to(device),
                         cl.k_zp.to(device)
                     )
                 else:
                     k = _dequantize(
-                        cl.k_q.to(device),
+                        k_q.to(device),
                         cl.k_scale.to(device),
                         cl.k_zp.to(device)
                     )
                 if message.mode == "uniform_int4_kivi_full":
                     v = _dequantize_per_token(
-                        cl.v_q.to(device),
+                        v_q.to(device),
                         cl.v_scale.to(device),
                         cl.v_zp.to(device)
                     )
                 else:
                     v = _dequantize(
-                        cl.v_q.to(device),
+                        v_q.to(device),
                         cl.v_scale.to(device),
                         cl.v_zp.to(device)
                     )
