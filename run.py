@@ -25,22 +25,36 @@ def _timestamp() -> str:
 
 
 def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
-    """Load Qwen2.5-7B in bfloat16.
+    """Load a causal LM in bfloat16.
 
     sdpa (default) gets PyTorch's fused attention kernel — much faster than
     eager, especially for decode over long KV caches (HotpotQA's contexts are
     1500-2500+ tokens). eager is only needed for calibration, which reads
     output_attentions (sdpa doesn't return attention weight tensors) — see
     mode_calibrate, which requests it explicitly.
+
+    trust_remote_code=False (not True): every model family used in this
+    project (Qwen2.5, Mistral, Qwen3) has no `auto_map` in its config and
+    was never actually using remote code regardless of this flag -- verified
+    directly via AutoConfig before making this change. Phi-3.5-mini-instruct
+    is the one exception: it DOES ship custom modeling code via `auto_map`,
+    frozen at whatever transformers Cache API existed at its release, which
+    breaks against current transformers (calls the since-removed
+    DynamicCache.from_legacy_cache). transformers already has native,
+    maintained Phi3ForCausalLM support that doesn't have this problem --
+    trust_remote_code=True was actively routing around the working
+    implementation into the broken frozen one. If a future model genuinely
+    needs remote code and lacks native support, that's a case-by-case
+    decision, not a blanket default.
     """
     print(f"[run] Loading model: {model_name} (attn_implementation={attn_implementation}) …")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.bfloat16,
         device_map=device,
         attn_implementation=attn_implementation,
-        trust_remote_code=True,
+        trust_remote_code=False,
     )
     model.eval()
     return model, tokenizer
