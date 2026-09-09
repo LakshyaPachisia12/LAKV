@@ -43,7 +43,7 @@
 
 ---
 
-## 1. Introduction [PROVISIONAL — pending decision gate, do not finalize]
+## 1. Introduction
 
 Efficient key-value cache relay between agents in a multi-agent LLM
 pipeline rests on an assumption that is rarely stated and, to our
@@ -94,8 +94,7 @@ these three approach separately: direct causal validation (not inference
 from compression metrics) on the content-identity axis, replicated evidence
 across depth and position axes within one system, and a falsified-predictor
 result showing the failure is invisible from a technique's own confidence
-signal. [Abstract to be written last, once the sentence above is resolved —
-see status note at top of file.]
+signal.
 
 ---
 
@@ -175,7 +174,7 @@ found it does not improve on the key-only fix (44.0% vs 50.0% on a matched
 direction), at a real compression-ratio cost (3.75x vs 3.99x) from the
 much finer per-position scale/zero-point bookkeeping it requires relative
 to per-channel grouping. Combined with an earlier null result for rotating
-values instead (Section [X]), this is two independently-motivated attempts
+values instead (discussed above), this is two independently-motivated attempts
 to improve the value side that both failed to help — evidence that the
 key-side fix alone accounts for the full recovery, not a coincidence of one
 underpowered comparison.
@@ -191,7 +190,7 @@ Relayed KV Caches in Multi-Agent LLMs" proposes replacing relayed KV with
 mismatched, zeroed, or moment-matched-random substitutes to test whether
 accuracy gains are causally attributable to the specific transmitted
 content, rather than to the receiver simply having a non-empty cache — a
-methodology we adopt directly for our own causal audit (Section [X]). Our
+methodology we adopt directly for our own causal audit (Section 3). Our
 work extends this critical-auditing tradition along an axis these papers do
 not: cross-architecture generalization, treating "does the same technique,
 faithfully reproduced, transfer to a different model family" as itself a
@@ -203,7 +202,7 @@ functionally interchangeable across Qwen3-8B, Llama-3.1-8B, and Mistral-7B,
 finding that layer redundancy depends on the model and evaluation protocol
 rather than being a fixed architectural property — the same layers can
 appear redundant under one protocol and load-bearing under another. This is
-consistent with our own finding (Section [X]) that a near-identical
+consistent with our own finding (Section 4, Finding 3) that a near-identical
 proportion of dropped layers produces a substantially larger accuracy cost
 on Mistral-7B-Instruct-v0.3 than on Qwen2.5-7B-Instruct, and offers one
 candidate mechanism (architecture-dependent, not universal, layer
@@ -293,15 +292,15 @@ decoder-only transformers using grouped-query attention and RoPE.
 
 **Compression configurations.** `B_int8`/`B_int4` apply uniform per-head
 min-max quantization to every transmitted layer's key and value tensors
-(Section [X] below details a fix to `B_int4`'s originally-catastrophic
-failure). `C` applies calibration-driven layer selection — dropping
+(a fix to `B_int4`'s originally-catastrophic failure is detailed below in
+this section). `C` applies calibration-driven layer selection — dropping
 transformer layers a per-model calibration pass identifies as
 low-importance before transmission, reconstructing dropped layers at the
 receiver via one of three strategies (`zeros`, `nearest`, `interpolate`).
 `D` combines layer selection with adaptive per-layer-tier quantization
 (high-importance layers at 8-bit, medium-importance at 4-bit). `E` adds an
 anchor-based cross-agent offset-correction mechanism adapted from KVCOMM
-(Section [X], a negative result).
+(Finding 2, Section 4, is a negative result for this configuration).
 
 **RoPE-aware quantization fix for `B_int4`.** `B_int4` (uniform 4-bit
 quantization, no layer selection) initially collapsed to 0.0% accuracy. We
@@ -331,8 +330,7 @@ current sample size for comparisons that do not reach significance, so that
 "not significant" and "confirmed no effect" are never conflated in our
 reporting.
 
-**Causal audit.** [To be completed once GPU results are available — see
-CLAUDE.md for current status.] To test whether a configuration's accuracy
+**Causal audit.** To test whether a configuration's accuracy
 reflects the receiving agent using the specific transmitted content, rather
 than merely having *some* non-empty cache to attend over, we substitute the
 relayed KV cache with (i) an all-zero cache, (ii) a moment-matched random
@@ -374,7 +372,7 @@ for a formal equivalence test.
 | A | 56.0% | 69.1% | 8.6s | 144.35 MB |
 | B_int8 | 57.0% | 70.5% | 8.3s | 72.16 MB (2.00x) |
 | B_int4 (original) | 0.0% | 0.0% | 39.4s | 41.36 MB (4.00x) |
-| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | ~10s | ~36-39 MB (3.99x) |
+| **B_int4_kivi (fixed)** | **52.0%** | **64.1%** | 9.6s | 36.43 MB (3.99x) |
 | C | 43.0% | 57.8% | 10.0s | 104.16 MB |
 | D | 50.0% | 61.9% | 10.2s | 37.82 MB (2.76x) |
 | E | 9.0% | 17.4% | 19.8s | 35.63 MB |
@@ -428,7 +426,7 @@ behind `B_int4`'s original collapse, not one of several contributing
 factors.
 
 **Finding 5 — relayed KV demonstrably carries specific, real content, not
-merely a non-empty cache.** We ran the causal audit (Section [X]) on
+merely a non-empty cache.** We ran the causal audit (Section 3) on
 configuration `A` (uncompressed relay), n=50: `A` reaches 50.0% accuracy /
 64.0% F1; `A_audit_zeroed` and `A_audit_random` both collapse to 0.0%/0.0%;
 `A_audit_mismatched` (a real, different held-out question's cache) lands at
@@ -459,9 +457,10 @@ magnitude random noise resembles genuine signal and can actively misdirect
 attention rather than being ignored. We report this as a secondary,
 exploratory observation, not a claim we have isolated further.
 
-**We extended this audit to `D` (layer-selected + quantized) and `B_int8`
+**Finding 5, extended — the same ordering holds under compression.** We
+extended this audit to `D` (layer-selected + quantized) and `B_int8`
 (uniformly quantized), n=50 each, and the identical three-tier ordering
-replicates — more decisively than on uncompressed `A`.** `D`: 54.0%
+replicates — more decisively than on uncompressed `A`. `D`: 54.0%
 accuracy / 60.2% F1, versus `D_audit_zeroed` and `D_audit_random` both at
 0.0% accuracy (F1 0.0% and 0.2% respectively), versus `D_audit_mismatched`
 at 26.0%/32.2%. `B_int8`: 54.0%/68.0% versus zeroed/random both 0.0%/0.0%
@@ -634,7 +633,7 @@ than with a full one.
 **Partial reproduction of cited compression techniques.** Our rotation-based
 quantization implementation covers the core rotate-then-quantize mechanism
 of PolarQuant but omits TurboQuant's QJL bias-correction term. Our
-KIVI-inspired fix (Section [X]) omits the original method's group-wise
+KIVI-inspired fix (described above, Section 3) omits the original method's group-wise
 windowing over sequence chunks and its fp16 residual buffer for the most
 recent tokens — we implement full-sequence per-channel quantization only,
 the minimal change that isolates and addresses the specific RoPE-interaction
@@ -657,14 +656,12 @@ rotation-based quantization finding above), we chose not to ship an
 approximated version under time pressure, and report this as a scoping
 decision rather than a result.
 
-**`B_int4_kivi`'s accuracy is now confirmed at n=100 (52.0%/64.1%) — the
-n=10 pilot's 30.0%/39.4% was, as flagged at the time, not yet trustworthy;
-n=100 is the number to cite.** Its comparison against `D` (statistically
-indistinguishable, McNemar p=0.86) rests on a single n=100 run each; a
-replication run, or reporting the confidence interval directly rather than
-only the point estimate and p-value, would strengthen this claim further
-before treating "matches `D`" as a settled fact rather than the current
-best estimate.
+**Single-run comparisons.** `B_int4_kivi`'s comparison against `D`
+(statistically indistinguishable, McNemar p=0.86) rests on a single n=100
+run each, not a multi-seed or replicated evaluation. We report the
+confidence interval alongside the point estimate specifically so "matches
+`D`" is read as the current best estimate under one run, not a claim
+strengthened by replication we have not performed.
 
 **Compute constraints.** All experiments were run on a single RTX 4090.
 This bounded both the sample sizes reported above and the number of
