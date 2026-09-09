@@ -37,9 +37,41 @@
 > concrete example), not a quantified rate from an unvalidated manual
 > subset. `B_int4_kivi_full` and `B_int4_hybrid` both failed to improve on
 > the key-only fix — reported as strength (mechanism fully isolated to
-> keys). Orthogonal Backfill scoped out. Abstract still needs writing now
-> that the gate has passed — it's genuinely writable, nothing scientific
-> blocks it.
+> keys). Orthogonal Backfill scoped out.
+
+---
+
+## Abstract
+
+Efficient key-value (KV) cache relay between agents in multi-agent LLM
+pipelines rests on an assumption that is rarely tested directly: that some
+dimension of the cache — which transformer layer, which channel, which
+question's content — can be treated as interchangeable for the purpose of
+compression or reuse. We test this assumption across three structurally
+distinct axes within a sequential three-agent (Reasoner–Verifier–Finalizer)
+pipeline on multi-hop question answering, and find it false along all
+three. Layers dropped for compression are not safely approximated by their
+neighbors. Key vectors' channels cannot be freely mixed once rotary
+position embeddings impose position-dependent structure on them: a
+rotation-based quantization scheme that assumes otherwise collapses into
+out-of-distribution output, while a channel-respecting fix recovers
+accuracy statistically indistinguishable from our strongest layer-selection
+baseline, at higher compression and no calibration overhead. Most
+centrally, a causal audit — substituting the relayed cache with zeroed,
+random, or another question's real content — shows a receiving agent's
+accuracy depends on the specific transmitted content, not merely on
+receiving a non-empty cache: a three-tier ordering (real content >
+wrong-but-real content > no real content) that is statistically
+significant in every pairwise comparison and holds under compression, not
+only in an idealized uncompressed setting. We further show that a
+calibration procedure's own internal confidence does not predict which of
+two model architectures is safe to compress this way, and points in the
+wrong direction in our tests. We term this pattern **non-exchangeability**
+and position our contribution as a causally-grounded, cross-axis synthesis
+of several 2026 findings on compression-specificity and calibration-
+objective-dependence, reporting concretely where four published KV-relay
+efficiency techniques transfer to a new deployment setting and where they
+do not.
 
 ---
 
