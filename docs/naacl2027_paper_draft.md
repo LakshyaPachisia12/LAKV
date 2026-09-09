@@ -532,6 +532,18 @@ claim for compressed and layer-selected relay specifically, not only an
 idealized uncompressed baseline — the condition under which this technique
 would actually be deployed.
 
+**Finding 5, further extended — the same ordering replicates on a second
+task family.** A single confirmatory run on GSM8K (Qwen, n=50, `A` and the
+full causal audit on `A`) shows the identical pattern, more decisively
+still: `A` 90.0%, `A_audit_zeroed` 0.0%, `A_audit_random` 2.0%,
+`A_audit_mismatched` 28.0%, every pairwise comparison significant
+(p<0.0002). The same run's `D` matched `A`'s accuracy exactly (90.0%,
+McNemar p=1.0) — layer-selection was statistically free on this task,
+unlike on HotpotQA. One run, one model, one task addition — reported as
+suggestive that the content-identity claim is not an artifact of
+multi-hop QA specifically, not as a systematic cross-task study (see
+Limitations).
+
 **Finding 6 — headline result: a calibration signal's own confidence does
 not predict downstream layer-selection safety, and fails in the wrong
 direction.** We tested the most direct available proxy for whether our
@@ -646,22 +658,31 @@ point estimate specifically so "matches `D`" is read as the current best
 estimate under one run, not a claim strengthened by replication we have not
 performed.
 
-**Scope: two models, one task, greedy decoding.** We test Qwen2.5-7B-
-Instruct and Mistral-7B-Instruct-v0.3 (chosen for architectural diversity
-at comparable scale); whether findings — particularly layer-selection's
-architecture-dependence — extend to substantially larger or smaller models,
-mixture-of-experts architectures, or models outside this decoder-only,
-grouped-query-attention, RoPE lineage is untested. All results are on
-HotpotQA (distractor configuration); we did not re-run the study on GSM8K
-(which our pipeline also supports, its original target before this
-project's dataset pivot) or any other task family. This matters
-specifically for the offset-correction negative result: KVCOMM was
-evaluated on MMLU, GSM8K, and HumanEval, none of which is multi-hop QA, and
-whether the technique fares differently on the more homogeneous task family
-it was originally validated on remains open. All results additionally use
-greedy decoding (`do_sample=False`); we did not evaluate under sampling or
-self-consistency, which could interact differently with a degraded or
-compressed relayed context than with a full one.
+**Scope: two models, mostly one task, greedy decoding.** We test
+Qwen2.5-7B-Instruct and Mistral-7B-Instruct-v0.3 (chosen for architectural
+diversity at comparable scale); whether findings — particularly
+layer-selection's architecture-dependence — extend to substantially larger
+or smaller models, mixture-of-experts architectures, or models outside this
+decoder-only, grouped-query-attention, RoPE lineage is untested (Candidate
+model families for this extension are in progress at time of writing).
+Nearly all results are on HotpotQA (distractor configuration); we ran one
+n=50 confirmatory check on GSM8K (Qwen, `A`/`D`/full causal audit on `A`)
+and both headline findings replicated cleanly — `D` matched `A`'s accuracy
+exactly (McNemar p=1.0, more decisively free than on HotpotQA) and the
+causal audit's three-tier ordering held with every pairwise comparison
+significant (p<0.0002), larger effect sizes than the original HotpotQA
+run. This is one run on one additional task family, not a systematic
+multi-task study — we did not extend it to `B_int8`/`D`-family causal
+audits or Mistral, and report it as suggestive, not as evidence the claims
+generalize broadly across tasks. This matters specifically for the
+offset-correction negative result: KVCOMM was evaluated on MMLU, GSM8K, and
+HumanEval, none of which is multi-hop QA, and whether the technique fares
+differently on the more homogeneous task family it was originally
+validated on remains open (our own GSM8K check did not re-test `E`). All
+results additionally use greedy decoding (`do_sample=False`); we did not
+evaluate under sampling or self-consistency, which could interact
+differently with a degraded or compressed relayed context than with a full
+one.
 
 **No bit-packing: reported compression ratios reflect quantization
 granularity, not physical storage savings beyond bf16→8-bit.** Every

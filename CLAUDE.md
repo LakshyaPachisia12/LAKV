@@ -339,6 +339,36 @@ just underpowered noise (see finding 5 above).
    automated, exhaustive, or statistically tested classification — treat as
    a qualitative, exploratory finding, not a quantified rate.
 
+10. **Both headline findings replicate on GSM8K — the content-identity
+    claim is not HotpotQA-specific.** Ran `A`/`D`/full causal audit on `A`
+    (n=50, GSM8K, `results/run_20260909_120933`, Qwen, GSM8K calibration
+    profile): `A` 90.0%, `D` 90.0% (McNemar p=1.0, only 2 discordant pairs
+    — layer-selection is *more* free on GSM8K than on HotpotQA, where it
+    costs real accuracy); `A_audit_zeroed` 0.0%, `A_audit_random` 2.0%,
+    `A_audit_mismatched` 28.0%. **Every pairwise comparison in the
+    three-tier ladder is significant** (`A` vs zeroed/random/mismatched:
+    p<0.0001 each; mismatched vs zeroed: p=0.0001; mismatched vs random:
+    p=0.0002) — larger effect sizes and tighter p-values than the original
+    HotpotQA `A` audit. Checked raw `raw_answer` text before trusting this:
+    `A_audit_random`'s garbage output is the identical code-fragment/
+    mixed-language-noise signature already documented for HotpotQA, not a
+    parsing bug — with a bonus qualitative detail, one example drifts
+    mid-generation into reciting a clean, correct solution to "Janet's
+    ducks" (the canonical GSM8K few-shot exemplar, which the Reasoner's own
+    system prompt still legally contains — only the *inter-agent* KV is
+    replaced with noise), i.e. a garbage cache can make the model regress
+    toward reciting memorized exemplar content instead of engaging with the
+    real question. Anecdotal (one example), not claimed as a general
+    pattern. **Compression-ratio caveat: this run started at 12:09, the
+    int4 byte-accounting fix (see finding 5 above) landed at 12:40 — `D`'s
+    reported 2.76x/10.42 MB predates the fix. Corrected: ~14.37 MB, ~2.00x
+    self-referential, ~2.74x vs `A`** — close to HotpotQA's own corrected
+    ~2.77x, suggesting this ratio is largely task-independent (driven by
+    which layers get dropped, not by task content). Partially resolves the
+    "single task domain" Limitation — a single n=50 run on one additional
+    task, not a full generalization claim, but a real, statistically solid
+    one.
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
