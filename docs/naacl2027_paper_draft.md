@@ -329,7 +329,14 @@ across architecture, not just within one model family — Mistral-7B-
 Instruct-v0.3 (Jiang et al., 2023, bf16), chosen for its architectural
 differences (distinct layer count, attention head configuration, and
 tokenizer) at comparable parameter scale. Both are decoder-only
-transformers using grouped-query attention and RoPE.
+transformers using grouped-query attention and RoPE. A third model,
+Qwen3-8B (Qwen Team, 2025, bf16), is evaluated on configurations `A` and
+`D` only (n=50) specifically to extend the architecture-dependence check
+in Finding 3 and the correlation in Finding 6 to a third data point, not
+to replicate the full causal-audit suite. A fourth candidate,
+Phi-3.5-mini-instruct, was evaluated and dropped after isolating a
+pre-existing LongRoPE limitation unrelated to our pipeline (see
+Limitations).
 
 **Compression configurations.** `B_int8`/`B_int4` apply uniform per-head
 min-max quantization to every transmitted layer's key and value tensors
@@ -438,9 +445,16 @@ points relative to uncompressed relay (p=0.0001). On Qwen2.5-7B-Instruct
 not-yet-significant cost (p=0.34) — the cross-model claim does not rest on
 that reaching significance, though: even Qwen's most generous uncertainty
 bound (F1 CI upper +16.4 points) is under half of Mistral's confirmed
-collapse. Consistent with prior work finding layer redundancy
-architecture- and protocol-dependent, not a fixed property of a given
-compression ratio.
+collapse. A third model, Qwen3-8B (n=50), sharpens rather than complicates
+this contrast: `D` numerically edges out `A` (56.0% vs. 54.0%), but this
+is noise, not a real effect — McNemar p=1.0 on only 3 discordant pairs out
+of 50, F1 bootstrap CI crossing zero. Read correctly, this is a second
+model, after Qwen2.5, where layer-selection's cost is statistically
+indistinguishable from zero, against Mistral's single confirmed,
+significant collapse — evidence for architecture-dependence specifically,
+not for "layer-selection is usually costly" or "usually free." Consistent
+with prior work finding layer redundancy architecture- and
+protocol-dependent, not a fixed property of a given compression ratio.
 
 **Finding 4 — `B_int4`'s fixed variant matches our strongest
 layer-selection configuration's accuracy at genuinely higher compression
@@ -548,9 +562,17 @@ is acted upon (Finding 3). This rules out a noisier or less-confident
 calibration signal for Mistral as the explanation for Finding 3, and
 supports a sharper one: the calibration objective can be equally or more
 internally confident while being less reliable, undetectable from the
-calibration output alone. This is a single comparison across two models,
-not a validated general predictor (see Limitations), but a real, falsified
-hypothesis test, not an assumed conclusion.
+calibration output alone. Adding Qwen3-8B as a third point (separation
+0.591, between Qwen2.5's and Mistral's, pairing with `D`'s near-zero cost
+from Finding 3) lets us correlate tier-separation against degradation
+directly rather than compare only two models qualitatively: Pearson
+r=0.619, Spearman r=0.500 across the three. We report this only as a
+trend consistent with the two-model finding, not as validating evidence —
+n=3 is barely more informative than n=2, and we would not cite this
+correlation as meaningful without at least two or three further model
+families (see Limitations for why a fourth did not make it into this
+draft). This remains a real, falsified hypothesis test, not an assumed
+conclusion, but not yet a validated general predictor either.
 
 **Finding 7 — architecture-dependent layer-selection failures differ in
 kind, not only in rate.** Beyond the accuracy gap already reported (Finding
@@ -668,18 +690,37 @@ point estimate specifically so "matches `D`" is read as the current best
 estimate under one run, not a claim strengthened by replication we have not
 performed.
 
-**Scope: two models, mostly one task, greedy decoding.** We test
-Qwen2.5-7B-Instruct and Mistral-7B-Instruct-v0.3 (chosen for architectural
-diversity at comparable scale); whether findings — particularly
-layer-selection's architecture-dependence — extend to substantially larger
-or smaller models, mixture-of-experts architectures, or models outside this
-decoder-only, grouped-query-attention, RoPE lineage is untested (Candidate
-model families for this extension are in progress at time of writing;
-one methodological risk worth flagging in advance: "When Does Latent
-Communication Pay?" reports at least one model pairing where the receiver
-could not consume a relayed cache at all, i.e. cross-architecture relay
-can fail at the precondition stage, not just on accuracy — a null result
-under those conditions would itself be informative, not a bug). All of
+**Scope: three models (one only partially), mostly one task, greedy
+decoding.** We test Qwen2.5-7B-Instruct and Mistral-7B-Instruct-v0.3
+(chosen for architectural diversity at comparable scale) on the full
+suite of configurations, and Qwen3-8B on `A`/`D` only (n=50), specifically
+to extend Finding 3's architecture-dependence claim and Finding 6's
+tier-separation correlation to a third point — not to replicate the
+causal audit or compression-fix findings on a third architecture. A
+fourth candidate, Phi-3.5-mini-instruct, was evaluated and dropped: after
+fixing two real bugs in how our pipeline hands decode off to
+`model.generate()` under non-default RoPE scaling, the model still failed
+to produce coherent output once the pipeline's cumulative relayed context
+crossed roughly 4,096 tokens — the model's `original_max_position_
+embeddings`. We isolated this to a pre-existing limitation of the
+model/library combination itself, not our pipeline: plain, unmodified
+`model.generate()`, with no relay, injection, or pipeline code involved at
+all, degrades into the identical repetition-garbage failure signature once
+forced past the same threshold on a single, ordinary generation call.
+Since HotpotQA's per-hop contexts (1,500–2,500+ tokens) routinely push a
+three-agent relay chain's cumulative cache past this threshold, this rules
+Phi-3.5-mini-instruct out for this pipeline regardless of further
+pipeline-side fixes, rather than indicating a bug we could still close
+before submission. Whether findings — particularly layer-selection's
+architecture-dependence — extend to substantially larger or smaller
+models, mixture-of-experts architectures, or models outside this
+decoder-only, grouped-query-attention, RoPE lineage remains largely
+untested beyond this one additional data point (one further methodological
+risk worth flagging: "When Does Latent Communication Pay?" reports at
+least one model pairing where the receiver could not consume a relayed
+cache at all, i.e. cross-architecture relay can fail at the precondition
+stage, not just on accuracy — a null result under those conditions would
+itself be informative, not a bug). All of
 our own architecture variation is *between* pipeline runs (the same model
 family fills every agent role within a given run); whether a single
 pipeline mixing architectures across agent roles — a Qwen Reasoner
