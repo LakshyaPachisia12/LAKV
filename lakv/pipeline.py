@@ -1076,10 +1076,23 @@ class LAKVPipeline:
         next_logits = out.logits[:, -1, :]
         cur_pos = position_start + prompt_len
 
-        if position_offset == 0:
+        if position_offset == 0 and not self._uses_nondefault_rope_scaling():
             # Once primed, running_cache's physical length already equals
             # the RoPE position the next token needs (no offset trick in
             # play) — generate() can take over for the rest of decode.
+            #
+            # Guarded the same way as _generate()'s matching branch: under
+            # LongRoPE (Phi-3.5-mini), generate() can't reconstruct true
+            # absolute position relative to original_max_position_embeddings
+            # across an externally-primed cache. This method (used for the
+            # Reasoner/Verifier hops, not just the Finalizer) has the exact
+            # same fast path and was missed by the original fix — confirmed
+            # via a real rerun (2026-09-10) that still produced 0.0%/0.0%
+            # after _generate() alone was patched, because whichever hop's
+            # cumulative sequence length first crosses
+            # original_max_position_embeddings (4096) is the one that
+            # breaks, and that's not always the Finalizer — it depends on
+            # how long the accumulated context is by each hop.
             #
             # CORRECTION to the original version of this comment: omitting
             # attention_mask here does NOT avoid the crash — generate() auto-
