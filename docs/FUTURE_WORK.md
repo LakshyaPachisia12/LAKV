@@ -9,70 +9,139 @@
 
 ---
 
-## 1. Heterogeneous-architecture KV relay (Mistral ↔ Qwen3-8B)
+## 1. Heterogeneous-architecture KV relay — REVISED 2026-09-11 after a deeper
+## literature dive changed the picture substantially. Read this whole
+## section before starting anything here; the plan below supersedes an
+## earlier, now-outdated version of this idea.
 
-**The idea:** relay a KV cache between two *different* model architectures
-within one live pipeline (e.g. a Qwen3-8B Reasoner handing its cache to a
-Mistral Finalizer), instead of the same model filling every agent role.
-KVCOMM itself names this as unexplored ("agents with identical
-architectures but different weights," "different attention formulations").
-Our own non-exchangeability framing predicts this should fail — a genuine
-fourth axis (architecture identity) beyond depth/position/content-identity.
+**Original framing (now corrected):** the first pass at this idea was "pick
+any two models with matching KV shape (we found Mistral-7B-v0.3 ↔
+Qwen3-8B), naively inject one's raw KV into the other, see what happens."
+That framing assumed this was a low-crowding, largely unexplored gap — a
+deeper search found that's no longer true.
 
-**Why this specific pair:** checked real model configs — Mistral-7B-v0.3
-and Qwen3-8B happen to share identical KV tensor shapes (8 KV heads × 128
-head_dim, same hidden size) and identical RoPE parameterization (plain
-RoPE, theta=1,000,000, no scaling — ruled out as a confound). Shape
-compatibility is a coincidence, not something engineered; it's what makes
-this pair uniquely testable without building a learned bridge network.
+**What a deeper search found (2026-09-11) — this is now an actively
+contested area, not an open gap:**
+- **["Cross-Model KV Cache Transfer in LLM Families: A Closed-Form Linear
+  Mapping for Prefill Reuse"](https://arxiv.org/abs/2608.03893)** (Heo,
+  Shafipour, Zhao, Golub, Kamani, Borkar, Chandran, Zardoshti, Darvish
+  Rouhani) — **this is the exact "same family, different size" idea,
+  already done.** Requires source/target to share KV head count and
+  per-head dimension (the same shape constraint we independently found).
+  Method: per-head closed-form ridge regression, top-k predictive source
+  layers per target layer, RoPE stripped from keys before fitting so the
+  map is position-free, fit on 500 calibration sequences. Tested six pairs
+  across three families, including **Qwen3-14B→32B specifically**.
+  Results: 73–98% of standalone-prefill accuracy retained on four pairs,
+  **sharp degradation on two** — and a nonlinear MLP variant recovered up
+  to +37pp on the failures. Runs 2.7–25x faster than re-prefill.
+- **"A Universal Context-Reuse Layer for Cross-Model KV Sharing"** and
+  **"CacheBridge: Efficient Cross-Model KV Cache Transfer"** — two more
+  papers on the same problem, same few weeks.
+- **Q-KVComm** — same problem, framed explicitly as multi-agent
+  communication (our exact framing) with a "heterogeneous model
+  calibration system" for cross-size KV translation.
+- **[Latent Briefing](https://labs.ramp.com/research/latent-briefing-kv-cache/)**
+  (Ramp Labs) — the closest real analog to "RLM but exchanging KV cache
+  instead of text": Claude Sonnet 4 orchestrator + Qwen-14B worker,
+  real accuracy gains and real token savings. **Important precision, not a
+  minor detail:** this is NOT raw cross-model KV tensor injection (Claude
+  and Qwen don't share a tokenizer/embedding space, so that's not even
+  possible) — it uses the orchestrator's own attention patterns to select
+  *which tokens* matter, then passes that selected content across, still
+  fundamentally token-based at the model boundary. It's "RLM with a much
+  smarter context filter," not literal shared KV state. Worth being
+  precise about this distinction if citing it.
 
-**Directional constraint:** only Qwen3-8B (36 layers) → Mistral (32
-layers) works cleanly — inject Qwen3-8B's first 32 layers' KV into
-Mistral's full-depth forward pass. The reverse needs a mixed-depth cache
-(32 real layers + 4 empty ones) that a standard HF forward pass can't
-consume uniformly.
+**What this means for us, concretely:**
+1. **Don't run the naive version as originally planned.** Raw injection
+   without a learned mapper is implicitly already shown not to work well
+   in 2608.03893 (that's the entire reason a closed-form mapper exists) —
+   running it now would reproduce an already-published result with less
+   rigor than the people who already published it.
+2. **The real, still-open angle:** none of the four papers above apply
+   anything like our causal-audit methodology. They all report *downstream
+   accuracy retention* — does the receiver perform well — not *causal
+   content-dependence* — does the receiver's output actually depend on the
+   specific transferred content, the way our `causal_audit.py` methodology
+   tests for same-model relay. **Does a "working" cross-model bridge (73–98%
+   retention, per 2608.03893) pass the same three-tier causal ordering
+   (real > mismatched > zeroed/random) our same-model relay does, or does
+   the learned mapper just produce plausible-sounding output regardless of
+   whether the transferred content was real?** That's a genuinely different
+   question nobody in this set of papers is asking, and it builds directly
+   on both bodies of work — extends 2608.03893's transfer method, extends
+   our own causal-audit methodology — rather than either.
 
-**Plan (standalone diagnostic script, not a `LAKVPipeline`/`evaluator.py`
-change):**
-1. **VRAM note:** the two models don't fit in 24GB simultaneously (14.5 +
-   16.4 GB). Sequential design required: load Qwen3-8B, run the Reasoner
-   role on ~15–20 held-out HotpotQA questions, capture each KV cache
-   (truncated to 32 layers) to CPU, unload. Then load Mistral, inject each
-   saved cache into the Finalizer role, generate, unload.
-2. Reuse `LAKVPipeline._to_tuple()` for cache conversion; replicate the
-   exact `position_ids`/`attention_mask` construction `_generate()`
-   already uses (get this wrong and you've introduced a second bug on top
-   of the one you're testing).
-3. Baselines on the same questions: Mistral-alone, Qwen3-8B-alone.
-4. Analysis is qualitative first (n=15–20, not a statistical claim) —
-   classify against vocabulary already established: garbled-but-English
-   (`A_audit_zeroed`-like), pure noise (`A_audit_random`-like),
-   coherent-but-wrong (`A_audit_mismatched`-like), or something new.
+**A concrete, immediately-testable pairing, found by re-checking our own
+models' shapes:** Qwen3-8B (already in this study, already validated
+end-to-end after the LongRoPE fix), Qwen3-4B, and Qwen3-1.7B **all share
+identical KV shape** (8 KV heads × 128 head_dim) — only layer count
+differs (36/36/28). This is the real, RLM-motivated pairing (same family,
+different capability tier, matching what an actual cost-efficient
+delegation system would want), immediately testable with our existing
+infrastructure with zero shape-compatibility engineering needed for the
+*naive* pass, before any learned mapper is built.
 
-**Known limitations, going in:**
-- Directional only (see above) — can't claim "cross-architecture relay"
-  broadly, only this one direction for this one pair.
-- Truncation confound: dropping Qwen3-8B's last 4 layers by *position*,
-  not calibrated importance. Deeper layers are usually considered *more*
-  semantically important, not less — a failure could be "architecture-
-  incompatible" or partly "wrong end truncated." Can't fully separate
-  those without also running a calibration-informed truncation as a
-  control.
-- This is the single riskiest kind of code in this project's history —
-  manual KV injection with hand-built position IDs. `E`'s offset
-  correction needed four separate bug fixes within *one* architecture;
-  cross-architecture injection is a genuinely novel path with zero
-  precedent here. Budget real debugging time, not just the write time.
-- Small-n qualitative result only, even in the best case — a real
-  statistical version would be a second, larger follow-up.
+**Revised step-by-step plan:**
+1. **Naive same-shape, same-family injection first** (Qwen3-8B →
+   Qwen3-4B or Qwen3-1.7B, no learned mapper), but run it through our
+   causal-audit lens, not just accuracy: does the failure look like
+   `A_audit_zeroed` (garbled-but-English), `A_audit_random` (pure noise,
+   worse than zeroed), or something distinct from either — same-family
+   same-shape naive injection failing differently than cross-family
+   naive injection would itself be a new, reportable data point, since
+   nobody's characterized *that* failure mode specifically.
+2. **If step 1 collapses cleanly** (expected, per 2608.03893's implicit
+   finding): build a lightweight version of their ridge-regression mapper
+   scoped just to this one pair — real additional engineering (calibration
+   data, RoPE-stripping, per-layer top-k source selection), a bigger lift
+   than the original "diagnostic script" framing assumed.
+3. **Once a working bridge exists (naive or mapped), run the full causal
+   audit through it** — zeroed/random/mismatched substitution *after* the
+   bridge, not instead of it. This is the actual contribution: validating
+   (or debunking) whether cross-model KV transfer preserves genuine
+   content-dependence, using a methodology the existing transfer-paper
+   literature doesn't apply.
 
-**Estimated cost:** ~1–2 hours to write carefully, then well under an
-hour of GPU time per attempt — but debugging this kind of code rarely
-takes one attempt.
+**Known limitations, still true:**
+- Directional constraint unchanged (bigger model's early layers → smaller
+  model, not the reverse — a standard forward pass can't consume a
+  mixed-depth cache).
+- This is still the riskiest kind of code in this project's history
+  (manual KV injection, hand-built position IDs) — now compounded by
+  needing a real learned-mapping component if step 1 fails as expected,
+  not just a diagnostic script.
+- Small-n qualitative result in the naive-injection phase; the
+  causal-audit-of-a-bridge phase would need its own proper n and stats,
+  a genuinely bigger project than originally scoped.
+
+**Estimated cost:** the naive pass is still ~1–2 hours to write + well
+under an hour of GPU time (unchanged). The full plan (through step 3) is
+meaningfully bigger than the original one-diagnostic-script estimate —
+budget for it as a real follow-up project, not an afternoon.
 
 ---
 
 ## 2. Topology variation (fan-in / LatentMAS-style concatenation)
+
+**Relationship to RLM and to Idea #1, clarified:** RLM's literal
+architecture (root LM calling sub-LMs over *text*, no KV cache exchanged
+at all) is not a form of this — see §4. But an "RLM-shaped" system with
+KV cache substituted for RLM's text-based delegation — one orchestrator,
+several workers, hierarchical rather than linear — collapses exactly into
+this section, specifically the fan-in case. And if that RLM-shaped system
+is meant to capture *why* RLM's structure is actually useful (cheap
+worker models under an expensive orchestrator, not same-model-everywhere),
+then it needs Idea #1's heterogeneous-size relay as a prerequisite, not as
+an independent, optional extra — same-model fan-in (this section, cheap,
+safe) and RLM-motivated fan-in (needs Idea #1 working first) are two
+different-cost versions of the same topology idea. Sequence accordingly:
+test heterogeneous compatibility (Idea #1) in isolation before building
+any hierarchical wiring on top of it — if the communication channel
+between differently-sized workers doesn't carry real information, the
+topology built on top of it is moot regardless of how well the wiring
+itself works.
 
 **The idea:** every result in this paper is on a sequential, one-hop-at-a-
 time chain (Reasoner → Verifier → Finalizer). Two other topologies exist
