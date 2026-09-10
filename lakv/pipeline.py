@@ -624,6 +624,36 @@ class LAKVPipeline:
             return self.model.config.rope_parameters.get('rope_theta', 1_000_000.0)
         return 1_000_000.0
 
+    def _uses_nondefault_rope_scaling(self) -> bool:
+        """True for models whose RoPE frequency isn't a flat theta -- e.g.
+        Phi-3.5-mini's LongRoPE (rope_type='longrope'), which switches
+        between a 'short_factor' and 'long_factor' scaling array depending
+        on whether the true absolute sequence position has crossed
+        original_max_position_embeddings.
+
+        Found the hard way: _generate()'s position_offset==0 fast path primes
+        the cache with one manual forward() call, then hands decode off to
+        model.generate(), which infers the next position from
+        past_key_values' length alone. That's fine for a flat theta (Qwen2.5/
+        Mistral/Qwen3-8B all have rope_type='default' and this path works
+        correctly for all three) -- but LongRoPE needs the true absolute
+        position relative to that threshold, which generate() has no way to
+        reconstruct across a cache it didn't build from scratch itself. On
+        Phi-3.5-mini this silently produced pure word-salad output from the
+        Finalizer (the only step that goes through this fast path) while the
+        Reasoner/Verifier, which use _generate_intermediate()'s fully manual
+        per-token loop instead, stayed completely coherent -- direct
+        real-model confirmation the fast path specifically is what breaks,
+        not KV relay in general. Any model with non-default rope scaling
+        should skip the fast path and use the same manual loop the
+        position_offset != 0 branch already falls back to.
+        """
+        rp = getattr(self.model.config, 'rope_parameters', None)
+        if rp is not None:
+            return rp.get('rope_type', 'default') != 'default'
+        rope_scaling = getattr(self.model.config, 'rope_scaling', None)
+        return rope_scaling is not None
+
     # ── cache conversion helpers ──────────────────────────────────────────
 
     @staticmethod
@@ -844,7 +874,7 @@ class LAKVPipeline:
         next_logits   = out.logits[:, -1, :]         # logits for the next token
         cur_pos = position_start + prompt_len
 
-        if position_offset == 0:
+        if position_offset == 0 and not self._uses_nondefault_rope_scaling():
             # position_start == cache_seq_len exactly (no RoPE-offset trick in
             # play), so running_cache's physical length already equals the
             # RoPE position the next token needs. generate() can take over
