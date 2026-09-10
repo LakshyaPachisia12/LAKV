@@ -222,10 +222,26 @@ Multi-Agent LLMs" (Cheng et al., 2026, arXiv preprint) proposes replacing
 relayed KV with mismatched, zeroed, or moment-matched-random substitutes to
 test whether accuracy is causally attributable to the specific transmitted
 content rather than to the receiver simply having a non-empty cache — a
-methodology we adopt directly for our own causal audit (Section 3). We
-extend this tradition along an axis neither paper covers: cross-architecture
-generalization, treating "does the same technique, faithfully reproduced,
-transfer to a different model family" as itself a target of audit.
+methodology we adopt directly for our own causal audit (Section 3). Cheng et
+al. already sweep three model families and five checkpoints for this audit,
+so we do not claim cross-architecture testing of the causal audit itself as
+novel; our own sweep instead applies architecture-generalization testing to
+a different axis — layer-selection's accuracy cost (Section 4, Finding 3) —
+which neither Cheng et al. nor "Do Latent Channels Actually Communicate? A
+Causal Audit of Latent Multi-Agent LLM Communication" (Zhang and Emu, 2026,
+arXiv preprint), a concurrent causal-audit paper using a five-metric
+decomposition (encoded-sender-information, receiver-sensitivity,
+content-value, and cross-agent-value measurements) rather than our
+zeroed/random/mismatched ladder, addresses. Notably, Cheng et al.'s own
+"natural regime" (receiver capable of the task without relay) finds
+near-null true-vs-mismatched effects on GSM8K and ARC-Challenge across most
+Qwen3 checkpoints — the opposite of what we find on GSM8K and HotpotQA with
+Qwen2.5-7B-Instruct (Section 4, Findings 6 and 10), where true-vs-mismatched
+gaps are large and significant in every comparison. We do not yet know
+whether this reflects their LatentMAS-style compressed latent-thought relay
+versus our full/compressed literal KV relay, their single sender-receiver
+hop versus our three-hop sequential chain, or a genuine task-dependent
+effect — flagged here as an open discrepancy rather than resolved.
 
 **Layer redundancy is not universal.** "No Free Swap: Protocol-Dependent
 Layer Redundancy in Transformers" (Garcia, 2026, arXiv preprint) finds that
@@ -596,7 +612,30 @@ adversarial fan-in topology instead (Section 2), and LatentMAS collaborates
 via layer-wise KV concatenation across a different multi-agent structure
 than our hop-by-hop handoff; whether the same three-tier causal ordering
 holds under a fan-in or concatenation-based topology is a natural, cited
-extension we did not attempt, not one we found and characterized.
+extension we did not attempt, not one we found and characterized. Since
+writing this, we built and mechanically validated (unit-tested on synthetic
+tensors, not yet run on a real model) a prototype extending our relay
+mechanism to exactly this fan-in setting: a static, depth-1 decomposition
+of HotpotQA's ten passages across two child agents, whose independently-
+computed KV caches are merged via a RoPE position-shift before an
+aggregator attends over them, contrasted against a text-relay baseline that
+mirrors Recursive Language Models' (Zhang, Kraska, and Khattab, arXiv
+2512.24601) actual mechanism of discarding a sub-call's computed
+representation and relaying only a token-limited text answer. We confirmed
+this gap is real rather than assumed: the closest adjacent work we found,
+"Recursive Models for Long-Horizon Reasoning" (arXiv 2603.02112), discusses
+KV-cache-based return values only as an unimplemented assumption for a
+theoretical speedup bound, and its real experiments discard a child call's
+reasoning the same way RLM does. RecursiveMAS (arXiv 2604.25917) is the
+closest published system that relays something other than text
+recursively, but passes a single trained, adapter-compressed last-layer
+hidden state through a sequential agent loop, not a full multi-layer KV
+cache through a parallel fan-in decomposition, and requires fine-tuning
+lightweight link modules rather than working training-free as our relay
+mechanism throughout this paper does. Whether the fan-in merge we
+mechanically validated produces coherent, let alone accurate, output on a
+real model is unresolved at time of writing — reported here as a scoped,
+in-progress extension, not a result.
 
 **Single-process, single-GPU evaluation.** Every experiment runs within one
 Python process on one RTX 4090: no `KVMessage` is ever serialized or
