@@ -127,7 +127,7 @@ budget for it as a real follow-up project, not an afternoon.
 
 **Relationship to RLM and to Idea #1, clarified:** RLM's literal
 architecture (root LM calling sub-LMs over *text*, no KV cache exchanged
-at all) is not a form of this — see §4. But an "RLM-shaped" system with
+at all) is not a form of this — see §5. But an "RLM-shaped" system with
 KV cache substituted for RLM's text-based delegation — one orchestrator,
 several workers, hierarchical rather than linear — collapses exactly into
 this section, specifically the fan-in case. And if that RLM-shaped system
@@ -208,7 +208,96 @@ machinery with it swapped in.
 
 ---
 
-## 4. RLM (Recursive Language Models) — clarified, not a fit, don't re-litigate
+## 4. KV-cache trust/health probe — detect a bad relay before generating
+
+**The idea (from user, checked against real literature 2026-09-11):**
+instead of only finding out a relay was corrupted *after* generation (by
+reading a garbled or wrong answer), train a lightweight classifier that
+looks at a relayed KV cache's own statistics — before the receiving agent
+generates anything — and predicts whether it's genuine content or one of
+our substituted conditions (zeroed / random / mismatched). A "logical
+consistency check" on the cache itself, not on its decoded output.
+
+**Why this is a real, checked idea, not a reinvention:** the general
+technique (probe a model's internal states for a quality/truthfulness
+signal, bypassing the need to decode first) is well-established —
+**FACTCHECKMATE** trains a 2-layer MLP + sigmoid on hidden states to
+preemptively flag hallucination; **SAPLMA** does linear probing on hidden
+states for true/false classification; **MultiHaluDet**, **ICR Probe**, and
+**Prompt Embedding Probes (PEP)** are all 2026 variants of the same
+family. So the *methodology* isn't novel — using it is a safe, established
+pattern to build on, not something to invent from scratch.
+
+**Where the real, checked gap is:** ["When Latent Agents Lie: KV-Cache
+Integrity in Multi-Agent LLM Collaboration"](https://arxiv.org/abs/2606.28958)
+— the exact adversarial-fan-in paper we already cite — explicitly states
+its own verifier does **not** inspect raw KV state directly: "a verifier
+sits between specialists and the coordinator, scoring visible
+commitments... while raw KV state remains outside its inspection path."
+That's a named limitation in the closest directly-relevant published
+work, not a gap we're inventing. Separately, ["KV-PRM: Efficient Process
+Reward Modeling via KV-Cache Transfer"](https://arxiv.org/html/2607.09153)
+shows the KV cache itself carries "strictly greater information capacity
+than text" for scoring trajectory quality, at lower compute than
+re-encoding — direct evidence this kind of cache-level scoring is both
+possible and cheap.
+
+**Why it's lower-risk than every other idea in this file:** it touches no
+model wiring, no cross-model shape compatibility, no new pipeline
+topology — just feature logging plus a small classifier. It also reuses
+data we conceptually already have: every causal-audit run this project
+has done comes with ground-truth labels (real / zeroed / random /
+mismatched) built in.
+
+**What's actually missing, concretely:** value-level KV statistics.
+`causal_audit.py`/`hop_stats` currently logs shape/size metadata
+(byte counts, layer counts) but not statistics of the actual tensor
+values (mean, variance, norm, or an entropy-like signal) at the point of
+substitution. That's the one real gap to close before this is buildable —
+a small, scoped logging addition, not new architecture.
+
+**Step-by-step plan:**
+1. Add cheap per-hop feature logging to `apply_causal_audit()` (or just
+   after decompression, before generation): `k.mean()`, `k.std()`,
+   `k.norm()`, same for `v`, maybe per-layer rather than pooled across all
+   layers — computed on tensors already in memory, no extra forward pass.
+2. Run a small batch of existing-style causal-audit configs (`A`,
+   `A_audit_zeroed`, `A_audit_random`, `A_audit_mismatched`, ideally across
+   the models already in this study) with the new logging on, purely to
+   collect labeled feature vectors — real accuracy/generation is a
+   byproduct here, not the point of this particular run.
+3. Train a simple probe (logistic regression or a small MLP, following
+   SAPLMA/FACTCHECKMATE's pattern) on those feature vectors against the
+   four ground-truth labels.
+4. Evaluate: can the probe distinguish real from fake *before* any
+   generation happens? If yes, this is both a mechanistic finding (real
+   vs. fake content has a detectable statistical signature in KV space,
+   which would explain *why* our causal audit's downstream accuracy
+   differences exist) and a practical one (a cheap early-warning check
+   deployable ahead of generation).
+
+**Known limitations, going in:**
+- Feature choice matters a lot and isn't obvious — pooled mean/std/norm
+  might not carry enough signal; may need per-layer or per-head features,
+  which multiplies the feature space and could need more labeled examples
+  than existing audit runs provide.
+- A probe trained on our specific zeroed/random/mismatched conditions
+  might not generalize to *other* kinds of corruption (e.g., a real
+  adversarial perturbation, per Idea #3's "real version") — it would be
+  detecting *our specific audit conditions*, not corruption in general,
+  unless explicitly tested against other corruption types too.
+- Still needs its own honest evaluation split (don't train and test on
+  the same run/questions) and probably its own small statistical
+  treatment (accuracy, precision/recall per class) rather than eyeballing
+  it.
+
+**Estimated cost:** genuinely the lowest-risk idea in this file — a
+logging addition plus a small, fast, CPU-trainable classifier. The
+GPU cost is just re-running configs already built and validated.
+
+---
+
+## 5. RLM (Recursive Language Models) — clarified, not a fit, don't re-litigate
 
 Came up repeatedly this session; settling it here so it doesn't need
 re-deriving. RLM (Zhang & Kraska, MIT CSAIL, arXiv:2512.24601) is a root
@@ -222,7 +311,7 @@ version of this line of thinking.
 
 ---
 
-## 5. AAMAS reframing — what it would actually take (not just "add RLM")
+## 6. AAMAS reframing — what it would actually take (not just "add RLM")
 
 Explored directly: would any of the ideas above, especially RLM-flavored
 ones, make this work a good fit for AAMAS (A\*, the actual multi-agent-
@@ -259,7 +348,7 @@ regardless of fit.
 
 ---
 
-## 6. Conference venue reference (researched 2026-09-10/11, CORE2023 + live dates)
+## 7. Conference venue reference (researched 2026-09-10/11, CORE2023 + live dates)
 
 Verified directly against the CORE portal (http://portal.core.edu.au/conf-ranks/)
 and each venue's own site — not secondhand summaries. Re-verify dates
@@ -272,7 +361,7 @@ closer to any actual submission, especially the "unconfirmed" ones below.
 | **EMNLP** | A\* | Nov 2027 | Mexico / Central America | Direct Feb 5, 2027; ARR commit Mar 12, 2027 |
 | **ACL** | A\* | Aug 17–22, 2027 | TBA | Direct Apr 25, 2027 |
 | **EACL** | A | Mar 9–14, 2027 | Athens, Greece | Closed (was Aug 3, 2026) |
-| **AAMAS** | A\* | May 3–7, 2027 | Hanoi, Vietnam | Oct 8, 2026 — see §5 above |
+| **AAMAS** | A\* | May 3–7, 2027 | Hanoi, Vietnam | Oct 8, 2026 — see §6 above |
 | **ICLR** | A\* | Apr 26–30, 2027 | Moscone Center, San Francisco | Sept 25, 2026 |
 | **ICML** | A\* | ~Jul 11–17, 2027 (unconfirmed) | Not yet announced | Jan 22, 2027 |
 | **NeurIPS** | A\* | Dec 2027 | Europe (city TBA) | May 21, 2027 |
@@ -291,7 +380,7 @@ longer-horizon aim once there's real reviewer feedback to revise against.
 COLM worth a serious parallel look at that same point. The general-ML
 A\* venues (NeurIPS/ICML/ICLR/AAAI/IJCAI) and AAMAS: hold off — not a
 good match for this paper's current shape without the kind of reframing
-or restructuring described in §5.
+or restructuring described in §6.
 
 ---
 
@@ -301,6 +390,6 @@ Nothing above is scoped for before the Oct 12, 2026 submission. When
 picking this back up: re-check whether the model/library landscape has
 moved (new transformers versions, new model releases that might make
 heterogeneous relay or topology variants easier or harder), re-verify any
-"unconfirmed" dates in §6, and re-read `CLAUDE.md`'s "Research-extensions
+"unconfirmed" dates in §7, and re-read `CLAUDE.md`'s "Research-extensions
 findings" section for the current state of what's actually confirmed
 before building on top of it.
