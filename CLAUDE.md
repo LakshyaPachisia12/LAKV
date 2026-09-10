@@ -423,9 +423,42 @@ just underpowered noise (see finding 5 above).
     slightly *beats* A, within noise). Pearson r=0.619, Spearman r=0.500.
     **Trending in the predicted direction, but n=3 is barely more
     informative than n=2 — do not cite this r value as meaningful yet.**
-    Needs at least 2-3 more model families (Phi-3.5-mini-instruct next,
-    ungated and small; Llama-3.1-8B-Instruct pending gated access) before
-    this correlation means anything statistically.
+    Needs at least 2-3 more model families (Llama-3.1-8B-Instruct pending
+    gated access; Phi-3.5-mini-instruct tried and dropped, see finding 12
+    below — pick a different fourth model) before this correlation means
+    anything statistically.
+
+12. **Phi-3.5-mini-instruct dropped as a model candidate — not a pipeline
+    bug, a genuine LongRoPE limitation.** Two real pipeline bugs were found
+    and fixed first (both correct, both kept): (a) `_generate()`'s
+    `position_offset==0` fast path handed decode off to `model.generate()`,
+    which can't reconstruct true absolute position across an externally-
+    primed cache under LongRoPE (fixed via `_uses_nondefault_rope_scaling()`
+    gating); (b) the identical unguarded fast path also existed in
+    `_generate_intermediate_with_hidden()` (Reasoner/Verifier hops), missed
+    by the first fix — a real rerun after fix (a) alone still produced
+    0.0%/0.0% on `A`/`D`, which is what caught it. After both fixes, a
+    third rerun still produced 0.0%/2.0% — at that point the hypothesis
+    was tested directly rather than patched again blind. Isolated via two
+    scoped GPU diagnostics (not the full pipeline): (1) `pipeline._generate()`
+    called directly with a real, chat-formatted, self-consistent donor
+    cache deliberately crossing the 4096-token `original_max_position_
+    embeddings` threshold mid-decode — produced fully coherent output,
+    proving the fixed code path itself is correct; (2) plain, unmodified
+    `model.generate()` with **zero pipeline code involved at all**, forced
+    via `min_new_tokens` past ~4096 total tokens on a fresh prompt —
+    degraded into the exact same repetition-garbage signature
+    ("...jjjjjjj...") right around the threshold. (2) is decisive: this is
+    a pre-existing Phi-3.5-mini + LongRoPE limitation in the installed
+    transformers version, present even with no relay, no injection, no
+    manual loop — not something any pipeline-side fix can address.
+    HotpotQA's per-hop contexts (1500-2500+ tokens) routinely push a
+    3-agent relay chain's cumulative cache past 4096, so this isn't an
+    edge case for this project's typical inputs — it's the normal case.
+    **Decision: drop Phi-3.5-mini-instruct entirely, pick a different
+    fourth model family instead.** The two RoPE-guard fixes stay (real,
+    correct, necessary for any future LongRoPE model) but the model itself
+    is out of scope now.
 
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
