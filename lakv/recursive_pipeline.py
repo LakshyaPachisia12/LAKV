@@ -27,11 +27,25 @@ Proof-of-concept scope (deliberately narrow -- see docs for the staged plan):
     that RLM recursion beyond depth-1 tends to degrade -- see "Think, But
     Don't Overthink: Reproducing Recursive Language Models", arXiv
     2603.02615).
-  - Two return-channel conditions to compare:
+  - Three return-channel conditions to compare:
       "kv"   -- each child's raw KV cache is relayed directly into the
-                aggregator via a fan-in merge (see merge_child_kv).
+                aggregator via a fan-in merge (see merge_child_kv), which
+                then answers immediately with no intermediate reasoning.
       "text" -- each child's decoded text is concatenated into the
                 aggregator's prompt as plain text (RLM's actual mechanism).
+      "kv_synthesis" -- same fan-in merge as "kv", but the aggregator first
+                generates an explicit reasoning pass over the merged cache
+                before answering (see _run_aggregator_reasoning). Added
+                after an n=5 spot check (2026-09-10) found plain "kv" losing
+                a fact both children clearly reported, plausibly because
+                each child's cache was computed in total isolation from the
+                other -- unlike "text", where the aggregator's single joint
+                forward pass over both children's write-ups lets it
+                cross-reference them for free. "kv_synthesis" tries to
+                recover that by giving the aggregator its own generation
+                step over the merged cache first: those newly generated
+                reasoning tokens, unlike the frozen child caches, ARE
+                computed attending over both children at once.
   - No compression, no layer selection, no offset-correction/causal-audit
     hooks yet -- deliberately minimal, to validate the multi-source KV
     fan-in position mechanics in isolation before layering anything else
@@ -53,7 +67,8 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import DynamicCache
 
-from lakv.anchor_table import AnchorTable
+from lakv.anchor_table import AnchorTable, question_key
+from lakv.causal_audit import apply_causal_audit, KVAuditPool
 
 
 CHILD_SYSTEM_PROMPT = (
@@ -68,6 +83,16 @@ CHILD_SYSTEM_PROMPT = (
     "titles, roles, and relationships, quoting the exact sentence(s) they "
     "come from. Do not attempt to answer the full question yourself -- "
     "only report what these specific passages say."
+)
+
+AGGREGATOR_REASONING_SYSTEM_PROMPT = (
+    "You have findings from multiple sub-agents, each of whom reviewed a "
+    "different subset of the context passages, plus the original question. "
+    "This is a multi-hop question -- a fact reported by one sub-agent may "
+    "only become useful once connected to a fact reported by a different "
+    "sub-agent. Explicitly connect the sub-agents' findings to each other "
+    "and to the question, reasoning step by step, before drawing any "
+    "conclusion."
 )
 
 AGGREGATOR_SYSTEM_PROMPT = (
@@ -123,15 +148,31 @@ def load_hotpotqa_structured(split: str = "validation", n: Optional[int] = None)
 @dataclass
 class RecursivePipelineConfig:
     n_children: int = 2
-    return_channel: str = "kv"       # "kv" | "text"
+    return_channel: str = "kv"       # "kv" | "text" | "kv_synthesis"
     child_max_new_tokens: int = 256
     aggregator_max_new_tokens: int = 128
+    aggregator_reasoning_max_new_tokens: int = 200
     child_system_prompt: str = CHILD_SYSTEM_PROMPT
     aggregator_system_prompt: str = AGGREGATOR_SYSTEM_PROMPT
+    aggregator_reasoning_system_prompt: str = AGGREGATOR_REASONING_SYSTEM_PROMPT
     generation_kwargs: Dict[str, object] = field(default_factory=lambda: {
         "do_sample": False,
         "repetition_penalty": 1.05,
     })
+    # Causal-audit substitution, applied to ONE child's KV before
+    # merge_child_kv -- mirrors lakv/causal_audit.py's three-tier test
+    # (mode "none"/"zeroed"/"random"/"mismatched") applied to this
+    # topology's fan-in merge point instead of the sequential pipeline's
+    # hop-to-hop handoff. Only meaningful for return_channel in
+    # ("kv", "kv_synthesis") -- ignored for "text" (no KV is merged
+    # there). causal_audit_child_idx selects WHICH child's KV gets
+    # substituted (default: the last child, matching how the sequential
+    # pipeline's audit substitutes the incoming hop closest to the
+    # receiver); real content in every other child stays untouched, so a
+    # degraded answer can be attributed to that one substitution.
+    causal_audit_mode: str = "none"
+    causal_audit_child_idx: int = -1
+    audit_pool: Optional["KVAuditPool"] = None
 
 
 @dataclass
@@ -145,6 +186,8 @@ class RecursiveRunResult:
     answer: str
     child_texts: List[str]
     hop_stats: List[RecursiveHopStat]
+    aggregator_reasoning_text: str = ""
+    audit_log: Optional[dict] = None  # None if causal_audit_mode == "none"
 
 
 class RecursiveKVPipeline:
@@ -335,6 +378,63 @@ class RecursiveKVPipeline:
             )
         return self.tokenizer.decode(gen_out.sequences[0].tolist(), skip_special_tokens=True)
 
+    def _run_aggregator_reasoning(self, question: str, merged_kv: tuple) -> Tuple[tuple, str]:
+        """Intermediate synthesis step, mirroring this project's existing
+        Reasoner->Verifier pattern: generate real reasoning tokens while
+        attending over the merged children cache, BEFORE answering.
+
+        Why this helps (see module docstring): the children's caches were
+        each computed in isolation and never attended to each other, so
+        concatenating them (even position-corrected) doesn't let them
+        cross-reference -- only the aggregator's OWN new tokens, generated
+        after the merge, get to attend over both at once. Explicitly
+        generating a reasoning pass here (instead of jumping straight to a
+        one-line answer) gives the model tokens whose K/V genuinely reflect
+        both children's content jointly, extending the cache the final
+        answer step reads from -- an attempt to recover, via real generated
+        tokens, some of what a fresh joint text read gets for free.
+        """
+        user_content = f"Question: {question}"
+        input_ids = self._build_prompt_ids(self.config.aggregator_reasoning_system_prompt, user_content)
+        cache = self._to_dynamic_cache(merged_kv)
+        cache_seq_len = int(merged_kv[0][0].shape[2])
+        prompt_len = input_ids.shape[1]
+        position_ids = torch.arange(
+            cache_seq_len, cache_seq_len + prompt_len, device=self.device
+        ).unsqueeze(0)
+        attention_mask = torch.ones(
+            (1, cache_seq_len + prompt_len), dtype=torch.long, device=self.device
+        )
+        with torch.no_grad():
+            out = self.model(
+                input_ids=input_ids,
+                past_key_values=cache,
+                position_ids=position_ids,
+                attention_mask=attention_mask,
+                use_cache=True,
+            )
+        running_cache = out.past_key_values
+        next_logits = out.logits[:, -1, :]
+        cur_pos = cache_seq_len + prompt_len
+
+        first_token = self._sample_next_token(next_logits)
+        first_tok_id = first_token.item()
+        if first_tok_id in self._eos_ids:
+            return self._to_tuple(running_cache), ""
+        handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            gen_out = self.model.generate(
+                input_ids=first_token,
+                past_key_values=running_cache,
+                attention_mask=handoff_mask,
+                max_new_tokens=max(self.config.aggregator_reasoning_max_new_tokens - 1, 1),
+                use_cache=True,
+                return_dict_in_generate=True,
+                **self.config.generation_kwargs,
+            )
+        text = self.tokenizer.decode(gen_out.sequences[0].tolist(), skip_special_tokens=True)
+        return self._to_tuple(gen_out.past_key_values), text
+
     def _generate_from_text(self, question: str, child_texts: List[str]) -> str:
         findings = "\n\n".join(f"Sub-agent {i}: {t}" for i, t in enumerate(child_texts))
         user_content = f"{findings}\n\nQuestion: {question}"
@@ -364,12 +464,36 @@ class RecursiveKVPipeline:
             child_texts.append(text)
             hop_stats.append(RecursiveHopStat(child_idx=i, seq_len=seq_len))
 
+        audit_log = None
+        if self.config.causal_audit_mode != "none" and self.config.return_channel in ("kv", "kv_synthesis"):
+            target_idx = self.config.causal_audit_child_idx
+            if not (-len(child_kvs) <= target_idx < len(child_kvs)):
+                raise ValueError(
+                    f"causal_audit_child_idx={target_idx} out of range for "
+                    f"{len(child_kvs)} children"
+                )
+            substituted_kv, audit_log = apply_causal_audit(
+                self.config.causal_audit_mode, child_kvs[target_idx],
+                agent_idx=target_idx, question_key=question_key(question),
+                pool=self.config.audit_pool,
+            )
+            child_kvs = list(child_kvs)
+            child_kvs[target_idx] = substituted_kv
+
+        reasoning_text = ""
         if self.config.return_channel == "kv":
             merged_kv = self.merge_child_kv(child_kvs, rope_theta=self._get_rope_theta())
             answer = self._generate_with_injected_kv(question, merged_kv)
+        elif self.config.return_channel == "kv_synthesis":
+            merged_kv = self.merge_child_kv(child_kvs, rope_theta=self._get_rope_theta())
+            extended_kv, reasoning_text = self._run_aggregator_reasoning(question, merged_kv)
+            answer = self._generate_with_injected_kv(question, extended_kv)
         elif self.config.return_channel == "text":
             answer = self._generate_from_text(question, child_texts)
         else:
             raise ValueError(f"Unknown return_channel: {self.config.return_channel!r}")
 
-        return RecursiveRunResult(answer=answer, child_texts=child_texts, hop_stats=hop_stats)
+        return RecursiveRunResult(
+            answer=answer, child_texts=child_texts, hop_stats=hop_stats,
+            aggregator_reasoning_text=reasoning_text, audit_log=audit_log,
+        )

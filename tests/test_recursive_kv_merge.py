@@ -174,6 +174,58 @@ def test_merge_child_kv_matches_direct_rotation_from_zero():
     print("[OK] merge_child_kv_matches_direct_rotation_from_zero")
 
 
+def test_causal_audit_zeroed_child_then_merge_matches_manual_zero_merge():
+    """The wiring this session adds to RecursiveKVPipeline.run(): apply
+    apply_causal_audit to ONE child's KV before merge_child_kv, not
+    instead of it -- mirrors the same pattern just added to
+    lakv/rlm_repl_kv.py's splice point, applied here to the fan-in merge
+    instead. Confirms substituting child index 1's KV via
+    apply_causal_audit(mode="zeroed", ...) and then merging equals
+    manually zeroing that child and merging directly, with the other
+    child's real content passing through unchanged."""
+    from lakv.causal_audit import apply_causal_audit
+
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    len_a, len_b = 9, 6
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, len_a, head_dim)
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, len_b, head_dim)
+
+    audited_b, audit_log = apply_causal_audit(
+        "zeroed", kv_b, agent_idx=1, question_key="fake_q",
+    )
+    assert audit_log["mode"] == "zeroed"
+    merged_via_audit = RecursiveKVPipeline.merge_child_kv([kv_a, audited_b], rope_theta=THETA)
+
+    manually_zeroed_b = tuple((torch.zeros_like(k), torch.zeros_like(v)) for k, v in kv_b)
+    merged_manual = RecursiveKVPipeline.merge_child_kv([kv_a, manually_zeroed_b], rope_theta=THETA)
+
+    for layer_idx in range(n_layers):
+        assert torch.equal(merged_via_audit[layer_idx][0], merged_manual[layer_idx][0])
+        assert torch.equal(merged_via_audit[layer_idx][1], merged_manual[layer_idx][1])
+
+    # child A (untouched) must pass through completely unchanged
+    for layer_idx in range(n_layers):
+        k_a, v_a = kv_a[layer_idx]
+        assert torch.equal(merged_via_audit[layer_idx][0][:, :, :len_a, :], k_a)
+        assert torch.equal(merged_via_audit[layer_idx][1][:, :, :len_a, :], v_a)
+    print("[OK] causal_audit_zeroed_child_then_merge_matches_manual_zero_merge")
+
+
+def test_causal_audit_mode_none_is_a_pure_passthrough():
+    """mode="none" must reproduce the exact pre-audit merge -- confirms
+    adding the audit hook did not change anything for the real,
+    non-audited case."""
+    from lakv.causal_audit import apply_causal_audit
+
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, 6, head_dim)
+    audited_b, audit_log = apply_causal_audit("none", kv_b, agent_idx=1, question_key="fake_q")
+    assert audit_log["mode"] == "none"
+    for (ak, av), (bk, bv) in zip(audited_b, kv_b):
+        assert torch.equal(ak, bk) and torch.equal(av, bv)
+    print("[OK] causal_audit_mode_none_is_a_pure_passthrough (recursive_pipeline)")
+
+
 if __name__ == "__main__":
     test_rope_shift_additivity()
     test_rope_shift_zero_is_noop()
@@ -181,4 +233,6 @@ if __name__ == "__main__":
     test_merge_child_kv_first_child_unshifted()
     test_merge_child_kv_v_never_shifted()
     test_merge_child_kv_matches_direct_rotation_from_zero()
+    test_causal_audit_zeroed_child_then_merge_matches_manual_zero_merge()
+    test_causal_audit_mode_none_is_a_pure_passthrough()
     print("\nAll recursive KV merge tests passed.")
