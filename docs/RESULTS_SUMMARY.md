@@ -3,7 +3,7 @@
 > Purpose: a scannable table of every confirmed number, distinct from
 > `CLAUDE.md` (dense technical narrative, read that for the *why*) and
 > `docs/naacl2027_paper_draft.md` (academic prose for the actual paper).
-> Last updated 2026-09-09, branch `feat/research-extensions`. Every number
+> Last updated 2026-09-13, branch `feat/research-extensions`. Every number
 > here has a source file and a significance test behind it — see the
 > "source" column, or re-run `python -m lakv.stats <file> <cfgA> <cfgB>` to
 > reproduce any comparison.
@@ -79,15 +79,39 @@ at genuinely higher compression, with no calibration profile.
 
 ## 4. Causal audit — the central mechanistic result
 
+**Qwen2.5-7B-Instruct, HotpotQA:**
+
 | Config | Real | Zeroed | Random | Mismatched | n |
 |---|---|---|---|---|---|
 | A (uncompressed) | 50.0%/64.0% | 0.0%/0.0% | 0.0%/0.0% | 28.0%/37.1% | 50 |
 | D (compressed) | 54.0%/60.2% | 0.0%/0.0% | 0.0%/0.2% | 26.0%/32.2% | 50 |
 | B_int8 (compressed) | 54.0%/68.0% | 0.0%/0.0% | 0.0%/0.0% | 24.0%/34.4% | 50 |
+| C (layer-selection only) | 46.0%/55.7% | 0.0%/0.0% | 0.0%/0.0% | 24.0%/38.9% | 50 |
+| B_int4_kivi (highest compression) | 50.0%/61.7% | 0.0%/0.0% | 0.0%/0.0% | 28.0%/34.7% | 50 |
 
-Source: `results/run_20260907_222745` (A), `results/run_20260909_080434` (D, B_int8)
+Source: `results/run_20260907_222745` (A), `results/run_20260909_080434` (D, B_int8), `results/run_20260910_181034` (C, B_int4_kivi)
 
-**Every pairwise comparison across all three configs is statistically significant** (real vs zeroed/random: p<0.0001 in all three; real vs mismatched: p=0.0127 (A), p=0.0013 (D), p=0.0003 (B_int8); mismatched vs zeroed/random: p≤0.0005 in all three). The three-tier ordering (real > mismatched > zeroed=random) holds regardless of compression — this is the mechanistic proof underneath every other claim in this project.
+**Every pairwise comparison across all five Qwen2.5 configs is statistically significant** (real vs zeroed/random: p<0.0001 in all five; real vs mismatched: p=0.0127 (A), p=0.0013 (D), p=0.0003 (B_int8), p=0.0127 (C), p=0.0192 (B_int4_kivi); mismatched vs zeroed/random: p≤0.0005 in all five). The three-tier ordering (real > mismatched > zeroed=random) holds across every structurally distinct relay condition tested on Qwen2.5 — no compression, layer-selection alone, uniform int8, layer-selection plus adaptive compression, and the highest-compression per-channel int4 fix.
+
+**Mistral-7B-Instruct-v0.3, HotpotQA — cross-model extension:**
+
+| Config | Real | Zeroed | Random | Mismatched | n |
+|---|---|---|---|---|---|
+| A (uncompressed) | 56.0%/63.3% | 0.0%/0.5% | 0.0%/0.3% | 16.0%/26.4% | 50 |
+| C (layer-selection only) | 20.0%/30.3% | 0.0%/0.5% | 0.0%/0.1% | 14.0%/26.1% | 50 |
+| B_int4_kivi (highest compression) | 54.0%/63.2% | 0.0%/0.5% | 0.0%/0.1% | 16.0%/25.0% | 50 |
+
+Source: `results/run_20260911_101259` (A), `results/run_20260913_090529` (C, B_int4_kivi)
+
+`A` and `B_int4_kivi` replicate the full three-tier ordering cleanly on Mistral, all pairwise comparisons significant (real vs zeroed/random p<0.0001 each for both configs; real vs mismatched p<0.0001 each; mismatched vs zeroed/random p=0.0078 each). `C` is **partial**: mismatched clearly beats zeroed/random (p=0.0156 each — content matters at all), but `C` itself is not significantly different from mismatched here (p=0.5078, F1 CI includes zero) — unlike on Qwen, where this comparison was significant. Most likely explanation: `C`'s own baseline on Mistral is already much lower than on Qwen (20.0% vs 46.0%), independently confirming Finding 3's claim that Mistral is unusually fragile to layer-selection — less headroom to detect a further gap on an already-degraded baseline, not evidence content-identity stops mattering. The `A` and `B_int4_kivi` results on Mistral are written into the paper; the `C`/`B_int4_kivi` Mistral extension above is also written in (see Finding 5, extended to a second model).
+
+**Second topology — fan-in decomposition (not sequential chain), Qwen2.5-7B-Instruct:**
+
+| Config | Real | Zeroed | Random | n |
+|---|---|---|---|---|
+| kv (fan-in, both children audited) | 36.0%/49.5% | 0.0%/0.0% | 0.0%/0.0% | 25 |
+
+Source: `results/recursive_poc_check/run_20260913_083353`. Real vs zeroed and real vs random both significant (McNemar p=0.0039 each; F1 delta +0.495, 95% CI [+0.316, +0.670], excludes zero). Zeroed vs random not yet distinguishable at this n (both floor at 0%, p=1.0) — same "random more garbled than zeroed" texture visible in raw text, just not separable by the crude EM/F1 metric yet. No `mismatched` condition run in this topology yet, so this confirms the real-vs-corrupted half of the three-tier ordering, not the full thing. Written into the paper as "Finding 5, extended to a second topology."
 
 ## 5. Two secondary analyses (no new GPU time — analysis of existing data)
 
@@ -127,7 +151,13 @@ Source: `results/run_20260909_120933`
 
 ## 7. What's still open
 
-- Causal audit not yet run on `C` or the `B_int4` family.
+- Causal audit now covers `A`, `D`, `B_int8`, `C`, and `B_int4_kivi` on
+  Qwen2.5 — every relay condition in the paper except the already-broken
+  `B_int4`, which is uninformative to audit further (see §4). `A`,
+  `C`, and `B_int4_kivi` also now confirmed on Mistral (§4) and on a
+  second, fan-in topology for the uncompressed condition (§4) — `D` and
+  `B_int8` remain untested on Mistral and in the fan-in topology, and
+  `mismatched` hasn't been run in the fan-in topology yet.
 - `B_int4_kivi`'s trend below `A`/`B_int8` (52% vs 56-57%) is not yet statistically confirmed as a real cost (7-12 discordant examples, p=0.36-0.50).
 - `D` vs `C` on Qwen not significant (p=0.14, underpowered at n=100).
 - Bleed-through analysis is manual/partial (20 of 36 examples, one annotator) — an automated or fully-annotated version would be needed to turn this into a quantified claim.

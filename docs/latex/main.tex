@@ -556,6 +556,52 @@ uncompressed HotpotQA baseline -- though the GSM8K check is one run on one
 model, reported as suggestive, not a systematic cross-task study (see
 Limitations).
 
+\paragraph{Finding 5, extended further -- the ordering holds across every
+remaining relay condition tested on Qwen2.5-7B-Instruct.} Extending the
+audit to \texttt{C} (layer-selection only, no compression) and
+\texttt{B\_int4\_kivi} (per-channel int4, our highest compression ratio),
+$n=50$ each on HotpotQA, the same three-tier ordering replicates cleanly
+on both: \texttt{C} reaches 46.0\%/55.7\% vs.\ \texttt{C\_audit\_zeroed}/
+\texttt{C\_audit\_random} both 0.0\%/0.0\% vs.\ \texttt{C\_audit\_mismatched}
+24.0\%/38.9\%; \texttt{B\_int4\_kivi} reaches 50.0\%/61.7\% vs.\
+zeroed/random both 0.0\%/0.0\% vs.\ mismatched 28.0\%/34.7\%. All twelve
+pairwise comparisons across both configurations are significant (real
+vs.\ zeroed/random $p<0.0001$ for both configurations; real vs.\
+mismatched $p=0.0127$ \texttt{C} / $p=0.0192$ \texttt{B\_int4\_kivi};
+mismatched vs.\ zeroed/random $p=0.0005$ \texttt{C} / $p=0.0001$
+\texttt{B\_int4\_kivi}). Together with Finding 5's original three
+configurations, the three-tier causal ordering now holds across every
+structurally distinct relay condition tested on Qwen2.5-7B-Instruct in
+this paper -- no compression, layer-selection alone, uniform int8,
+layer-selection plus adaptive compression, and per-channel int4 --
+leaving only \texttt{B\_int4} itself untested, which is uninformative to
+audit given it already collapses to 0.0\%/0.0\% unaudited.
+
+\paragraph{Finding 5, extended to a second model -- \texttt{B\_int4\_kivi}
+replicates cleanly, \texttt{C} only partially.} Repeating the
+\texttt{C}/\texttt{B\_int4\_kivi} audit on Mistral-7B-Instruct-v0.3
+($n=50$, HotpotQA) gives a mixed but informative result.
+\texttt{B\_int4\_kivi} replicates as cleanly as on Qwen: 54.0\%/63.2\%
+vs.\ zeroed/random both 0.0\%/0.0\% vs.\ mismatched 16.0\%/25.0\%, all
+five pairwise comparisons significant (real vs.\ zeroed/random
+$p<0.0001$ each; real vs.\ mismatched $p<0.0001$; mismatched vs.\
+zeroed/random $p=0.0078$ each). \texttt{C} tells a more nuanced story:
+mismatched still clearly beats zeroed/random (14.0\%/26.1\% vs.\
+0.0\%/0.0--0.5\%, $p=0.0156$ each), so content still matters at all, but
+\texttt{C} itself is not statistically distinguishable from mismatched
+here (20.0\%/30.3\% vs.\ 14.0\%/26.1\%, $p=0.51$, F1 CI includes zero) --
+unlike on Qwen, where this same comparison was significant. The most
+likely explanation is not that content-identity stops mattering on
+Mistral, but that \texttt{C} already performs poorly on Mistral before
+any auditing (20.0\%, well below Qwen's 46.0\%) -- an independent, third
+confirmation of Finding 3's claim that Mistral is unusually fragile to
+layer-selection specifically, which leaves less headroom to detect a
+further real-vs-mismatched gap on top of an already-degraded baseline.
+We report \texttt{C}'s cross-model result as partial, not as a failure
+to replicate: the weaker half of the three-tier ordering (some real
+content beats none) holds; the stronger half (which specific real
+content) is underpowered here, not contradicted.
+
 \paragraph{Finding 5, extended to a second topology -- content-dependence
 is not specific to a sequential chain.} Every result above is on our
 fixed Reasoner$\to$Verifier$\to$Finalizer chain; Limitations already

@@ -494,6 +494,27 @@ just underpowered noise (see finding 5 above).
     question that was previously logged as an unstarted future-work
     seed (see below — now stale, updated).
 
+14. **`C`/`B_int4_kivi` causal audit extended to Mistral — `B_int4_kivi`
+    fully replicates, `C` only partially.** (`results/run_20260913_090529`,
+    n=50 each.) `B_int4_kivi`: 54.0%/63.2% vs. zeroed/random both
+    0.0%/0.0% vs. mismatched 16.0%/25.0% — all five pairwise comparisons
+    significant (real vs. zeroed/random p<0.0001 each; real vs.
+    mismatched p<0.0001; mismatched vs. zeroed/random p=0.0078 each). As
+    clean as Qwen's own version. `C`: 20.0%/30.3% vs. zeroed/random both
+    ~0.0%/0.0-0.5% vs. mismatched 14.0%/26.1% — mismatched clearly beats
+    zeroed/random (p=0.0156 each, content matters at all), but `C` itself
+    is NOT significantly different from mismatched (p=0.5078, F1 CI
+    includes zero) — unlike Qwen, where this comparison was significant
+    (p=0.0127). Most likely explanation, not treated as a contradiction:
+    `C`'s own baseline on Mistral is already much lower than on Qwen
+    (20.0% vs. 46.0%) — an independent, THIRD confirmation of Finding 3
+    (Mistral collapses harder under layer-selection), which leaves less
+    headroom to detect a further real-vs-mismatched gap on an
+    already-degraded baseline. Report as partial: the weaker half of the
+    three-tier ordering (some real beats none) holds; the stronger half
+    (which specific real content) is underpowered here, not disproven.
+    Written into the paper as "Finding 5, extended to a second model."
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
@@ -503,9 +524,11 @@ pressure was judged not worth the risk given this project's own evidence
 that unfaithful reproductions can actively mislead). Causal audit now
 covers `A`, `D`, `B_int8`, `C`, and `B_int4_kivi` on Qwen2.5 (see
 `docs/RESULTS_SUMMARY.md` §4) — only `B_int4` itself (already collapsed,
-uninformative to audit) remains untested there. A full causal audit of
-`A` on Mistral also completed (`results/run_20260911_101259`, all 5
-pairwise comparisons significant, p<0.0001 for real-vs-null) but is
+uninformative to audit) remains untested there. `C`/`B_int4_kivi` now
+also confirmed on Mistral (finding 14) and written into the paper. A
+full causal audit of `A` on Mistral also completed
+(`results/run_20260911_101259`, all 5 pairwise comparisons significant,
+p<0.0001 for real-vs-null) but is
 **not yet written into the paper** — still pending.
 
 **Well-grounded future-work seeds identified 2026-09-09 (still not

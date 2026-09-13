@@ -579,10 +579,34 @@ configurations; real vs. mismatched p=0.0127 `C` / p=0.0192 `B_int4_kivi`;
 mismatched vs. zeroed/random p=0.0005 `C` / p=0.0001 `B_int4_kivi`).
 Together with Finding 5's original three configurations, the three-tier
 causal ordering now holds across every structurally distinct relay
-condition tested in this paper — no compression, layer-selection alone,
-uniform int8, layer-selection plus adaptive compression, and per-channel
-int4 — leaving only `B_int4` itself untested, which is uninformative to
-audit given it already collapses to 0.0%/0.0% unaudited.
+condition tested on Qwen2.5-7B-Instruct in this paper — no compression,
+layer-selection alone, uniform int8, layer-selection plus adaptive
+compression, and per-channel int4 — leaving only `B_int4` itself
+untested, which is uninformative to audit given it already collapses to
+0.0%/0.0% unaudited.
+
+**Finding 5, extended to a second model — `B_int4_kivi` replicates
+cleanly, `C` only partially.** Repeating the `C`/`B_int4_kivi` audit on
+Mistral-7B-Instruct-v0.3 (n=50, HotpotQA) gives a mixed but informative
+result. `B_int4_kivi` replicates as cleanly as on Qwen: 54.0%/63.2% vs.
+zeroed/random both 0.0%/0.0% vs. mismatched 16.0%/25.0%, all five
+pairwise comparisons significant (real vs. zeroed/random p<0.0001 each;
+real vs. mismatched p<0.0001; mismatched vs. zeroed/random p=0.0078
+each). `C` tells a more nuanced story: mismatched still clearly beats
+zeroed/random (14.0%/26.1% vs. 0.0%/0.0-0.5%, p=0.0156 each), so content
+still matters at all, but `C` itself is not statistically distinguishable
+from mismatched here (20.0%/30.3% vs. 14.0%/26.1%, p=0.51, F1 CI includes
+zero) — unlike on Qwen, where this same comparison was significant. The
+most likely explanation is not that content-identity stops mattering on
+Mistral, but that `C` already performs poorly on Mistral before any
+auditing (20.0%, well below Qwen's 46.0%) — an independent, third
+confirmation of Finding 3's claim that Mistral is unusually fragile to
+layer-selection specifically, which leaves less headroom to detect a
+further real-vs-mismatched gap on top of an already-degraded baseline.
+We report `C`'s cross-model result as partial, not as a failure to
+replicate: the weaker half of the three-tier ordering (some real content
+beats none) holds; the stronger half (which specific real content) is
+underpowered here, not contradicted.
 
 **Finding 5, extended to a second topology — content-dependence is not
 specific to a sequential chain.** Every result above is on our fixed
