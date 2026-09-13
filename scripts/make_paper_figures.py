@@ -11,10 +11,20 @@ Figure 2: the B_int4 fix journey -- collapse, a broken rotation-based
 attempt, the diagnostic that isolated the cause, the working fix, and two
 value-side variants that didn't improve on it (Results, Finding 4).
 
+Figure 3: compression-vs-accuracy Pareto view across every relay condition
+in the paper (A, B_int8, B_int4 [broken], C, D, B_int4_kivi) -- transcribes
+numbers already established and verified elsewhere (RESULTS_SUMMARY.md
+Sec. 1 and Sec. 3), no new experiments. Purely a presentation addition: it
+does not assert anything the tables don't already say, it just makes the
+"smaller isn't automatically better" and "B_int4_kivi is the Pareto-best
+point" reading immediate at a glance instead of requiring a table
+cross-reference.
+
 Run directly (CPU-only, reads existing JSON, no model/GPU involved):
     python scripts/make_paper_figures.py
-Saves to docs/figures/fig1_causal_audit.png and
-docs/figures/fig2_b_int4_journey.png.
+Saves to docs/figures/fig1_causal_audit.png,
+docs/figures/fig2_b_int4_journey.png, and
+docs/figures/fig3_compression_pareto.png.
 """
 
 import json
@@ -132,6 +142,54 @@ def make_figure_2():
     print(f"Saved {out}")
 
 
+def make_figure_3():
+    """Compression-vs-accuracy Pareto view, n=100 HotpotQA/Qwen2.5-7B --
+    every number here is transcribed from the already-established,
+    already-verified baseline table (RESULTS_SUMMARY.md Sec. 1) and the
+    B_int4 fix journey (Sec. 3); nothing here is computed fresh. Purely a
+    presentation addition, not a new experiment or claim."""
+    # (label, KV/hop MB, accuracy %, is_the_broken_outlier, label offset)
+    points = [
+        ("A\n(uncompressed)", 144.35, 56.0, False, (4, 6)),
+        ("B_int8", 72.16, 57.0, False, (4, 6)),
+        ("C\n(layer-select only)", 104.16, 43.0, False, (4, 6)),
+        ("D", 37.82, 50.0, False, (6, -14)),       # below-right: close neighbor above
+        ("B_int4_kivi", 36.43, 52.0, False, (-8, 10)),  # above-left: clears D's label
+        ("B_int4\n(broken)", 38.38, 0.0, True, (6, -16)),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    for label, mb, acc, is_broken, offset in points:
+        color = "#B2182B" if is_broken else "#2166AC"
+        marker = "x" if is_broken else "o"
+        ax.scatter(mb, acc, s=90, color=color, marker=marker,
+                   linewidths=2 if is_broken else 0, zorder=3,
+                   edgecolors="black" if not is_broken else None)
+        ha = "right" if offset[0] < 0 else "left"
+        ax.annotate(label, (mb, acc), textcoords="offset points",
+                    xytext=offset, fontsize=8.5, ha=ha)
+
+    ax.set_xlabel("Relayed KV per hop (MB) — smaller is cheaper", fontsize=10)
+    ax.set_ylabel("Accuracy (%)", fontsize=10)
+    ax.set_ylim(-8, 65)
+    ax.set_xlim(20, 155)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.axhline(0, color="#999999", linewidth=0.6, linestyle=":")
+    fig.suptitle(
+        "Figure 3: Compression vs. accuracy across every relay condition\n"
+        "(B_int4's collapse shows smaller is not automatically better --\n"
+        "B_int4_kivi is the Pareto-best point: smallest cache, accuracy matching D)",
+        fontsize=10, y=1.05,
+    )
+    fig.tight_layout()
+    out = FIG_DIR / "fig3_compression_pareto.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {out}")
+
+
 if __name__ == "__main__":
     make_figure_1()
     make_figure_2()
+    make_figure_3()
