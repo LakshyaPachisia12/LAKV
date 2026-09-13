@@ -211,6 +211,81 @@ def test_causal_audit_zeroed_child_then_merge_matches_manual_zero_merge():
     print("[OK] causal_audit_zeroed_child_then_merge_matches_manual_zero_merge")
 
 
+def test_resolve_audit_target_idxs_all_means_every_child():
+    """The fix this round adds: real-model testing (2026-09-13) found
+    that auditing only ONE of two children understates the effect (the
+    other, untouched child's real content survives, so exact-match
+    barely moves even though the corrupted child's own content still
+    shows the expected garbled signature). "all" is the fair,
+    full-strength comparison against the sequential pipeline's audit,
+    which corrupts the ENTIRE relayed cache, not part of it."""
+    assert RecursiveKVPipeline._resolve_audit_target_idxs("all", 2) == [0, 1]
+    assert RecursiveKVPipeline._resolve_audit_target_idxs("all", 5) == [0, 1, 2, 3, 4]
+    print("[OK] resolve_audit_target_idxs_all_means_every_child")
+
+
+def test_resolve_audit_target_idxs_int_still_means_one_child():
+    """Backward compatibility: passing a plain int (the original,
+    partial-corruption behavior) must still resolve to exactly that one
+    child, negative indices included."""
+    assert RecursiveKVPipeline._resolve_audit_target_idxs(-1, 2) == [1]
+    assert RecursiveKVPipeline._resolve_audit_target_idxs(0, 3) == [0]
+    assert RecursiveKVPipeline._resolve_audit_target_idxs(-2, 3) == [1]
+    print("[OK] resolve_audit_target_idxs_int_still_means_one_child")
+
+
+def test_resolve_audit_target_idxs_rejects_out_of_range_and_bad_values():
+    for bad in (5, -10):
+        raised = False
+        try:
+            RecursiveKVPipeline._resolve_audit_target_idxs(bad, 2)
+        except ValueError:
+            raised = True
+        assert raised, f"expected ValueError for out-of-range index {bad}"
+
+    raised = False
+    try:
+        RecursiveKVPipeline._resolve_audit_target_idxs("everything", 2)
+    except ValueError:
+        raised = True
+    assert raised, "expected ValueError for an unrecognized string value"
+    print("[OK] resolve_audit_target_idxs_rejects_out_of_range_and_bad_values")
+
+
+def test_causal_audit_all_children_then_merge_matches_manual_all_zero_merge():
+    """End-to-end composition check for the "all" mode: substituting
+    EVERY child via apply_causal_audit and then merging must equal
+    manually zeroing every child and merging directly -- no real content
+    should survive anywhere in the merged cache, matching the sequential
+    pipeline's full-relay-corruption strength."""
+    from lakv.causal_audit import apply_causal_audit
+
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    len_a, len_b = 9, 6
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, len_a, head_dim)
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, len_b, head_dim)
+
+    target_idxs = RecursiveKVPipeline._resolve_audit_target_idxs("all", 2)
+    assert target_idxs == [0, 1]
+
+    child_kvs = [kv_a, kv_b]
+    for idx in target_idxs:
+        substituted, log = apply_causal_audit("zeroed", child_kvs[idx], agent_idx=idx, question_key="fake_q")
+        assert log["mode"] == "zeroed"
+        child_kvs[idx] = substituted
+    merged_via_audit = RecursiveKVPipeline.merge_child_kv(child_kvs, rope_theta=THETA)
+
+    manually_zeroed = [
+        tuple((torch.zeros_like(k), torch.zeros_like(v)) for k, v in kv) for kv in (kv_a, kv_b)
+    ]
+    merged_manual = RecursiveKVPipeline.merge_child_kv(manually_zeroed, rope_theta=THETA)
+
+    for layer_idx in range(n_layers):
+        assert torch.equal(merged_via_audit[layer_idx][0], merged_manual[layer_idx][0])
+        assert torch.equal(merged_via_audit[layer_idx][1], merged_manual[layer_idx][1])
+    print("[OK] causal_audit_all_children_then_merge_matches_manual_all_zero_merge")
+
+
 def test_causal_audit_mode_none_is_a_pure_passthrough():
     """mode="none" must reproduce the exact pre-audit merge -- confirms
     adding the audit hook did not change anything for the real,
@@ -234,5 +309,9 @@ if __name__ == "__main__":
     test_merge_child_kv_v_never_shifted()
     test_merge_child_kv_matches_direct_rotation_from_zero()
     test_causal_audit_zeroed_child_then_merge_matches_manual_zero_merge()
+    test_resolve_audit_target_idxs_all_means_every_child()
+    test_resolve_audit_target_idxs_int_still_means_one_child()
+    test_resolve_audit_target_idxs_rejects_out_of_range_and_bad_values()
+    test_causal_audit_all_children_then_merge_matches_manual_all_zero_merge()
     test_causal_audit_mode_none_is_a_pure_passthrough()
     print("\nAll recursive KV merge tests passed.")

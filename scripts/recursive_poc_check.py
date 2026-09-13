@@ -7,13 +7,21 @@ actual mechanism), "kv" (direct fan-in KV merge, no reasoning step),
 "kv_synthesis" (fan-in merge + an explicit reasoning pass before
 answering), and now "kv_audit_zeroed" / "kv_audit_random" -- the same
 zeroed/moment-matched-random causal-audit substitution used throughout
-this project (lakv/causal_audit.py), applied here to ONE child's KV
-before the fan-in merge (see RecursivePipelineConfig.causal_audit_mode /
-causal_audit_child_idx), testing whether the same three-tier ordering
-(real > zeroed/random) holds at this topology's merge point, not just the
-sequential pipeline's hop-to-hop handoff -- and prints everything:
-per-child findings, the synthesis reasoning (when applicable), the audit
-log (when auditing), final answers, and real EM/F1 scores via
+this project (lakv/causal_audit.py), applied here before the fan-in merge
+(see RecursivePipelineConfig.causal_audit_mode / causal_audit_child_idx),
+testing whether the same three-tier ordering (real > zeroed/random) holds
+at this topology's merge point, not just the sequential pipeline's
+hop-to-hop handoff. --causal_audit_child_idx defaults to "all" (every
+child substituted, matching the sequential pipeline's full-relay-
+corruption strength) rather than a single child -- real-model testing
+(2026-09-13) found that corrupting only one of two children understates
+the effect: exact-match barely moved (partial redundancy from the other,
+untouched child papered over a real qualitative effect visible in 5 of 10
+raw outputs still showing the expected garbled-gibberish signature). Pass
+an integer instead for the weaker, partial-corruption condition
+specifically. Prints everything: per-child findings, the synthesis
+reasoning (when applicable), the audit logs (when auditing), final
+answers, and real EM/F1 scores via
 lakv/qa_scoring.py (the same scorer the rest of this project uses), so
 it's not just an eyeball read anymore. Also saves a full JSON transcript
 per run to results/recursive_poc_check/.
@@ -32,6 +40,7 @@ Usage:
     python scripts/recursive_poc_check.py --n 15 --n_children 2
     python scripts/recursive_poc_check.py --n 15 --channels kv kv_synthesis text
     python scripts/recursive_poc_check.py --n 15 --channels kv kv_audit_zeroed kv_audit_random
+    python scripts/recursive_poc_check.py --n 15 --channels kv kv_audit_zeroed --causal_audit_child_idx -1
 """
 
 import argparse
@@ -70,15 +79,24 @@ def main():
     parser.add_argument("--n", type=int, default=15)
     parser.add_argument("--n_children", type=int, default=2)
     parser.add_argument("--split", default="validation")
-    parser.add_argument("--causal_audit_child_idx", type=int, default=-1,
-                         help="Which child's KV gets substituted for *_audit_* channels "
-                              "(default: -1, the last child).")
+    parser.add_argument("--causal_audit_child_idx", default="all",
+                         help="Which child/children's KV get substituted for *_audit_* "
+                              "channels: an integer index (partial corruption -- real "
+                              "content survives in every other child, understates the "
+                              "effect, see lakv/recursive_pipeline.py's config docstring) "
+                              "or 'all' (every child substituted, the fair apples-to-apples "
+                              "comparison against the sequential pipeline's full-relay "
+                              "audit -- default).")
     parser.add_argument(
         "--channels", nargs="+", default=["text", "kv", "kv_synthesis"],
         choices=CHANNEL_CHOICES,
     )
     parser.add_argument("--output_dir", default="results/recursive_poc_check")
     args = parser.parse_args()
+    causal_audit_child_idx = (
+        args.causal_audit_child_idx if args.causal_audit_child_idx == "all"
+        else int(args.causal_audit_child_idx)
+    )
 
     model, tokenizer = load_model(args.model_name, device="cuda")
     data = load_hotpotqa_structured(split=args.split, n=args.n)
@@ -97,7 +115,7 @@ def main():
         config = RecursivePipelineConfig(
             n_children=args.n_children, return_channel=return_channel,
             causal_audit_mode=causal_audit_mode,
-            causal_audit_child_idx=args.causal_audit_child_idx,
+            causal_audit_child_idx=causal_audit_child_idx,
         )
         pipeline = RecursiveKVPipeline(model, tokenizer, config, device="cuda")
 
@@ -119,8 +137,8 @@ def main():
                 print(f"  Child {j} (seq_len={stat.seq_len}): {text[:300]!r}")
             if result.aggregator_reasoning_text:
                 print(f"  Aggregator reasoning: {result.aggregator_reasoning_text[:400]!r}")
-            if result.audit_log is not None:
-                print(f"  Audit log: {result.audit_log}")
+            if result.audit_logs:
+                print(f"  Audit logs: {result.audit_logs}")
             print(f"Final answer ({channel}): {result.answer[:300]!r} -> extracted: {pred!r} | EM={em} F1={f1:.2f}")
 
             records.append({
@@ -133,7 +151,7 @@ def main():
                 "f1": f1,
                 "child_texts": result.child_texts,
                 "aggregator_reasoning_text": result.aggregator_reasoning_text,
-                "audit_log": result.audit_log,
+                "audit_logs": result.audit_logs,
             })
 
         n = len(data)

@@ -62,7 +62,7 @@ math from scratch.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import DynamicCache
@@ -159,19 +159,37 @@ class RecursivePipelineConfig:
         "do_sample": False,
         "repetition_penalty": 1.05,
     })
-    # Causal-audit substitution, applied to ONE child's KV before
-    # merge_child_kv -- mirrors lakv/causal_audit.py's three-tier test
-    # (mode "none"/"zeroed"/"random"/"mismatched") applied to this
+    # Causal-audit substitution, applied to one or more children's KV
+    # before merge_child_kv -- mirrors lakv/causal_audit.py's three-tier
+    # test (mode "none"/"zeroed"/"random"/"mismatched") applied to this
     # topology's fan-in merge point instead of the sequential pipeline's
     # hop-to-hop handoff. Only meaningful for return_channel in
     # ("kv", "kv_synthesis") -- ignored for "text" (no KV is merged
-    # there). causal_audit_child_idx selects WHICH child's KV gets
-    # substituted (default: the last child, matching how the sequential
-    # pipeline's audit substitutes the incoming hop closest to the
-    # receiver); real content in every other child stays untouched, so a
-    # degraded answer can be attributed to that one substitution.
+    # there).
+    #
+    # causal_audit_child_idx selects WHICH child/children get substituted:
+    #   int (default -1, the last child) -- substitutes just that one
+    #       child; every OTHER child's real content stays untouched, so
+    #       this tests "how much does losing ONE of several sources
+    #       hurt" -- a WEAKER, partial-corruption condition, not the same
+    #       strength as the sequential pipeline's audit (which replaces
+    #       the entire relayed cache). Real-model testing (2026-09-13)
+    #       found this understates the effect: with n_children=2, zeroing
+    #       only the last child left the other child's real content
+    #       available, and exact-match accuracy barely moved (3/10 vs
+    #       3/10 real) even though 5/10 individual outputs were still the
+    #       expected garbled-gibberish signature -- the aggregate metric
+    #       hid a real qualitative effect because roughly half the
+    #       question's evidence was still intact.
+    #   "all" -- substitutes EVERY child's KV, matching the sequential
+    #       pipeline's full-relay-corruption strength exactly (no real
+    #       content survives anywhere in the merged cache). This is the
+    #       fair, apples-to-apples comparison against Finding 5 -- use
+    #       this, not a single int, when the goal is testing whether the
+    #       three-tier ordering holds in this topology at all, rather
+    #       than a partial-redundancy robustness question.
     causal_audit_mode: str = "none"
-    causal_audit_child_idx: int = -1
+    causal_audit_child_idx: Union[int, str] = -1  # int, or "all"
     audit_pool: Optional["KVAuditPool"] = None
 
 
@@ -187,7 +205,7 @@ class RecursiveRunResult:
     child_texts: List[str]
     hop_stats: List[RecursiveHopStat]
     aggregator_reasoning_text: str = ""
-    audit_log: Optional[dict] = None  # None if causal_audit_mode == "none"
+    audit_logs: List[dict] = field(default_factory=list)  # one entry per substituted child, empty if causal_audit_mode == "none"
 
 
 class RecursiveKVPipeline:
@@ -260,6 +278,26 @@ class RecursiveKVPipeline:
         for layer_idx, (k, v) in enumerate(kv_tuple):
             cache.update(k, v, layer_idx)
         return cache
+
+    @staticmethod
+    def _resolve_audit_target_idxs(causal_audit_child_idx: Union[int, str], n_children: int) -> List[int]:
+        """Turn RecursivePipelineConfig.causal_audit_child_idx into a
+        concrete list of child indices to substitute. Pulled out of run()
+        as its own testable unit -- no model/GPU needed to check this
+        logic is right, unlike run() itself."""
+        if causal_audit_child_idx == "all":
+            return list(range(n_children))
+        if isinstance(causal_audit_child_idx, int):
+            if not (-n_children <= causal_audit_child_idx < n_children):
+                raise ValueError(
+                    f"causal_audit_child_idx={causal_audit_child_idx} out of "
+                    f"range for {n_children} children"
+                )
+            return [causal_audit_child_idx % n_children]
+        raise ValueError(
+            f"causal_audit_child_idx must be an int or the string 'all', "
+            f"got {causal_audit_child_idx!r}"
+        )
 
     @staticmethod
     def merge_child_kv(child_kvs: List[tuple], rope_theta: float) -> tuple:
@@ -464,21 +502,20 @@ class RecursiveKVPipeline:
             child_texts.append(text)
             hop_stats.append(RecursiveHopStat(child_idx=i, seq_len=seq_len))
 
-        audit_log = None
+        audit_logs: List[dict] = []
         if self.config.causal_audit_mode != "none" and self.config.return_channel in ("kv", "kv_synthesis"):
-            target_idx = self.config.causal_audit_child_idx
-            if not (-len(child_kvs) <= target_idx < len(child_kvs)):
-                raise ValueError(
-                    f"causal_audit_child_idx={target_idx} out of range for "
-                    f"{len(child_kvs)} children"
-                )
-            substituted_kv, audit_log = apply_causal_audit(
-                self.config.causal_audit_mode, child_kvs[target_idx],
-                agent_idx=target_idx, question_key=question_key(question),
-                pool=self.config.audit_pool,
+            target_idxs = self._resolve_audit_target_idxs(
+                self.config.causal_audit_child_idx, len(child_kvs)
             )
             child_kvs = list(child_kvs)
-            child_kvs[target_idx] = substituted_kv
+            for target_idx in target_idxs:
+                substituted_kv, audit_log = apply_causal_audit(
+                    self.config.causal_audit_mode, child_kvs[target_idx],
+                    agent_idx=target_idx, question_key=question_key(question),
+                    pool=self.config.audit_pool,
+                )
+                child_kvs[target_idx] = substituted_kv
+                audit_logs.append(audit_log)
 
         reasoning_text = ""
         if self.config.return_channel == "kv":
@@ -495,5 +532,5 @@ class RecursiveKVPipeline:
 
         return RecursiveRunResult(
             answer=answer, child_texts=child_texts, hop_stats=hop_stats,
-            aggregator_reasoning_text=reasoning_text, audit_log=audit_log,
+            aggregator_reasoning_text=reasoning_text, audit_logs=audit_logs,
         )
