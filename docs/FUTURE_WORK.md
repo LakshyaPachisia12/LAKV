@@ -123,7 +123,27 @@ budget for it as a real follow-up project, not an afternoon.
 
 ---
 
-## 2. Topology variation (fan-in / LatentMAS-style concatenation)
+## 2. Topology variation (fan-in / LatentMAS-style concatenation) — the
+## fan-in half is DONE, not a seed anymore (2026-09-13)
+
+**Update 2026-09-13 — fan-in causal audit built, run, and confirmed.**
+The fan-in half of this idea is no longer future work: built a minimal
+fan-in decomposition pipeline (`lakv/recursive_pipeline.py`, HotpotQA's
+ten passages split across two children, RoPE-shifted and concatenated
+before an aggregator), wired the same zeroed/random causal-audit
+substitution into it, and confirmed a real result — real content
+(36.0%/49.5% F1) significantly beats both zeroed and random (0.0%/0.0%
+each, McNemar p=0.0039, F1 CI excludes zero) at n=25. This is written
+into the paper as "Finding 5, extended to a second topology." **What's
+still actually open, narrower than before:** (a) the `mismatched`
+condition hasn't been run in this topology yet (needs a small held-out
+child-KV pool, see below), so the full three-tier ordering isn't
+confirmed here, only the real-vs-corrupted half; (b) zeroed and random
+aren't yet statistically distinguishable from each other at this n
+(both floor at 0%); (c) the **layer-wise concatenation** (LatentMAS-
+style) variant is untested — only fan-in has been done, not
+concatenation. Read this whole section as "half confirmed, half still a
+real seed," not fully closed.
 
 **Relationship to RLM and to Idea #1, clarified:** RLM's literal
 architecture (root LM calling sub-LMs over *text*, no KV cache exchanged

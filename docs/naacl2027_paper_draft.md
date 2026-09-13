@@ -149,7 +149,16 @@ savings and accuracy gains across nine math/science/code benchmarks. We
 differ from both in relaying real, decoded reasoning text through a fixed
 sequential three-agent chain (Reasoner → Verifier → Finalizer) rather than
 offset-corrected reuse or latent thought generation, and in evaluating on
-multi-hop QA (HotpotQA), which neither tested on.
+multi-hop QA (HotpotQA), which neither tested on. RelayCaching (Geng et
+al., ICML'26) targets a related but distinct regime: rather than relaying
+an entire agent's cache, it reuses decode-phase KV specifically for
+content that recurs near-identically across agents, selectively
+recomputing only the sparse, localized positions where a shared prefix's
+context diverges, reporting over 80% reuse and up to 4.7x TTFT reduction.
+Our setting relays the full content of one agent's turn to the next
+regardless of overlap, making compression (not selective recomputation)
+the relevant efficiency lever -- a complementary rather than competing
+approach.
 
 **Compressing the relayed cache.** Reducing what must be transmitted between
 agents is a natural complement to relay itself. We adopt two families of
@@ -168,7 +177,16 @@ coding — for up to 20x compression, a third paradigm distinct from uniform
 quantization (ours, KIVI) and rotation (TurboQuant/PolarQuant); NVIDIA's
 kvpress library and TensorRT-LLM's reuse-aware cache confirm this is an
 actively contested axis of real deployed systems, not a narrow academic
-concern.
+concern. Q-KVComm (Kriuk and Ng, 2025, arXiv preprint) applies
+sensitivity-profiled, adaptive layer-wise bit-width allocation for
+cross-agent KV relay -- conceptually close to our own calibration-driven
+tiering (config `D`) -- reporting 5-6x compression with preserved
+end-task accuracy across three QA datasets. Its evaluation is aggregate
+accuracy only; it does not audit whether a receiving agent's accuracy
+depends on the specific transmitted content the way our causal audit
+does, making it an instance of exactly the aggregate-metric-only
+methodology "The Pitfalls of KV Cache Compression" critiques in general
+and our audit tests directly.
 
 **Rotation-based quantization interacts badly with RoPE-encoded keys — a
 finding, not just an implementation note.** We initially implemented a
@@ -548,6 +566,61 @@ idealized uncompressed HotpotQA baseline — though the GSM8K check is one
 run on one model, reported as suggestive, not a systematic cross-task
 study (see Limitations).
 
+**Finding 5, extended further — the ordering holds across every remaining
+relay condition in the paper.** Extending the audit to `C` (layer-selection
+only, no compression) and `B_int4_kivi` (per-channel int4, our highest
+compression ratio), n=50 each on HotpotQA, the same three-tier ordering
+replicates cleanly on both: `C` reaches 46.0%/55.7% vs. `C_audit_zeroed`/
+`C_audit_random` both 0.0%/0.0% vs. `C_audit_mismatched` 24.0%/38.9%;
+`B_int4_kivi` reaches 50.0%/61.7% vs. zeroed/random both 0.0%/0.0% vs.
+mismatched 28.0%/34.7%. All twelve pairwise comparisons across both
+configurations are significant (real vs. zeroed/random p<0.0001 for both
+configurations; real vs. mismatched p=0.0127 `C` / p=0.0192 `B_int4_kivi`;
+mismatched vs. zeroed/random p=0.0005 `C` / p=0.0001 `B_int4_kivi`).
+Together with Finding 5's original three configurations, the three-tier
+causal ordering now holds across every structurally distinct relay
+condition tested in this paper — no compression, layer-selection alone,
+uniform int8, layer-selection plus adaptive compression, and per-channel
+int4 — leaving only `B_int4` itself untested, which is uninformative to
+audit given it already collapses to 0.0%/0.0% unaudited.
+
+**Finding 5, extended to a second topology — content-dependence is not
+specific to a sequential chain.** Every result above is on our fixed
+Reasoner→Verifier→Finalizer chain; Limitations (below) already notes this
+as a real scope boundary, citing "When Latent Agents Lie" and LatentMAS's
+different topologies as the natural extension we had not attempted. We
+built a minimal fan-in decomposition pipeline for this (Method's
+Limitations discussion has the full description): HotpotQA's ten
+passages split across two independent child agents, whose KV caches are
+RoPE-shifted and concatenated before one aggregator attends over both —
+structurally distinct from hop-by-hop relay in that the aggregator
+receives two parallel sources, not one sequential handoff. Applying the
+same zeroed/random substitution to **both** children's KV before the
+merge (n=25, HotpotQA), the real condition clearly separates from both
+corrupted conditions: the real condition reaches 36.0% accuracy / 49.5% F1, versus
+0.0%/0.0% for both zeroed and random. Real vs. zeroed and real vs. random
+are each significant (McNemar p=0.0039; F1 delta +0.495, 95% CI [+0.316,
++0.670], excludes zero). Zeroed and random are not yet distinguishable
+from each other at this sample size (p=1.0, both floor at 0.0%/0.0%) — we
+report this as a real but partial replication of Finding 5's ordering
+(content-dependence confirmed; the finer zeroed-vs-random severity
+distinction is not, and the `mismatched` condition has not yet been run
+in this topology, so we do not claim the full three-tier ordering here,
+only the real-vs-corrupted half of it). We note this took a real
+experimental-design correction to get right: an earlier pass substituted
+only one of the two children, leaving the other's real content intact,
+and the aggregate accuracy barely moved (3/10 vs 3/10 at a smaller n)
+even though the corrupted child's own output was already visibly garbled
+— a reminder that a fan-in topology's redundancy can mask a real
+content-dependence effect if an audit does not corrupt every relayed
+source at once. Substituting every child, matching the sequential
+pipeline's full-relay-corruption strength, resolved this. Qualitatively,
+the same failure signatures already documented for the sequential chain
+recur here: zeroed output is garbled but word-shaped ("Thendlinauisktai"),
+random output is more severely degraded (code-fragment and mixed-language
+tokens) — the same "random is worse than zeroed" texture as Finding 5's
+original qualitative observation, not a coincidence of this one topology.
+
 **Finding 6 — headline result: a calibration signal's own confidence does
 not predict downstream layer-selection safety, and fails in the wrong
 direction.** We tested the most direct available proxy for whether our
@@ -611,15 +684,21 @@ a subset, not an exhaustive classification (see Limitations).
 
 ## 5. Limitations
 
-**Causal audit and bleed-through scope.** We ran the causal audit on `A`
-(uncompressed relay), `D` (layer-selected + quantized), and `B_int8`
-(uniformly quantized) — the three-tier ordering replicates across all
-three, at n=50 each — but not on `C` or the `B_int4` family (including the
-`B_int4_kivi` fix); we claim the mechanism confirmed for the three tested
-configurations, not for every configuration in this paper, though extending
-it is a natural next step given the consistency already observed across
-three architecturally distinct conditions (no compression, compression
-only, compression plus layer selection). The bleed-through analysis
+**Causal audit scope.** We ran the causal audit on `A` (uncompressed
+relay), `D` (layer-selected + quantized), `B_int8` (uniformly quantized),
+`C` (layer-selection only, no compression), and `B_int4_kivi` (per-channel
+int4, our highest compression ratio) — the three-tier ordering replicates
+across all five, at n=50 each, with every pairwise comparison significant:
+for `C`, real (46.0%/55.7%) vs. zeroed/random p<0.0001 each, real vs.
+mismatched (24.0%/38.9%) p=0.0127, mismatched vs. zeroed/random p=0.0005
+each; for `B_int4_kivi`, real (50.0%/61.7%) vs. zeroed/random p<0.0001
+each, real vs. mismatched (28.0%/34.7%) p=0.0192, mismatched vs.
+zeroed/random p=0.0001 each. This now spans every structurally distinct
+relay condition in the paper — no compression, layer-selection alone,
+uniform quantization, layer-selection plus adaptive compression, and the
+most aggressive per-channel quantization tested — leaving only `B_int4`
+itself (which already collapses to 0%/0% unaudited, making a further
+audit of it uninformative) untested. The bleed-through analysis
 (Finding 8) is narrower still: a manual review of 20 of 36 incorrect
 `A_audit_mismatched` examples by one annotator, with no automated
 classifier, inter-annotator agreement check, or statistical test on the
@@ -635,9 +714,9 @@ via layer-wise KV concatenation across a different multi-agent structure
 than our hop-by-hop handoff; whether the same three-tier causal ordering
 holds under a fan-in or concatenation-based topology is a natural, cited
 extension we did not attempt, not one we found and characterized. Since
-writing this, we built and mechanically validated (unit-tested on synthetic
-tensors, not yet run on a real model) a prototype extending our relay
-mechanism to exactly this fan-in setting: a static, depth-1 decomposition
+writing this, we built and mechanically validated, then confirmed on a
+real model (see Results, Finding 5 extended), a prototype extending our
+relay mechanism to exactly this fan-in setting: a static, depth-1 decomposition
 of HotpotQA's ten passages across two child agents, whose independently-
 computed KV caches are merged via a RoPE position-shift before an
 aggregator attends over them, contrasted against a text-relay baseline that
@@ -654,10 +733,37 @@ recursively, but passes a single trained, adapter-compressed last-layer
 hidden state through a sequential agent loop, not a full multi-layer KV
 cache through a parallel fan-in decomposition, and requires fine-tuning
 lightweight link modules rather than working training-free as our relay
-mechanism throughout this paper does. Whether the fan-in merge we
-mechanically validated produces coherent, let alone accurate, output on a
-real model is unresolved at time of writing — reported here as a scoped,
-in-progress extension, not a result.
+mechanism throughout this paper does. The fan-in merge itself is no
+longer merely mechanically validated: Results (Finding 5, extended to a
+second topology) reports a real, statistically significant causal-audit
+result on it. We went further, also building a second, more ambitious
+prototype implementing genuine model-driven decomposition via a real,
+sandboxed Python REPL (matching RLM's actual mechanism, not a fixed
+split), with a KV-relay option at the sub-call boundary analogous to the
+fan-in merge above. Getting the text-only baseline to produce coherent
+output at all required several rounds of real-model debugging (the model
+frequently never printed a called sub-model's response, silently
+formatted the terminal action incorrectly once confident, and searched
+via ungrounded guesses rather than reading the given passages); the
+KV-relay condition surfaced further, distinct failure modes once built on
+top of a working baseline (the sender's own prompt framing leaking into
+the receiver's attention when spliced without isolating the generated
+answer span; a session-wide repetition-tracking loss specific to
+maintaining a persistent cache turn-to-turn instead of re-tokenizing the
+full transcript each turn; the model free-associating a fabricated
+continuation of its own tool output before the real system response
+arrived, which then persisted in the cache as if genuine). Each was
+diagnosed and fixed in turn, but the resulting system remains too
+unreliable at this model scale without fine-tuning to support a trustworthy
+comparison: our cleanest run (n=5) reached only 1/5 and 0/5 exact match
+for the text and KV-relay conditions respectively, with at least one
+example degenerating into non-English tokens in both conditions. Unlike
+the static fan-in prototype above, this dynamic, model-driven version
+does not yet support a trustworthy comparison at this model scale without
+fine-tuning; we report it and the concrete failure modes diagnosed in
+building it as a real engineering contribution and a partial negative
+signal specifically on model-driven decomposition, separate from the
+static fan-in prototype's now-confirmed positive result above.
 
 **Single-process, single-GPU evaluation.** Every experiment runs within one
 Python process on one RTX 4090: no `KVMessage` is ever serialized or
@@ -749,19 +855,17 @@ evaluate under sampling or self-consistency, which could interact
 differently with a degraded or compressed relayed context than with a full
 one.
 
-**Nibble-packing is unit-tested, not deployment-tested.** We implement
-real two-values-per-byte packing for every bits==4 tensor (see Finding 4),
-verified via round-trip pack/unpack exactness and bit-identical
-`compress`/`decompress` output with and without packing on synthetic
-tensors. This is standalone tensor-level testing, not an end-to-end
-GPU rerun with the new packing path in the live pipeline; accuracy/F1 are
-unaffected in principle (packing changes storage format, not values, and
-the unit tests confirm this directly), but we have not re-run the full
-n=100 HotpotQA evaluation with packing enabled to confirm no integration
-issue exists between the compressor and the rest of the pipeline (cache
-reconstruction, device placement, batch handling). The reported accuracy
-numbers throughout this paper come from pre-packing runs; only the
-compression-ratio figures reflect the packing-enabled compressor.
+**Nibble-packing: unit-tested and since confirmed end-to-end.** We
+implement real two-values-per-byte packing for every bits==4 tensor (see
+Finding 4), originally verified only via round-trip pack/unpack exactness
+and bit-identical `compress`/`decompress` output on synthetic tensors. We
+have since re-run the full n=100 HotpotQA evaluation with packing enabled
+in the live pipeline (`results/run_20260910_160111`): `D` reproduced
+50.0% accuracy / 61.9% F1 / 37.82 MB / 2.76x, and `B_int4_kivi` reproduced
+52.0% accuracy / 64.1% F1 / 36.43 MB / 3.99x — an exact match to the
+originally reported figures on every metric, with no integration issue
+between the compressor and the rest of the pipeline (cache reconstruction,
+device placement, batch handling all unaffected).
 
 **Partial reproduction of adapted and considered techniques.** Our
 rotation-based quantization covers PolarQuant's core rotate-then-quantize

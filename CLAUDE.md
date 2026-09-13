@@ -460,30 +460,73 @@ just underpowered noise (see finding 5 above).
     correct, necessary for any future LongRoPE model) but the model itself
     is out of scope now.
 
+13. **Causal audit's three-tier ordering extended to a second topology —
+    fan-in decomposition, not just the sequential chain.** Built a
+    minimal fan-in prototype (`lakv/recursive_pipeline.py`): HotpotQA's
+    ten passages split across two independent child agents, KV caches
+    RoPE-shifted and concatenated before one aggregator attends over
+    both. First real-model run (n=10, both children's KV zeroed/
+    randomized) looked like a near-null result (3/10 EM for `kv` vs
+    3/10 for `kv_audit_zeroed`) — but reading the raw predictions showed
+    5/10 of `kv_audit_zeroed`'s outputs were already the expected
+    garbled-gibberish signature; the misleading aggregate was a real
+    **experimental-design bug**, not a null finding: the default
+    `causal_audit_child_idx=-1` only corrupted ONE of two children,
+    leaving the other's real content intact (partial, not full-relay,
+    corruption — a weaker test than the sequential pipeline's audit,
+    which replaces the entire relayed cache). Fixed by adding
+    `causal_audit_child_idx="all"` (substitute every child), extracted
+    into a directly-testable `_resolve_audit_target_idxs()` static
+    method (5 new unit tests, no GPU needed). **Rerun with `"all"` at
+    n=25 gives a real, significant result:** `kv` (real) 36.0%/49.5% F1
+    vs. `kv_audit_zeroed`/`kv_audit_random` both 0.0%/0.0% — McNemar
+    p=0.0039 for both real-vs-zeroed and real-vs-random, F1 delta
+    +0.495 [95% CI +0.316, +0.670] (excludes zero). `zeroed` vs
+    `random` themselves are NOT yet distinguishable at this n (both
+    floor at 0%, p=1.0) — this is a real but PARTIAL replication:
+    content-dependence confirmed, but not yet the full three-tier
+    ordering (no `mismatched` condition run in this topology yet, and
+    zeroed/random severity isn't separated by the crude EM/F1 metric,
+    only visible by reading raw text — same "random more garbled than
+    zeroed" texture as the sequential pipeline's Finding 5). Written
+    into the paper as "Finding 5, extended to a second topology."
+    Directly closes the "does the three-tier ordering hold under fan-in"
+    question that was previously logged as an unstarted future-work
+    seed (see below — now stale, updated).
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
 (its real formula needs attention weights this pipeline's fast `sdpa`
 decode path doesn't expose, and shipping an approximated version under time
 pressure was judged not worth the risk given this project's own evidence
-that unfaithful reproductions can actively mislead). Causal audit not yet
-run on `C` or the `B_int4` family.
+that unfaithful reproductions can actively mislead). Causal audit now
+covers `A`, `D`, `B_int8`, `C`, and `B_int4_kivi` on Qwen2.5 (see
+`docs/RESULTS_SUMMARY.md` §4) — only `B_int4` itself (already collapsed,
+uninformative to audit) remains untested there. A full causal audit of
+`A` on Mistral also completed (`results/run_20260911_101259`, all 5
+pairwise comparisons significant, p<0.0001 for real-vs-null) but is
+**not yet written into the paper** — still pending.
 
-**Well-grounded future-work seeds identified 2026-09-09 (not started, not
-planned before the Oct 12 deadline — logged so they don't get lost):**
+**Well-grounded future-work seeds identified 2026-09-09 (still not
+started; logged so they don't get lost):**
 (1) Heterogeneous-architecture relay within a single live pipeline (e.g. a
 Qwen Reasoner handing its cache to a Mistral Verifier) — KVCOMM itself
 flags this ("agents with identical architectures but different weights,"
 "different attention formulations") as unexplored, and we don't close
 that gap either; all our own architecture variation is between separate
-pipeline runs, never mixed within one. (2) Whether the causal audit's
-three-tier ordering holds under a different topology — "When Latent
-Agents Lie" audits an adversarial fan-in structure, LatentMAS collaborates
-via layer-wise KV concatenation across a different multi-agent structure
-than our sequential hop-by-hop handoff; neither has been tested against
-our specific causal-audit methodology. Both are real, citable directions,
-not vague "future work" filler — see `docs/naacl2027_paper_draft.md`'s
-Limitations section for how they're framed in the paper itself.
+pipeline runs, never mixed within one. See `docs/FUTURE_WORK.md` Idea #1
+for the full revised plan (this is now an actively contested area, not
+an open gap — read that file before starting). (2) **UPDATE 2026-09-13:
+partially done, not still a seed.** Whether the causal audit's three-tier
+ordering holds under a fan-in topology (raised because "When Latent
+Agents Lie" audits an adversarial fan-in structure and LatentMAS
+collaborates via layer-wise KV concatenation, neither tested against our
+specific methodology) now has a real answer — see finding 13 above: yes,
+on a non-adversarial fan-in decomposition, real-vs-corrupted content
+significantly separates (p=0.0039, n=25), though the full three-tier
+ordering (with `mismatched`) hasn't been run yet. The concatenation-
+topology (LatentMAS-style) variant specifically is still untested.
 
 ## Known issues / settled questions (read before re-investigating)
 
