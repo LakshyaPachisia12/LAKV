@@ -515,6 +515,41 @@ just underpowered noise (see finding 5 above).
     (which specific real content) is underpowered here, not disproven.
     Written into the paper as "Finding 5, extended to a second model."
 
+15. **Causal audit on Qwen3-8B — content-dependence itself turns out to
+    be architecture-dependent, not a bug.** (`results/run_20260914_022638`,
+    `A`/`D`, n=50 each.) `A`: 54.0%/67.2% real vs. 46.0%/55.8% zeroed vs.
+    0.0%/0.0% random vs. 64.0%/74.8% mismatched. `D`: 56.0%/71.2% real
+    vs. 46.0%/55.8% zeroed vs. 2.0%/5.0% random vs. 52.0%/62.4%
+    mismatched. Random still collapses catastrophically and significantly
+    on both (p<0.0001 each) — but real is NOT significantly different
+    from zeroed OR mismatched on either config (`A` vs zeroed p=0.48, `A`
+    vs mismatched p=0.30, `D` vs zeroed p=0.33, `D` vs mismatched p=0.79,
+    all F1 CIs include zero). On `A`, mismatched > zeroed is itself
+    significant (p=0.0039); on `D` even that collapses (p=0.45).
+    **Verified as real, not a bug, three ways before trusting it:** (i)
+    checked every `A_audit_mismatched` donor question against its own
+    scored question directly — zero pool leakage; (ii) `A_audit_zeroed`
+    and `D_audit_zeroed` are byte-identical across all 50 examples —
+    looked alarming, traced to expected behavior: `D`'s own
+    `reconstruction_strategy="zeros"` already zeros its dropped layers
+    (see "Known issues" below), so once the audit ALSO zeros the
+    transmitted layers, `D`'s full received cache and `A`'s fully-zeroed
+    cache become bit-identical — not a bug, a real, elegant confirmation
+    the audit composes correctly with layer reconstruction; (iii) real/
+    zeroed/mismatched overlap on only 10-24 of 50 examples pairwise
+    (never all three, random matches none) — substitution is genuinely
+    selective, not silently no-op'd. **Read this together with Finding
+    6**: that finding showed a calibration signal's OWN confidence about
+    depth-axis safety is architecture-dependent and misleading; this
+    extends the same meta-point to content-identity — the paper's own
+    central mechanism (real content causally matters) is not a universal
+    law, it's itself architecture-dependent, with a stronger/larger model
+    apparently robust enough to partially recover from losing (zeroed) or
+    misdirecting (mismatched) real content while remaining just as
+    defenseless against statistically-plausible noise (random) as the
+    other two models. Written into the paper as "Finding 5, extended to
+    a third model."
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning

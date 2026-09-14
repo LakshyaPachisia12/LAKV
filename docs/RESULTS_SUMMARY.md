@@ -3,7 +3,7 @@
 > Purpose: a scannable table of every confirmed number, distinct from
 > `CLAUDE.md` (dense technical narrative, read that for the *why*) and
 > `docs/naacl2027_paper_draft.md` (academic prose for the actual paper).
-> Last updated 2026-09-13, branch `feat/research-extensions`. Every number
+> Last updated 2026-09-14, branch `feat/research-extensions`. Every number
 > here has a source file and a significance test behind it — see the
 > "source" column, or re-run `python -m lakv.stats <file> <cfgA> <cfgB>` to
 > reproduce any comparison.
@@ -104,6 +104,17 @@ Source: `results/run_20260907_222745` (A), `results/run_20260909_080434` (D, B_i
 Source: `results/run_20260911_101259` (A), `results/run_20260913_090529` (C, B_int4_kivi)
 
 `A` and `B_int4_kivi` replicate the full three-tier ordering cleanly on Mistral, all pairwise comparisons significant (real vs zeroed/random p<0.0001 each for both configs; real vs mismatched p<0.0001 each; mismatched vs zeroed/random p=0.0078 each). `C` is **partial**: mismatched clearly beats zeroed/random (p=0.0156 each — content matters at all), but `C` itself is not significantly different from mismatched here (p=0.5078, F1 CI includes zero) — unlike on Qwen, where this comparison was significant. Most likely explanation: `C`'s own baseline on Mistral is already much lower than on Qwen (20.0% vs 46.0%), independently confirming Finding 3's claim that Mistral is unusually fragile to layer-selection — less headroom to detect a further gap on an already-degraded baseline, not evidence content-identity stops mattering. The `A` and `B_int4_kivi` results on Mistral are written into the paper; the `C`/`B_int4_kivi` Mistral extension above is also written in (see Finding 5, extended to a second model).
+
+**Qwen3-8B, HotpotQA — a third model, and a genuinely different pattern:**
+
+| Config | Real | Zeroed | Random | Mismatched | n |
+|---|---|---|---|---|---|
+| A (uncompressed) | 54.0%/67.2% | 46.0%/55.8% | 0.0%/0.0% | 64.0%/74.8% | 50 |
+| D (compressed) | 56.0%/71.2% | 46.0%/55.8% | 2.0%/5.0% | 52.0%/62.4% | 50 |
+
+Source: `results/run_20260914_022638`
+
+**Not a clean replication — a real, verified, architecture-dependent finding.** Random still collapses catastrophically and significantly on both configs (p<0.0001 each). But real is NOT statistically distinguishable from zeroed or mismatched on either config (A vs zeroed p=0.48, A vs mismatched p=0.30, D vs zeroed p=0.33, D vs mismatched p=0.79, all F1 CIs include zero). On A, mismatched > zeroed is itself significant (p=0.0039); on D even that collapses (p=0.45). Verified as real (not a bug) three ways: no donor-question pool leakage; A_audit_zeroed/D_audit_zeroed's byte-identical output traced to D's own `reconstruction_strategy="zeros"` composing correctly with the audit's zeroing (expected, not a bug); real/zeroed/mismatched overlap on only 10-24 of 50 examples pairwise, confirming the substitution is genuinely selective. Written into the paper as "Finding 5, extended to a third model" — read alongside Finding 6, since both show the same meta-point (a mechanism assumed universal is itself architecture-dependent), just on different axes (depth-safety-confidence vs. content-dependence).
 
 **Second topology — fan-in decomposition (not sequential chain), Qwen2.5-7B-Instruct:**
 

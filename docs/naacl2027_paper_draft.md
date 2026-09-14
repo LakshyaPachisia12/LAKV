@@ -608,6 +608,46 @@ replicate: the weaker half of the three-tier ordering (some real content
 beats none) holds; the stronger half (which specific real content) is
 underpowered here, not contradicted.
 
+**Finding 5, extended to a third model — content-dependence itself is
+architecture-dependent.** Repeating the causal audit on Qwen3-8B (n=50,
+HotpotQA, configs `A` and `D`) surfaces a genuinely different pattern
+from either prior model, not a weaker version of the same one. `A`:
+54.0%/67.2% real vs. 46.0%/55.8% zeroed vs. 0.0%/0.0% random vs.
+64.0%/74.8% mismatched. `D`: 56.0%/71.2% real vs. 46.0%/55.8% zeroed vs.
+2.0%/5.0% random vs. 52.0%/62.4% mismatched. Random substitution still
+causes total, highly significant collapse on both configurations (`A`
+vs. random and `D` vs. random, each p<0.0001) — that part of the
+mechanism is robust across all three models tested in this paper. But
+real is **not** statistically distinguishable from either zeroed or
+mismatched on Qwen3-8B: `A` vs. zeroed p=0.48, `A` vs. mismatched
+p=0.30, `D` vs. zeroed p=0.33, `D` vs. mismatched p=0.79 (all F1
+bootstrap CIs include zero). On `A`, mismatched is itself significantly
+higher than zeroed (p=0.0039) — some structure survives — but on `D`
+even that distinction disappears (mismatched vs. zeroed, p=0.45). We
+verified this is a real effect, not a bug, three ways before reporting
+it: (i) checked every logged donor question for `A_audit_mismatched`
+against its own scored question directly — no pool leakage, donors are
+always genuinely different questions; (ii) `A_audit_zeroed` and
+`D_audit_zeroed` produce byte-identical output on all 50 examples, which
+looked alarming until we traced it to expected behavior, not a bug:
+`D`'s own reconstruction strategy already zeros its dropped layers (see
+Method), so once the audit also zeros the transmitted layers, `D`'s full
+received cache and `A`'s fully-zeroed cache become bit-identical,
+explaining the identical downstream generation exactly; (iii) real,
+zeroed, and mismatched overlap on only 10-24 of 50 examples pairwise
+(never all three at once, and random matches none), confirming the
+substitution is genuinely taking effect selectively rather than being
+silently ignored. Read together with Finding 6 (a calibration signal's
+confidence about depth-axis safety is itself architecture-dependent and
+misleading), this extends the same meta-point to the content-identity
+axis: even the paper's own central mechanism — that real content
+causally matters — is not a universal property of KV relay, but
+something that itself varies by architecture, with a stronger/larger
+model in this comparison apparently robust enough to partially recover
+from losing (zeroed) or misdirecting (mismatched) real content, while
+remaining just as defenseless as the other two models against
+statistically-plausible structural noise (random).
+
 **Finding 5, extended to a second topology — content-dependence is not
 specific to a sequential chain.** Every result above is on our fixed
 Reasoner→Verifier→Finalizer chain; Limitations (below) already notes this
