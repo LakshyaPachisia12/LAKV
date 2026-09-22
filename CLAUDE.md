@@ -1030,6 +1030,77 @@ topology (LatentMAS-style) variant specifically is still untested.
     signature is itself specific to agentic/multi-turn settings, not a
     general property of corrupted-KV generation.
 
+    **UPDATE 2026-09-22 -- ran the RLM+KV confidence sweep, and the naive
+    version of the signal did NOT validate as hoped -- but chasing down
+    exactly why surfaced a cleaner, more decisive metric than either the
+    original plan or Finding 18's own behavioral signature.**
+    `results/rlm_kv_check/run_20260922_093855`
+    (`kv`/`kv_audit_zeroed`/`kv_audit_random`/`kv_audit_mismatched`,
+    n=50, `--capture_confidence`). Raw per-channel mean confidence came
+    back looking backwards: `kv_audit_random` (top1_prob=0.931) reads as
+    MORE confident than real `kv` (0.922) -- opposite of the intended
+    signal. Verified the cause directly rather than assuming the metric
+    was simply broken: confidence is only recorded for sessions that
+    finish (`None` on `hit_max_turns`, by design), and only 12-39 of
+    each channel's 50 sessions ever do. Pulled every completed
+    `kv_audit_random` transcript: all of them show `llm_query_calls: 0`
+    -- the model solved the question by reading `passages[i]` directly
+    and never delegated at all, so the causal-audit substitution (which
+    only fires inside a delegation call) never had anything to corrupt.
+    Confirmed this is systematic: **the exact same 12 question indices
+    are the zero-delegation completions in ALL FOUR channels, with the
+    identical confidence value (0.931) in every one** -- HotpotQA
+    questions easy enough to answer without delegating at all, which
+    contaminate every channel's raw average identically regardless of
+    audit condition. That's exactly why the naive per-channel mean
+    looked flat/backwards instead of separating the conditions.
+
+    **The fix: filter to sessions that both attempted real delegation
+    AND still completed -- the only subset where the audit condition
+    could possibly have mattered.** This produces the cleanest result
+    in this project's entire RLM+KV work. Of 50 questions: `kv` has 27
+    (54%) delegated-and-completed sessions, `kv_audit_mismatched` has
+    17 (34%), `kv_audit_zeroed` has 2 (4%), and `kv_audit_random` has
+    **0 (0%)** -- not one session that attempted genuine delegation
+    under random-noise corruption ever completed, in the entire sample.
+    Every pairwise McNemar comparison on this binary indicator is
+    significant: `kv` vs. `kv_audit_zeroed` p<0.0001, `kv` vs.
+    `kv_audit_random` p<0.0001, `kv` vs. `kv_audit_mismatched`
+    p=0.0309, and -- the legs that defeated both plain accuracy
+    (p=1.0/p=0.50, Finding 18's UPDATE 2026-09-16) and the raw
+    confidence average above -- **`kv_audit_mismatched` vs.
+    `kv_audit_zeroed` p=0.0001, `kv_audit_mismatched` vs.
+    `kv_audit_random` p<0.0001.** This is the first metric anywhere in
+    this project's RLM+KV work to separate all four conditions cleanly,
+    including zeroed from random themselves (4% vs. 0%), which nothing
+    else -- not EM, not F1, not the turn-count/timeout-rate proxy --
+    has managed before. One honest exception, checked directly rather
+    than assumed: `kv_audit_zeroed` vs. `kv_audit_random` on THIS
+    specific metric is itself not significant (p=0.50, only 2
+    discordant pairs -- underpowered at this n, not a real null) -- the
+    direction is right (4% > 0%, matching the established
+    random-worse-than-zeroed texture) but not proven on this metric at
+    n=50, same honest caveat pattern as the rest of this project. Cross-checked against Finding 18's own numbers
+    before trusting this: this run's raw timeout rates (`kv` 22%,
+    `kv_audit_zeroed` 72%, `kv_audit_random` 76%, `kv_audit_mismatched`
+    42%) match Finding 18's UPDATE 2026-09-17 table exactly, consistent
+    with Finding 18's UPDATE 2026-09-20 confirming this whole ladder
+    reproduces bit-identically under the determinism fix -- a real,
+    reproducible pattern, not a one-off artifact of this specific run.
+
+    **Read together with Finding 18's original scope caveat**: this
+    doesn't just confirm the "leaky pathway" limitation (the root can
+    read `passages[i]` directly, bypassing the audited channel) -- it
+    gives it a precise, quantified shape. The leak isn't a vague
+    background risk; it's exactly 12/50 questions that bypass the audit
+    ENTIRELY regardless of condition, and the real causal signal lives
+    entirely in the other 38/50 where delegation is actually attempted.
+    **Reporting the delegated-and-completed rate, not raw per-channel
+    accuracy or the raw confidence average, is now the right way to
+    present this topology's causal audit in the paper** -- it isolates
+    exactly the mechanism under test and produces the most decisive
+    result in this project's RLM+KV section to date.
+
 ## Known issues / settled questions (read before re-investigating)
 
 - **Reconstruction strategy: `zeros` beats `nearest`/`interpolate`, by a lot**
