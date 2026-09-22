@@ -121,6 +121,16 @@ def main():
                     "n_turns": len(result.turn_texts),
                     "approx_tokens": ex.approx_tokens,
                     "question": ex.question, "gold": ex.answer,
+                    # Full transcript -- omitted from the first version of
+                    # this script, which meant a real n=3 smoke test
+                    # (2026-09-22) produced summary numbers with no way to
+                    # diagnose WHY a specific example failed (garbage
+                    # output? genuine search failure? a plumbing bug?)
+                    # without rerunning. Saved from the start now, same as
+                    # scripts/rlm_repl_kv_check.py already does.
+                    "turn_texts": result.turn_texts,
+                    "child_texts": result.child_texts,
+                    "n_needle": ex.n_needle, "n_filler": ex.n_filler,
                 })
             n_correct = sum(r["correct"] for r in channel_records[channel])
             mean_f1 = sum(r["f1"] for r in channel_records[channel]) / len(channel_records[channel])
