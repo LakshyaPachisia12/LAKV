@@ -16,7 +16,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lakv.stats import mcnemar_test, bootstrap_f1_diff_ci, estimate_power_at_n_multiplier, compare
+from lakv.stats import (
+    mcnemar_test, bootstrap_f1_diff_ci, estimate_power_at_n_multiplier, compare,
+    cochran_armitage_trend_test, discordant_pair_trend_across_conditions,
+)
 
 
 def _sample(idx, correct, f1=None):
@@ -133,6 +136,87 @@ def test_compare_high_level_matches_manual_calls():
     assert abs(out["accuracy_delta"] - 0.2) < 1e-9
     assert "f1_diff" in out
     assert out["f1_diff"] > 0
+
+
+def test_cochran_armitage_detects_clear_increasing_trend():
+    # Proportions rise cleanly 0.1 -> 0.9 across 5 ordered groups of 30 each
+    # -- an unmistakable trend, should come out significant.
+    successes = [3, 9, 15, 21, 27]
+    totals = [30, 30, 30, 30, 30]
+    z, p = cochran_armitage_trend_test(successes, totals)
+    assert z > 0
+    assert p < 0.001
+
+
+def test_cochran_armitage_flat_proportions_not_significant():
+    # Same proportion (0.5) in every group -> no real trend.
+    successes = [15, 14, 16, 15, 15]
+    totals = [30, 30, 30, 30, 30]
+    z, p = cochran_armitage_trend_test(successes, totals)
+    assert p > 0.5
+
+
+def test_cochran_armitage_decreasing_trend_gives_negative_z():
+    successes = [27, 21, 15, 9, 3]
+    totals = [30, 30, 30, 30, 30]
+    z, p = cochran_armitage_trend_test(successes, totals)
+    assert z < 0
+    assert p < 0.001
+
+
+def test_cochran_armitage_respects_unequal_spacing_scores():
+    # Same successes/totals, but scores are wildly unevenly spaced (e.g.
+    # context lengths 2000/8000/16000/32000, not 0/1/2/3) -- the trend
+    # should still be detected and the function shouldn't crash or
+    # silently ignore the scores argument.
+    successes = [3, 12, 20, 27]
+    totals = [30, 30, 30, 30]
+    z_equal, p_equal = cochran_armitage_trend_test(successes, totals)
+    z_real, p_real = cochran_armitage_trend_test(successes, totals, scores=[2000, 8000, 16000, 32000])
+    assert p_equal < 0.001
+    assert p_real < 0.001
+    assert z_equal != z_real  # unequal spacing genuinely changes the statistic
+
+
+def test_cochran_armitage_raises_on_mismatched_lengths():
+    try:
+        cochran_armitage_trend_test([1, 2], [10, 10, 10])
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_discordant_pair_trend_detects_growing_advantage():
+    # 4 conditions (e.g. context lengths). At each, kv (config "a")'s
+    # share of discordant pairs grows: 20% -> 40% -> 60% -> 80%.
+    per_condition = {}
+    for i, length in enumerate([2000, 8000, 16000, 32000]):
+        kv_win_rate = 0.2 + 0.2 * i
+        n_disc = 20
+        n_a_only = round(n_disc * kv_win_rate)
+        n_b_only = n_disc - n_a_only
+        pairs = (
+            [(_sample(j, True), _sample(j, False)) for j in range(n_a_only)]
+            + [(_sample(j, False), _sample(j, True)) for j in range(n_a_only, n_a_only + n_b_only)]
+        )
+        per_condition[length] = pairs
+    result = discordant_pair_trend_across_conditions(per_condition)
+    assert result["z_statistic"] > 0
+    assert result["p_value"] < 0.05
+    assert result["per_condition"][32000]["a_only"] > result["per_condition"][2000]["a_only"]
+
+
+def test_discordant_pair_trend_no_growth_not_significant():
+    # kv's discordant win rate is flat (~50%) across all conditions.
+    per_condition = {}
+    for length in [2000, 8000, 16000, 32000]:
+        pairs = (
+            [(_sample(j, True), _sample(j, False)) for j in range(10)]
+            + [(_sample(j, False), _sample(j, True)) for j in range(10, 20)]
+        )
+        per_condition[length] = pairs
+    result = discordant_pair_trend_across_conditions(per_condition)
+    assert result["p_value"] > 0.3
 
 
 if __name__ == "__main__":

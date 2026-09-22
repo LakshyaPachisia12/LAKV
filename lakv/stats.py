@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy import stats as _scipy_stats
@@ -173,6 +173,95 @@ def estimate_power_at_n_multiplier(
                 sig_count += 1
         results[mult] = {"n": n, "power": sig_count / n_sim}
     return results
+
+
+def cochran_armitage_trend_test(
+    successes: List[int], totals: List[int], scores: Optional[List[float]] = None,
+) -> Tuple[float, float]:
+    """Cochran-Armitage trend test: is there a linear trend in a
+    proportion across K ORDERED groups (e.g. accuracy across increasing
+    context lengths), rather than just "do any two groups differ."
+
+    successes[k]/totals[k] is the observed proportion in group k. scores
+    defaults to 0..K-1 (equally-spaced ranks); pass the real independent-
+    variable values (e.g. context length in tokens, or log2 of it) to
+    weight by actual spacing rather than assuming equally-spaced groups
+    -- which matters here, since a 2K/8K/16K/32K sweep is not evenly
+    spaced on a linear token axis.
+
+    Motivation (2026-09-22, branch feat/rlm-long-context): a single
+    point-estimate comparison (kv vs text at one context length) needs a
+    large n at that one length to reach significance. Testing for a
+    TREND across several moderately-sized runs at different lengths is
+    statistically more efficient when the underlying hypothesis is
+    genuinely about a trend (e.g. "kv's advantage over text grows with
+    context length," mirroring RLM's own reported pattern for
+    decomposition vs. no-decomposition, arXiv 2512.24601) rather than
+    "is there a difference at this one specific length."
+
+    Returns (z_statistic, two_sided_p_value).
+    """
+    x = np.array(successes, dtype=float)
+    n = np.array(totals, dtype=float)
+    if len(x) != len(n):
+        raise ValueError("successes and totals must be the same length")
+    t = np.arange(len(x), dtype=float) if scores is None else np.array(scores, dtype=float)
+
+    N = n.sum()
+    if N == 0:
+        raise ValueError("totals sum to zero -- no data to test a trend on")
+    p_bar = x.sum() / N
+    t_bar = (n * t).sum() / N
+    p_k = np.divide(x, n, out=np.zeros_like(x), where=n > 0)
+
+    numerator = (n * (t - t_bar) * (p_k - p_bar)).sum()
+    denom_sq = p_bar * (1 - p_bar) * (n * (t - t_bar) ** 2).sum()
+    if denom_sq <= 0:
+        return 0.0, 1.0
+    z = numerator / np.sqrt(denom_sq)
+    p_value = 2 * (1 - _scipy_stats.norm.cdf(abs(z)))
+    return float(z), float(p_value)
+
+
+def discordant_pair_trend_across_conditions(
+    per_condition_pairs: Dict[float, List[Tuple[dict, dict]]],
+) -> dict:
+    """Given, for each condition value (e.g. context length in tokens), a
+    list of (sample_a, sample_b) paired per-example records (same
+    "correct" key shape mcnemar_test consumes), tests whether config A's
+    WIN RATE AMONG DISCORDANT PAIRS (cases where A and B disagree) trends
+    across the ordered condition values -- i.e. not "does A get more
+    accurate as the condition changes," but "among the cases where A and
+    B disagree, does A's share of those disagreements grow." This is the
+    statistically efficient way to test "does A's advantage over B grow
+    with X" from several moderate-n runs at different X, rather than
+    needing one very large run at a single X (see
+    cochran_armitage_trend_test's docstring for the full motivation).
+
+    Pairs within each condition are assumed already correctly aligned
+    (e.g. built from the same underlying example list in the same
+    order) -- unlike mcnemar_test's own _align_by_idx step, no idx
+    re-matching happens here, since the two run-length designs feeding
+    this (the RLM+KV context-length sweep) build both channels' record
+    lists from one shared, ordered example list per condition, not two
+    independently-saved files that could have drifted out of order.
+    """
+    conditions = sorted(per_condition_pairs.keys())
+    successes: List[int] = []
+    totals: List[int] = []
+    per_condition: Dict[float, dict] = {}
+    for c in conditions:
+        pairs = per_condition_pairs[c]
+        n_a_only = sum(1 for sa, sb in pairs if sa["correct"] and not sb["correct"])
+        n_b_only = sum(1 for sa, sb in pairs if sb["correct"] and not sa["correct"])
+        successes.append(n_a_only)
+        totals.append(n_a_only + n_b_only)
+        per_condition[c] = {
+            "a_only": n_a_only, "b_only": n_b_only,
+            "n_discordant": n_a_only + n_b_only, "n_pairs": len(pairs),
+        }
+    z, p = cochran_armitage_trend_test(successes, totals, scores=conditions)
+    return {"z_statistic": z, "p_value": p, "per_condition": per_condition}
 
 
 def compare(results_json: dict, cfg_a: str, cfg_b: str, n_boot: int = 10000, alpha: float = 0.05) -> dict:
