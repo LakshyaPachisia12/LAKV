@@ -608,6 +608,43 @@ replicate: the weaker half of the three-tier ordering (some real content
 beats none) holds; the stronger half (which specific real content) is
 underpowered here, not contradicted.
 
+**Finding 5, the Mistral gap closed — `D` shows the identical partial
+pattern as `C`, `B_int8` replicates cleanly.** Running `D` and `B_int8`
+on Mistral (n=50 each) completes causal-audit coverage of every relay
+condition in the paper on both model families. `B_int8`: 56.0%/63.3%
+real vs. zeroed/random both ~0.0%/0.0% vs. mismatched 20.0%/29.3% -- all
+five pairwise comparisons significant (real vs. zeroed/random p<0.0001
+each; real vs. mismatched p<0.0001; mismatched vs. zeroed/random
+p=0.0020 each), the clean pattern every quantization-only config shows
+on Mistral. `D`: 22.0%/32.8% real vs. zeroed/random both ~0.0%/0.0% vs.
+mismatched 16.0%/29.3% -- mismatched vs. zeroed/random significant
+(p=0.0078 each) but real vs. mismatched is not (p=0.3750, F1 delta +3.5
+[-6.7, +13.7] pts, CI includes zero), the identical partial shape just
+documented for `C`, not a new anomaly. The same explanation applies,
+now confirmed twice: `D`'s own Mistral baseline (22.0%) sits far below
+Qwen's established ~50-54% for the same config, leaving less headroom to
+detect a further real-vs-mismatched gap. Read together with `C`, the
+dividing line across two independent experiments is now clean: every
+layer-selection config tested on Mistral (`C`, `D`) shows this
+attenuated pattern; every quantization-only config tested on Mistral
+(`A`, `B_int8`, `B_int4_kivi`) shows the full five-comparison pattern --
+Finding 3's architecture-dependence claim recurring through the causal
+audit's own lens, not a coincidence confined to one config.
+
+**Finding 5, Mistral extension completed — uncompressed relay (`A`) also
+replicates the full ordering.** The `C`/`B_int4_kivi` audit above left `A`
+itself untested on Mistral; running it (n=50, HotpotQA) closes that gap:
+`A` reaches 56.0%/63.3% vs. `A_audit_zeroed`/`A_audit_random` both
+0.0%/0.3-0.5% vs. `A_audit_mismatched` 16.0%/26.4%, with all five pairwise
+comparisons significant (real vs. zeroed/random p<0.0001 each; real vs.
+mismatched p<0.0001; mismatched vs. zeroed/random p=0.0078 each). Mistral's
+uncompressed relay therefore joins Qwen2.5's as an unambiguous case where
+the full three-tier ordering holds decisively — relevant context for the
+next finding, which shows a third model (Qwen3-8B) breaking this same
+ordering: two of the three models tested confirm it cleanly, sharpening
+that Qwen3-8B is the exception rather than a sign the mechanism is
+generally fragile.
+
 **Finding 5, extended to a third model — content-dependence itself is
 architecture-dependent.** Repeating the causal audit on Qwen3-8B (n=50,
 HotpotQA, configs `A` and `D`) surfaces a genuinely different pattern
@@ -684,6 +721,8 @@ recur here: zeroed output is garbled but word-shaped ("Thendlinauisktai"),
 random output is more severely degraded (code-fragment and mixed-language
 tokens) — the same "random is worse than zeroed" texture as Finding 5's
 original qualitative observation, not a coincidence of this one topology.
+
+**Finding 5, the fan-in topology's ladder completed — this is the cleanest version of the three-tier ordering in the paper.** Adding the `mismatched` condition (n=50, same full-corruption strength) gives: `kv` (real) 40.0%/0.530 vs. `kv`\_audit\_zeroed 0.0%/0.008 vs. `kv`\_audit\_random 0.0%/0.000 vs. `kv`\_audit\_mismatched 6.0%/0.120. Unlike the dynamic RLM+KV prototype below, this static fan-in topology has no alternate information pathway for a corrupted child's answer to route around — zeroed and random collapse to genuinely near-total zero, matching every causal audit on the sequential pipeline. `kv` vs. zeroed: p<0.0001 (F1 delta +0.522 [+0.396, +0.645]); `kv` vs. random: p<0.0001 (F1 delta +0.530 [+0.403, +0.654]); and, completing the ladder, `kv` vs. mismatched: p=0.0001 (18 of 19 discordant pairs favoring real, F1 delta +0.410 [+0.267, +0.546]) — the strongest, most decisive version of this specific comparison anywhere in this paper. One precise nuance on the weaker half of the ladder: mismatched vs. zeroed/random is not significant by the exact McNemar test (p=0.25 each, only 3 discordant pairs — the test's own floor at that count, not necessarily a true null), but the F1 bootstrap CI excludes zero for both comparisons (+0.112 [+0.035, +0.200] and +0.120 [+0.047, +0.206]) — accuracy-level evidence is underpowered at this n for this specific leg, while the finer-grained F1 comparison trends real; we report both readings rather than rounding to whichever is more convenient. Verified via the same garbage-signature scan used throughout this paper: `kv` 0/50 flagged, mismatched 4/50, zeroed 23/50, random 48/50 (nearly all) — a clean, monotonic qualitative ordering matching the accuracy numbers exactly, and the clearest real-model confirmation yet of the “random is worse than zeroed” texture. This completes the full three-tier ladder across all three topologies now tested in this paper (sequential chain, static fan-in decomposition, dynamic model-driven delegation, the last of which is discussed in Limitations) — the fan-in version reported here is the cleanest of the three.
 
 **Finding 6 — headline result: a calibration signal's own confidence does
 not predict downstream layer-selection safety, and fails in the wrong
@@ -817,17 +856,140 @@ maintaining a persistent cache turn-to-turn instead of re-tokenizing the
 full transcript each turn; the model free-associating a fabricated
 continuation of its own tool output before the real system response
 arrived, which then persisted in the cache as if genuine). Each was
-diagnosed and fixed in turn, but the resulting system remains too
-unreliable at this model scale without fine-tuning to support a trustworthy
-comparison: our cleanest run (n=5) reached only 1/5 and 0/5 exact match
-for the text and KV-relay conditions respectively, with at least one
-example degenerating into non-English tokens in both conditions. Unlike
-the static fan-in prototype above, this dynamic, model-driven version
-does not yet support a trustworthy comparison at this model scale without
-fine-tuning; we report it and the concrete failure modes diagnosed in
-building it as a real engineering contribution and a partial negative
-signal specifically on model-driven decomposition, separate from the
-static fan-in prototype's now-confirmed positive result above.
+diagnosed and fixed in turn, but the resulting system remained too
+unreliable at this model scale to support a trustworthy comparison: our
+cleanest run (n=5) reached only 1/5 and 0/5 exact match for the text and
+KV-relay conditions respectively, with at least one example degenerating
+into non-English tokens in both conditions.
+
+A later real-model check (n=10) found one further, structurally distinct
+bug in the KV-relay condition specifically: the RoPE position-shift
+applied when splicing a child's answer-only KV onto the root's cache used
+the full root length as the shift amount unconditionally, correct only
+when the child's own framing tokens are not dropped first. Once the
+answer-only truncation this project's own earlier fix introduced is
+applied, the retained tokens' already-encoded positions start partway
+into the child's original sequence, not at zero, so shifting by the full
+root length re-bases them past where they should land -- the same class
+of position-alignment error this paper's own offset-corrector work
+(Section 3; "E is a documented negative result") already diagnosed
+in a different mechanism, here newly introduced by a truncation this
+file's original RoPE-shift validation never exercised. We verified the
+fix two ways: a corrected unit test checking the actual re-based position
+against the primitive's own semantics directly (the original test had
+compared two code paths sharing the identical bug, and could not have
+caught it), and a real-model rerun showing every one of five previously
+degenerate examples (word-salad output, or full repetition-loop collapse
+hitting the turn limit) now producing coherent, fluent multi-turn
+generation. Exact-match accuracy was unchanged by this fix (0/10 for both
+conditions, unchanged from before) -- the bug affected *output coherence*,
+not whether the underlying task was solved, and at this n neither
+condition answers enough questions correctly to support any accuracy
+comparison either way. One further, distinct issue surfaced during this
+same check, unrelated to the position bug: in one example, a sub-call
+returned the exact correct answer, but the root continued exploring
+irrelevant passages until it exhausted its turn budget rather than
+recognizing and acting on it -- a decision-policy gap (when to stop and
+commit to a found answer), not a coherence or relay-fidelity issue, and
+outside the scope of what this fix addresses.
+
+Motivated by the found-but-unused-answer gap above, we added one further,
+deliberately minimal intervention: a content-free cue inserted after every
+sub-call splice ("a sub-call's answer was just added to your context
+above; if you now have enough information, call final_answer(...)"),
+present only on the KV-relay condition, since the text-relay condition
+already receives an equivalent signal implicitly (the sub-call's answer
+is visible as decoded text). This does not reveal the sub-call's content
+-- doing so would partially reintroduce the text-relay condition's own
+mechanism and confound the comparison -- it only prompts a decision
+point, leaving what counts as "enough information" entirely to what the
+spliced KV itself conveys. At n=25, this produced the first real,
+non-degenerate accuracy signal for this prototype: KV-relay reached
+24.0% exact match (6/25) against text-relay's 8.0% (2/25), with KV-relay
+correct on every example text-relay answered correctly, plus four more.
+Extended to n=50, that specific pattern did not fully hold -- text-relay
+improved to 18.0% (9/50) and the gap to KV-relay's 24.0% (12/50) is not
+statistically significant (McNemar p=0.45, F1 delta +0.047 [-0.060,
++0.164], CI includes zero). We flag this ourselves rather than let the
+n=25 framing stand: the accuracy direction is still positive but not yet
+distinguishable from chance at this n. We verified no new degenerate
+output appeared at either scale (automated scans for the repetition-loop
+and out-of-vocabulary-garbage signatures documented elsewhere in this
+paper found none in either the 25- or 50-example transcripts).
+
+The more decisive result came from extending the causal audit itself
+(zeroed/random substitution of the spliced child KV, already implemented
+for this prototype) to n=50, then completing it with a `mismatched`
+condition (a held-out pool of real child KVs from unrelated questions,
+built via the same held-out pre-pass pattern used throughout this
+paper). Real relayed content significantly outperforms all three
+corrupted conditions: `kv` vs. `kv`\_audit\_zeroed p=0.0078 (F1 delta
++0.210 [+0.110, +0.323]); `kv` vs. `kv`\_audit\_random p=0.0039 (F1 delta
++0.230 [+0.127, +0.347]); and, completing the ladder, `kv` vs.
+`kv`\_audit\_mismatched p=0.0156 (F1 delta +0.167 [+0.071, +0.274]) --
+all three CIs exclude zero. This is the *full* three-tier signature
+(real > mismatched > zeroed/random) now confirmed in a dynamic,
+model-driven delegation topology, not only the sequential chain (Finding
+5) and the static fan-in decomposition (Finding 5, extended to a second
+topology) -- and a genuinely different, stronger result than the C2C
+cross-architecture bridge (above), where content identity did not matter
+at all. In this same-family, self-directed delegation setting, it does.
+One honest caveat on the weaker half of the ladder: `kv_audit_mismatched`
+is not yet statistically distinguishable from `kv_audit_zeroed`/
+`kv_audit_random` (p=1.0 / p=0.50, only 1-2 discordant pairs) -- the
+direction is right (10.0% > 8.0% > 6.0%) but underpowered at this n for
+that specific comparison, not a real null; we verified this reads as a
+coherent, not contradictory, picture by scanning all 250 generated
+transcripts for the repetition-loop/garbage-token signature documented
+elsewhere in this paper: zero hits in `real`/`text`, and a clean,
+monotonic ordering matching the accuracy numbers exactly (`random` 36/50
+flagged, `zeroed` 4/50, `mismatched` 3/50, `real`/`text` 0/50) --
+mismatched content is coherent and rarely degenerates, even though its
+accuracy is not yet provably above pure noise. A second honest,
+mechanistically important caveat, unchanged from the zeroed/random-only
+version of this result: `kv_audit_zeroed`/`kv_audit_random` do not
+collapse to near-zero the way every other causal audit in this paper
+does, because in this prototype uniquely the root model can read
+`passages[i]` directly through its own sandboxed code, a pathway
+entirely outside the spliced child-call KV being audited -- this audit
+is real and significant, but structurally narrower than the main
+pipeline's hop-to-hop relay audit, which corrupts an agent's entire
+received context.
+
+A third, distinct caveat surfaced only by directly diffing this run
+against the earlier zeroed/random-only run on the identical 50
+questions: unlike the main sequential pipeline, which is confirmed
+bit-identical across reruns under greedy decoding, this REPL-based
+prototype is not run-to-run deterministic -- 15 of 50 (30%) `text`-channel
+raw generations differed between the two runs, confirmed via literal
+string diff, not a data-loading artifact (every question text matched
+exactly). We attribute this to GPU floating-point non-associativity
+interacting with a long, many-turn, self-referential decoding loop,
+where a tiny numerical wobble at one argmax decision can cascade into a
+fully different multi-turn trajectory -- plausibly more likely here than
+in the main pipeline's fixed-length hops, since each turn involves the
+model writing and executing its own code, where a small wording shift
+changes what actually runs. This does not invalidate the significance
+results above, computed on paired conditions within one run regardless
+of cross-run reproducibility, but the absolute percentages reported here
+should be read as one valid sample from a noisier process than the rest
+of this paper's results, not a stable ground truth a rerun would exactly
+reproduce.
+
+Mining the same saved transcripts further (no new GPU cost) surfaced a complementary, more complete confirmation: the model's own behavior, not only its final-answer accuracy, tracks the three-tier ordering, including the one leg accuracy could not resolve. Timeout rate (the session exhausts its turn budget without committing to an answer), mean turn count, and mean delegation-call count are all monotonic across conditions: real 22% timeout / 7.72 mean turns / 1.38 delegation calls; mismatched 42% / 8.48 / 1.12; zeroed 72% / 9.46 / 0.76; random 76% / 9.60 / 0.66. Reusing the same paired McNemar test with “session finished without exhausting its turn budget” in place of “correct,” every pairwise comparison is significant, including the one accuracy left unresolved: real vs. mismatched p=0.0309; real vs. zeroed/random p<0.0001 each; mismatched vs. zeroed p=0.0001; mismatched vs. random p<0.0001. That last comparison is exactly the leg exact-match accuracy could not distinguish (p=1.0/p=0.50, underpowered) — on this behavioral proxy it is decisive. Even though the model never observes the corrupted content as text (it is relayed purely through the KV splice), its downstream process — how long it keeps exploring, how often it commits to an answer at all — is gradedly sensitive to content quality in a way the coarser final-answer metric partially masks. This is a new angle relative to every other causal audit in this paper, all of which score only the final answer: a process signature of causal content-corruption in an agentic KV-relay loop, complementary to rather than a replacement for the accuracy-based ladder, and a plausible mechanistic account of two things already observed above — why the decision-cue helped where it helped (real content lets the model commit confidently and quickly), and why the found-but-unused-answer gap exists at all (the model's own sense of “enough information” is graded, not binary, and tracks content quality even without seeing it as text).
+
+Unlike the static fan-in prototype above, this dynamic, model-driven
+version does not yet support a *statistically powered* accuracy
+comparison against text-relay at this model scale; it does now support
+the full, significant three-tier causal-audit result, with the scope and
+reproducibility caveats above. We report it, the concrete failure modes
+diagnosed and fixed in building it, the coherence-restoring fix, the
+decision-cue's accuracy direction, and this causal-audit result together
+as a real, continuing engineering and empirical contribution -- no
+longer only a partial negative signal, now including a genuine,
+significant positive result on content-specificity, structurally
+distinct from and complementary to the static fan-in prototype's own
+confirmed result above.
 
 **Single-process, single-GPU evaluation.** Every experiment runs within one
 Python process on one RTX 4090: no `KVMessage` is ever serialized or
@@ -899,7 +1061,52 @@ untested and, to our knowledge, an open problem in this literature more
 broadly: KVCOMM itself flags relay between "agents with identical
 architectures but different weights" and agents with "different attention
 formulations" as work it leaves for future exploration, and we inherit
-that same gap rather than closing it. Nearly all results are on HotpotQA
+that same gap rather than closing it.
+
+**A first step toward this gap, using a released cross-architecture
+bridge (C2C, Fu et al., ICLR'26).** Rather than the naive raw-KV-injection
+approach a closed-form linear-mapping paper (Heo et al., 2608.03893)
+already shows fails without a learned mapper, we used C2C's publicly
+released, pre-trained projector for the one architecture pair it ships a
+checkpoint for (Qwen2.5-7B-Instruct sharer, Qwen3-8B receiver), applying
+our own causal-audit methodology to it rather than only its accuracy. On
+n=50 HotpotQA questions: `real` (the bridge's actual projected KV) reaches
+60.0%/70.9% F1, statistically indistinguishable from either component
+model running standalone (`single_agent_qwen3` 56.0%/67.1%, p=0.75;
+`single_agent_qwen25` 54.0%/61.0%, p=0.58) — a heterogeneous learned
+bridge is not yet a proven accuracy win over just picking the better
+model. The causal audit is more decisive and, we think, more interesting:
+substituting the projector's output with `zeroed` or `random` noise
+collapses accuracy completely (0.0%/0.0% for both, `real` vs. each
+p<0.0001, F1 delta +0.709 [+0.593, +0.822]) — the channel is
+unambiguously load-bearing, and the raw-text failure signatures replicate
+the exact qualitative texture already documented for same-model relay in
+Finding 5 (`zeroed` degenerates into repetition loops and empty output;
+`random` is *worse* — out-of-vocabulary tokens, mixed-script garbage,
+code fragments — the identical "random looks like signal and actively
+misdirects attention" pattern this paper first observed on a completely
+different, same-model mechanism). But `real` vs. `mismatched` (a
+different, unrelated question's content run through the identical
+pathway) is **not significant**: 56.0%/70.6% F1, p=0.625, only 4
+discordant pairs out of 50, F1 delta +0.003 [-0.059, +0.067] — near
+enough to zero to leave no real doubt at this n. Read together, this
+draws a sharp, different line than our own same-model finding: the
+bridge's output depends heavily on *whether* a real, well-formed
+projection is present at all, but not detectably on *which* question
+produced it. `real` is also statistically indistinguishable from
+`no_comm` (the sharer channel switched off entirely, receiver uses only
+its own computation; 56.0%/67.1%, p=0.75) — consistent with the
+projector conveying something generically useful for fluent continuation
+rather than the sharer's specific content. We read this as evidence that
+a working, off-the-shelf learned cross-architecture bridge can satisfy
+the weaker property our own audit distinguishes (channel presence
+matters) while failing the stronger one (channel identity matters) that
+our same-model relay satisfies throughout this paper — a genuinely
+different failure mode than same-model non-exchangeability, on a single
+checkpoint, task, and architecture pair, not yet a general claim about
+cross-architecture bridges.
+
+Nearly all results are on HotpotQA
 (distractor configuration); we ran one
 n=50 confirmatory check on GSM8K (Qwen, `A`/`D`/full causal audit on `A`)
 and both headline findings replicated cleanly — `D` matched `A`'s accuracy

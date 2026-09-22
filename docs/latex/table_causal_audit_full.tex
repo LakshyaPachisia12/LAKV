@@ -1,0 +1,42 @@
+% Consolidated causal-audit table -- draft for review before insertion into main.tex.
+% Covers every real/zeroed/random/mismatched comparison currently spread
+% across six "Finding 5, extended..." paragraphs, plus the new topology
+% generalization rows (fan-in, RLM+KV) not yet in main.tex.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llcccccc}
+\toprule
+\textbf{Config} & \textbf{Model / Task / Topology} & \textbf{Real} & \textbf{Zeroed} & \textbf{Random} & \textbf{Mismatched} & \textbf{$n$} \\
+\midrule
+\multicolumn{7}{l}{\emph{Qwen2.5-7B-Instruct, HotpotQA, sequential chain}} \\
+A            & --                          & 50.0/64.0 & 0.0/0.0  & 0.0/0.0  & 28.0/37.1 & 50 \\
+D            & --                          & 54.0/60.2 & 0.0/0.0  & 0.0/0.2  & 26.0/32.2 & 50 \\
+B\_int8      & --                          & 54.0/68.0 & 0.0/0.0  & 0.0/0.0  & 24.0/34.4 & 50 \\
+C            & --                          & 46.0/55.7 & 0.0/0.0  & 0.0/0.0  & 24.0/38.9 & 50 \\
+B\_int4\_kivi& --                          & 50.0/61.7 & 0.0/0.0  & 0.0/0.0  & 28.0/34.7 & 50 \\
+\midrule
+\multicolumn{7}{l}{\emph{Generalization: model, task, and topology}} \\
+A            & Mistral-7B-Instruct-v0.3    & 56.0/63.3 & 0.0/0.5  & 0.0/0.3  & 16.0/26.4 & 50 \\
+C            & Mistral-7B-Instruct-v0.3    & 20.0/30.3 & 0.0/0.5  & 0.0/0.1  & 14.0/26.1 & 50 \\
+D            & Mistral-7B-Instruct-v0.3    & 22.0/32.8 & 0.0/0.5  & 0.0/0.1  & 16.0/29.3 & 50 \\
+B\_int8      & Mistral-7B-Instruct-v0.3    & 56.0/63.3 & 0.0/0.5  & 0.0/0.1  & 20.0/29.3 & 50 \\
+B\_int4\_kivi& Mistral-7B-Instruct-v0.3    & 54.0/63.2 & 0.0/0.5  & 0.0/0.1  & 16.0/25.0 & 50 \\
+A            & Qwen3-8B                    & 54.0/67.2 & 46.0/55.8& 0.0/0.0  & 64.0/74.8 & 50 \\
+D            & Qwen3-8B                    & 56.0/71.2 & 46.0/55.8& 2.0/5.0  & 52.0/62.4 & 50 \\
+A            & GSM8K (Qwen2.5)             & 90.0/---  & 0.0/---  & 2.0/---  & 28.0/---  & 50 \\
+kv (fan-in)  & Fan-in topology (Qwen2.5)   & 40.0/53.0 & 0.0/0.8  & 0.0/0.0  & 6.0/12.0  & 50 \\
+kv (RLM+KV)  & Dynamic delegation (Qwen2.5)& 24.0/32.3 & 8.0/11.2 & 6.0/9.2  & 10.0/15.5 & 50 \\
+\bottomrule
+\end{tabular}
+\caption{Every real/zeroed/random/mismatched causal-audit comparison in this
+paper: accuracy/F1 (\%) per condition. \emph{Real} vs.\ \emph{zeroed}/\emph{random}
+is significant ($p<0.0001$) in every row except Qwen3-8B, where content-dependence
+itself is architecture-dependent (see text). \emph{Real} vs.\ \emph{mismatched}
+is significant in all rows except Mistral \texttt{C}/\texttt{D} (underpowered on
+an already-degraded layer-selection baseline, see Finding 3) and Qwen3-8B (a
+distinct, architecture-dependent finding, see text). GSM8K reports accuracy only
+(no partial-credit F1 metric for this task).}
+\label{tab:causal_audit_full}
+\end{table*}

@@ -494,6 +494,45 @@ just underpowered noise (see finding 5 above).
     question that was previously logged as an unstarted future-work
     seed (see below — now stale, updated).
 
+    **UPDATE 2026-09-17 — the `mismatched` condition landed, and this is
+    the cleanest version of the three-tier ladder in the whole project.**
+    `scripts/recursive_poc_check.py --n 50 --channels kv kv_audit_zeroed
+    kv_audit_random kv_audit_mismatched`
+    (`results/recursive_poc_check/run_20260917_102302`): `kv` (real)
+    40.0%/0.530 vs. `kv_audit_zeroed` 0.0%/0.008 vs. `kv_audit_random`
+    0.0%/0.000 vs. `kv_audit_mismatched` 6.0%/0.120. Unlike the RLM+KV
+    dynamic prototype (which has a "leaky" direct-passage-read pathway
+    that keeps zeroed/random off the floor), this static fan-in topology
+    has no such escape hatch — zeroed/random collapse to genuinely
+    near-total zero, matching every audit on the sequential pipeline.
+    `kv` vs. `kv_audit_zeroed`: p<0.0001, F1 delta +0.522 [+0.396,
+    +0.645]. `kv` vs. `kv_audit_random`: p<0.0001, F1 delta +0.530
+    [+0.403, +0.654]. **`kv` vs. `kv_audit_mismatched`: p=0.0001** (18
+    discordant pairs favoring real), F1 delta +0.410 [+0.267, +0.546] —
+    real content clearly, decisively beats mismatched content, the
+    strongest version of this specific comparison anywhere in the
+    project. One precise nuance on the weaker half: `kv_audit_mismatched`
+    vs. `kv_audit_zeroed`/`kv_audit_random` is NOT significant by
+    McNemar (p=0.25 each, only 3 discordant pairs — the exact-binomial
+    test's own floor at that count, not a real null) but the F1
+    bootstrap CI DOES exclude zero for both (+0.112 [+0.035, +0.200] and
+    +0.120 [+0.047, +0.206]) — the accuracy-level (EM) comparison is
+    underpowered at n=50 for this specific leg, but the finer-grained F1
+    comparison suggests a real, if modest, effect. Report both
+    honestly: EM says "not yet proven," F1 says "trending real," don't
+    round either away. Verified via the same garbage-signature scan used
+    throughout this project: `kv` 0/50 flagged, `kv_audit_mismatched`
+    4/50, `kv_audit_zeroed` 23/50, `kv_audit_random` 48/50 (nearly
+    total) — a textbook-clean, monotonic qualitative ordering matching
+    the accuracy numbers exactly, and the clearest real-model
+    confirmation yet of the "random is worse than zeroed" texture first
+    observed on the sequential pipeline. **This completes the full
+    three-tier ladder on all three topologies now tested in this
+    paper** (sequential chain, static fan-in, dynamic RLM+KV
+    delegation) — the fan-in version is the cleanest of the three.
+    Written into the paper, replacing the earlier "partial replication"
+    framing with the complete result.
+
 14. **`C`/`B_int4_kivi` causal audit extended to Mistral — `B_int4_kivi`
     fully replicates, `C` only partially.** (`results/run_20260913_090529`,
     n=50 each.) `B_int4_kivi`: 54.0%/63.2% vs. zeroed/random both
@@ -550,6 +589,290 @@ just underpowered noise (see finding 5 above).
     other two models. Written into the paper as "Finding 5, extended to
     a third model."
 
+16. **First real benchmark of a heterogeneous, cross-architecture bridge
+    (C2C, Fu et al. ICLR'26) against both its own component models,
+    n=50 HotpotQA — not significant, point estimate trends positive.**
+    Ran the released `nics-efc/C2C_Fuser` checkpoint (Qwen2.5-7B-Instruct
+    as sharer, Qwen3-8B as receiver) as a 2-agent config (`F_c2c`) against
+    both models running standalone, same prompt/scoring convention as
+    every other config in this project (reused `lakv/qa_scoring.py` and
+    `lakv/stats.py` directly, external repo, script:
+    `C2C_external/lakv_pipeline_c2c.py`). `F_c2c` 60.0%/70.9% (mean F1)
+    vs. `single_agent_qwen3` 56.0%/67.1% vs. `single_agent_qwen25`
+    54.0%/61.0%. Neither comparison is significant: `F_c2c` vs. Qwen3
+    alone p=0.7539 (10 discordant pairs), F1 diff +0.038 [-0.075, +0.152];
+    `F_c2c` vs. Qwen2.5 alone p=0.5811 (13 discordant pairs), F1 diff
+    +0.098 [-0.038, +0.237] — both CIs cross zero. Latency is real and
+    substantial: 54.6s/example vs. 25.4s (Qwen3 alone) / 37.4s (Qwen2.5
+    alone) — roughly double the cheaper baseline, for a non-significant
+    accuracy edge. Manually scanning per-example outcomes shows genuine
+    signal in both directions, not just noise in one: `F_c2c` uniquely
+    rescues cases both standalone models miss (idx 15, 17), but also
+    uniquely degrades relative to the better baseline on others (idx 19,
+    34) and once badly fails the scorer's strict format on a
+    substantively-correct answer (idx 10, verbose reasoning-style output
+    instead of a terse answer, same "verbose C2C output vs. strict LAKV
+    scorer" texture already seen in the earlier n=10 informal check) —
+    this nets out to statistical noise at n=50, not a hidden real effect
+    the top-line numbers are hiding. **Honest read: at this n, a working,
+    off-the-shelf, learned cross-architecture bridge is statistically
+    indistinguishable from either component model alone, at real latency
+    cost.** This is a data point for the content-specificity question,
+    not a resolution of it — the causal-audit companion run
+    (`C2C_external/lakv_pipeline_c2c_audit.py`, built and CPU-verified,
+    not yet run) is what actually tests whether real content causally
+    matters through this bridge; a null accuracy result here is
+    consistent with, but does not by itself confirm, the weak
+    content-specificity already suggested by the earlier informal n=10
+    mismatched/no_comm check.
+
+17. **The causal audit of the C2C bridge landed, and it's clean and
+    decisive — the channel is load-bearing, but not content-specific.**
+    Ran `C2C_external/lakv_pipeline_c2c_audit.py --n 50`, same 50
+    questions as finding 16 (confirmed bit-identical `real`/`no_comm`
+    numbers to finding 16's `F_c2c`/`single_agent_qwen3` — full
+    determinism under greedy decoding, same consistency this pipeline
+    has shown throughout the project). `real` 60.0%/70.9% F1 vs.
+    `zeroed`/`random` both 0.0%/0.0% (`real` vs. each: p<0.0001, F1 delta
+    +0.709 [+0.593, +0.822] — as decisive as any comparison in this
+    project) vs. `mismatched` 56.0%/70.6% (`real` vs. `mismatched`:
+    p=0.6250, only 4 discordant pairs, F1 delta +0.003 [-0.059, +0.067]
+    — genuinely not significant, not underpowered noise at this n) vs.
+    `no_comm` 56.0%/67.1% (`real` vs. `no_comm`: p=0.7539). Raw text
+    confirms real failure signatures, not scoring artifacts: `zeroed` →
+    empty/degenerate repetition ("None", "0000...", "1999 1999...");
+    `random` → bizarre out-of-vocabulary garbage (CJK fragments, code
+    tokens, punctuation loops) — **the identical "random is worse than
+    zeroed" qualitative texture already documented for same-model relay**
+    (Finding 5's `A_audit_random`, and the `B_int4_turboquant` diagnosis)
+    now independently observed on a completely different mechanism (a
+    learned cross-model projector, not quantization or layer dropping) —
+    not a coincidence worth dismissing. **Honest read, and it's a
+    genuinely different shape of result than every same-model finding in
+    this paper**: the bridge clearly requires a real, well-formed
+    projection to be present at all (`real`/`mismatched` >>
+    `zeroed`/`random`), but does not detectably depend on *which*
+    question produced that projection (`real` ≈ `mismatched` ≈
+    `no_comm`) — channel presence matters, channel identity does not,
+    for this checkpoint/task/pair. This is the precise, previously-
+    unanswered question `FUTURE_WORK.md`'s Idea #1 revision flagged as
+    genuinely open in the literature. Written into the paper (Limitations,
+    right after the KVCOMM cross-architecture gap sentence).
+
+18. **Causal audit extended to a third topology — the dynamic, model-driven
+    RLM+KV prototype — and content-specificity holds, with one important
+    scope caveat.** `scripts/rlm_repl_kv_check.py --n 50 --channels text kv
+    kv_audit_zeroed kv_audit_random` (`results/rlm_kv_check/run_20260916_105307`):
+    `text` 18.0%/0.265 F1, `kv` (real) 24.0%/0.313, `kv_audit_zeroed`
+    10.0%/0.145, `kv_audit_random` 6.0%/0.092. `kv` vs. `text` is NOT
+    significant (p=0.4531, F1 delta +0.047 [-0.060, +0.164]) — an honest
+    correction to an n=25 pilot that looked like clean dominance (6/25 vs
+    2/25, kv correct everywhere text was plus 4 more) but didn't hold at
+    n=50; flagged this ourselves rather than let the n=25 framing stand.
+    **The real result: `kv` vs. `kv_audit_zeroed` p=0.0156 (F1 delta
+    +0.167 [+0.077, +0.274]) and `kv` vs. `kv_audit_random` p=0.0039 (F1
+    delta +0.220 [+0.114, +0.333]) — both significant, both CIs exclude
+    zero.** First evidence the content-specificity finding (Finding 6)
+    extends to a dynamic, model-driven delegation topology, not only the
+    sequential chain and the static fan-in decomposition. **Important
+    scope caveat, not a weaker replication**: `kv_audit_zeroed`/
+    `kv_audit_random` land at 10.0%/6.0%, nowhere near the 0.0%/0.0% total
+    collapse every other causal audit in this project shows. Root cause,
+    checked not assumed: in this prototype uniquely, the root model can
+    read `passages[i]` directly via its own sandboxed code — a pathway
+    entirely outside the spliced child-call KV being audited. Corrupting
+    a sub-call's answer doesn't touch the root's ability to independently
+    read the source material. This audit is real and significant, but
+    narrower than the main pipeline's hop-to-hop audit (which corrupts an
+    agent's *entire* received context) — report as such. Written into the
+    paper's Limitations section, replacing/extending the earlier n=25
+    framing with the honest n=50 picture.
+
+    **UPDATE 2026-09-16 (later) — the `mismatched` condition landed, and
+    it's the completing piece: the FULL three-tier ordering holds.**
+    `scripts/rlm_repl_kv_check.py --n 50 --channels text kv
+    kv_audit_zeroed kv_audit_random kv_audit_mismatched`
+    (`results/rlm_kv_check/run_20260916_203322`): `text` 22.0%/0.285,
+    `kv` 24.0%/0.323, `kv_audit_zeroed` 8.0%/0.112, `kv_audit_random`
+    6.0%/0.092, `kv_audit_mismatched` 10.0%/0.155. **`kv` vs.
+    `kv_audit_mismatched`: p=0.0156, F1 delta +0.167 [+0.071, +0.274] —
+    significant.** Real content significantly beats mismatched content,
+    the missing piece from the zeroed/random-only version above — this
+    is now the *full* real > mismatched > zeroed/random signature,
+    confirmed in a third, structurally distinct topology, and a genuinely
+    different (stronger) result than the C2C cross-architecture bridge
+    (finding 17), where content identity did NOT matter. In this
+    same-family, self-directed delegation setting, it does. Honest
+    caveat: `kv_audit_mismatched` vs. `kv_audit_zeroed`/`kv_audit_random`
+    is NOT yet significant (p=1.0 / p=0.50, only 1-2 discordant pairs —
+    genuinely underpowered for that specific comparison, not a real
+    null) — the direction is right (10.0% > 8.0% > 6.0%) but that
+    specific leg isn't proven at this n. Verified before trusting any of
+    this: scanned all 250 examples (5 conditions x 50) for the
+    repetition-loop/CJK-garbage signature — zero hits in `real`/`text`,
+    and a clean, monotonic qualitative ordering matching the accuracy
+    numbers exactly (`random` 36/50 flagged >> `zeroed` 4/50 >>
+    `mismatched` 3/50 >> `real`/`text` 0/50) — mismatched being
+    barely-ever garbled (coherent, just wrong-topic content) while still
+    not being statistically distinguishable from zeroed/random on
+    accuracy is itself a coherent, not contradictory, picture. `kv` vs.
+    `text` remains not significant (p=1.0), consistent with the earlier
+    correction — this thread's accuracy-over-text claim stays unproven,
+    only the causal-audit claim is solid.
+
+    **Real, important caveat found while cross-checking against the
+    earlier n=50 run: this prototype is NOT run-to-run deterministic the
+    way the rest of this project is.** Diffed raw generations for the
+    identical 50 questions between this run and the earlier
+    zeroed/random-only run (`run_20260916_105307`) — 15 of 50 (30%)
+    `text`-channel examples produced genuinely different output, under
+    greedy (`do_sample=False`) decoding, same model, same questions,
+    confirmed via literal string diff (not a data-loading bug — every
+    question text matched exactly). Unlike the main sequential pipeline,
+    which is confirmed bit-identical across reruns (documented elsewhere
+    in this file), this REPL-based prototype's long, many-turn,
+    self-referential decoding loop is evidently sensitive to GPU
+    floating-point non-associativity — a tiny numerical wobble at one
+    argmax decision can cascade into a fully different multi-turn
+    trajectory, especially since turns involve the model writing and
+    executing its own code, where small wording shifts change what
+    actually runs. This does NOT invalidate the significance results
+    above -- McNemar/F1-CI were computed on paired conditions from
+    within this ONE run, which stays valid regardless of whether a
+    different run would reproduce the exact same absolute numbers -- but
+    the reported percentages (`text` 22.0%, `kv_audit_zeroed` 8.0%, etc.)
+    should be read as one real, valid sample from a noisier process than
+    the rest of this project's results, not as a stable ground truth
+    that a rerun would exactly reproduce. Written into the paper,
+    completing the three-topology non-exchangeability evidence base.
+
+    **UPDATE 2026-09-17 — mining the already-saved transcripts (zero new
+    GPU cost) surfaced a genuinely new, more complete confirmation: the
+    model's own BEHAVIOR, not just its final-answer accuracy, tracks the
+    three-tier ordering cleanly, including the leg accuracy couldn't
+    resolve.** Computed from `run_20260916_203322`'s saved JSON:
+    timeout rate (`hit_max_turns`), mean turn count, and mean delegation
+    (`llm_query`) calls, all monotonic across conditions:
+
+    | Condition | Timeout rate | Mean turns | Mean delegation calls |
+    |---|---|---|---|
+    | real | 22% (11/50) | 7.72 | 1.38 |
+    | mismatched | 42% (21/50) | 8.48 | 1.12 |
+    | zeroed | 72% (36/50) | 9.46 | 0.76 |
+    | random | 76% (38/50) | 9.60 | 0.66 |
+
+    Reused `lakv.stats.mcnemar_test` exactly as for accuracy, substituting
+    "session finished without exhausting its turn budget" for "correct"
+    on the same paired 50 questions. **Every pairwise comparison is
+    significant, including the one accuracy left unresolved**: real vs.
+    mismatched p=0.0309; real vs. zeroed/random p<0.0001 each;
+    mismatched vs. zeroed p=0.0001; **mismatched vs. random p<0.0001**.
+    That last pair was exactly the leg EM-based accuracy could NOT
+    distinguish (p=1.0/p=0.50, underpowered) — on this behavioral proxy
+    it's decisive. Read together: even though the model never sees the
+    corrupted content as text (it is purely KV-relayed), its downstream
+    behavior — how long it keeps exploring, how often it commits to an
+    answer at all — is gradedly sensitive to content quality in a way
+    the coarser final-answer metric partially masks. This is a genuinely
+    new angle, not previously computed anywhere in this project: a
+    process/behavioral signature of causal content-corruption in an
+    agentic KV-relay loop, complementary to the accuracy-based audit
+    everywhere else in this paper, and it directly explains the
+    mechanism behind two things already found today — why the
+    decision-cue helped in the cases it helped (real content lets the
+    model commit confidently and quickly) and why the "found but didn't
+    act" gap exists in the first place (the model's own sense of
+    "enough information" is graded, not binary, and tracks content
+    quality even without seeing it as text). Worth writing into the
+    paper as a complementary result to the accuracy-based ladder, not a
+    replacement for it.
+
+    **UPDATE 2026-09-18 — the non-determinism from the caveat above is
+    fixed, not just diagnosed, and this is verified, not assumed.**
+    `scripts/rlm_repl_kv_check.py` now forces
+    `torch.use_deterministic_algorithms(True, warn_only=True)` plus
+    `CUBLAS_WORKSPACE_CONFIG=":4096:8"` set before any CUDA context
+    exists (before `torch` is even imported). Verification: reran
+    `--n 20 --channels text` (`results/rlm_kv_check/run_20260918_111810`)
+    and diffed its `text`-channel `raw_answer`s against the same 20
+    questions from the pre-fix `run_20260916_203322` — **0/20 differ**,
+    including **all 7 of the examples (idx 2, 3, 5, 6, 8, 11, 14) that
+    were part of the original 15/50 divergent set** between the two
+    pre-fix runs. Not a coincidence of already-stable examples: this
+    directly confirms the fix eliminates the specific non-determinism
+    that produced the original 30% divergence, on the exact items that
+    showed it. No stderr warning was raised naming a specific
+    non-deterministic op, so `warn_only=True` didn't have anything to
+    report this time. **The Limitations caveat about this prototype
+    being a "noisier process than the rest of the project" is now
+    over-cautious for any FUTURE run through this fixed script** — still
+    accurate as a description of the numbers already reported
+    (`run_20260916_105307`/`run_20260916_203322`, both pre-fix), but a
+    fresh full-ladder rerun (`--channels text kv kv_audit_zeroed
+    kv_audit_random kv_audit_mismatched`) would now be reproducible and
+    should replace those numbers in the paper if it lands close to the
+    same percentages — see "Still open" below for the exact command.
+
+    **UPDATE 2026-09-20 -- the full n=50, five-channel ladder rerun landed,
+    and it is completely, cleanly reproducible.** Ran the exact command
+    named above (`results/rlm_kv_check/run_20260918_113108`) and diffed
+    every field against the pre-fix `run_20260916_203322`, not just
+    `raw_answer`: EM/F1 (`text` 22.0%/0.285, `kv` 24.0%/0.323,
+    `kv_audit_zeroed` 8.0%/0.112, `kv_audit_random` 6.0%/0.092,
+    `kv_audit_mismatched` 10.0%/0.155 -- identical to 3 decimal places),
+    `raw_answer` (0/250 differ across all 5 channels x 50 examples),
+    `hit_max_turns`, and `llm_query_calls` (0 differences on either,
+    every channel) are all bit-identical between the two runs. **The
+    "noisier process, one valid sample" caveat is retired -- this
+    prototype is now confirmed reproducible under the determinism fix,
+    not just theoretically expected to be.** One honest, narrow nuance
+    found while checking every field, not just the ones that get
+    reported: 33 of `kv_audit_random`'s 50 examples show different
+    intermediate `turn_texts` wording between the two runs, even though
+    `raw_answer` matched (both `None`) -- checked directly: all 33 have
+    `hit_max_turns=True` in BOTH runs, i.e. both independently explored a
+    different token-by-token path through the same maximally-chaotic
+    (pure-noise) condition before landing on the same final outcome
+    (timeout, no answer, identical `llm_query_calls`). This never affects
+    anything actually reported (EM/F1/timeout-rate/turn-count are all
+    still exactly reproduced) -- worth one sentence in the paper as an
+    honest footnote, not a caveat that undermines any number in it. The
+    Results/Limitations text should now say this prototype's ladder is
+    confirmed reproducible, dropping the earlier "read as one valid
+    sample from a noisier process" hedge from the UPDATE 2026-09-16 text
+    above.
+
+19. **Causal audit's `D`/`B_int8` gap on Mistral closed — `D` extends the
+    already-known "partial" pattern (Finding 14), `B_int8` replicates
+    cleanly.** `run.py --model mistralai/Mistral-7B-Instruct-v0.3
+    --configs D D_audit_zeroed D_audit_random D_audit_mismatched B_int8
+    B_int8_audit_zeroed B_int8_audit_random B_int8_audit_mismatched`, n=50
+    (`results/run_20260916_153013`). `B_int8`: 56.0%/63.3% vs.
+    zeroed/random both 0.0%/~0% vs. mismatched 20.0%/29.3% — all 5
+    pairwise comparisons significant (real vs. zeroed/random p<0.0001
+    each; real vs. mismatched p<0.0001; mismatched vs. zeroed/random
+    p=0.002 each), exactly the clean pattern every quantization-only
+    config shows. `D`: 22.0%/32.8% vs. zeroed/random both 0.0%/~0% vs.
+    mismatched 16.0%/29.3% — mismatched vs. zeroed/random significant
+    (p=0.0078 each, content matters at all) but real vs. mismatched is
+    NOT significant (p=0.375, F1 delta +3.5 [-6.7, +13.7], CI includes
+    zero) — the identical "partial" shape already documented for `C` on
+    Mistral (finding 14), not a new anomaly. Same explanation, now
+    confirmed twice: `D`'s own Mistral baseline (22.0%) is dramatically
+    below Qwen's (~50-54% established elsewhere), matching Finding 3's
+    architecture-dependence claim — less headroom on an already-degraded
+    baseline to detect a further real-vs-mismatched gap. **The dividing
+    line is now clean and consistent across two separate experiments**:
+    every layer-selection config tested on Mistral (`C`, `D`) shows this
+    attenuated pattern; every quantization-only config tested on Mistral
+    (`A`, `B_int8`, `B_int4_kivi`) shows the full five-comparison pattern.
+    Secondary, consistent detail: zeroed/random latency (43-45s) is
+    4-5x real/mismatched (9-19s), matching the established
+    garbage-output-runs-to-token-cap pattern seen throughout this
+    project. **Closes the "D and B_int8 remain untested on Mistral" gap**
+    — every relay condition in the paper except the already-broken
+    `B_int4` is now causally audited on both model families.
+
 **Still open / in progress on this branch:** Orthogonal Backfill was
 deliberately scoped out (not attempted) rather than left open — see
 `docs/naacl2027_paper_draft.md`'s Limitations section for the reasoning
@@ -559,12 +882,49 @@ pressure was judged not worth the risk given this project's own evidence
 that unfaithful reproductions can actively mislead). Causal audit now
 covers `A`, `D`, `B_int8`, `C`, and `B_int4_kivi` on Qwen2.5 (see
 `docs/RESULTS_SUMMARY.md` §4) — only `B_int4` itself (already collapsed,
-uninformative to audit) remains untested there. `C`/`B_int4_kivi` now
-also confirmed on Mistral (finding 14) and written into the paper. A
-full causal audit of `A` on Mistral also completed
-(`results/run_20260911_101259`, all 5 pairwise comparisons significant,
-p<0.0001 for real-vs-null) but is
-**not yet written into the paper** — still pending.
+uninformative to audit) remains untested there. **All five of those
+configs are now also confirmed on Mistral** — `C`/`B_int4_kivi` (finding
+14), `A` (2026-09-15, "Finding 5, Mistral extension completed"), and now
+`D`/`B_int8` (finding 19, 2026-09-16) — closing what was the last
+remaining cross-model causal-audit gap. `docs/RESULTS_SUMMARY.md` §4 is
+kept in sync with all of these. The `mismatched` condition's
+pool-recording mechanism (finding 18) has now been ported to the fan-in
+topology too (`RecursivePipelineConfig.record_audit_pool`,
+`scripts/recursive_poc_check.py`'s new `kv_audit_mismatched` channel,
+2026-09-16) — built and unit-tested (13/13 `tests/test_recursive_kv_merge.py`
+passing, full project suite 115/115), not yet run on GPU. Same
+held-out-pre-pass pattern as the RLM+KV script, keyed per-child-index
+since this topology substitutes specific children rather than one fixed
+splice point. Run command:
+`python scripts/recursive_poc_check.py --n 50 --channels kv
+kv_audit_zeroed kv_audit_random kv_audit_mismatched`.
+
+**RLM+KV non-determinism fix: DONE, confirmed at full scale (2026-09-20,
+see finding 18's UPDATE above).** The full n=50, five-channel ladder
+rerun (`run_20260918_113108`) reproduces every reported number
+bit-identically against the pre-fix `run_20260916_203322` (EM/F1,
+`hit_max_turns`, `llm_query_calls` -- 0 differences anywhere). The
+paper's "noisier process" caveat has been retired; see finding 18's
+UPDATE 2026-09-20 for the one narrow, harmless nuance found (intermediate
+turn wording, not any scored outcome, in `kv_audit_random`'s timeout
+cases). Confidence-signature verification is the natural next GPU run
+now that reproducibility is confirmed: `python scripts/rlm_repl_kv_check.py
+--n 50 --channels kv kv_audit_zeroed kv_audit_random kv_audit_mismatched
+--capture_confidence` (see finding 20).
+
+**Still pending:** `reverse_child_merge_order` on `RecursiveKVPipeline`
+(`lakv/recursive_pipeline.py`, CLI flag on
+`scripts/recursive_poc_check.py`) — a diagnostic motivated by
+CanonicalMerge's (arXiv 2607.01308) documented "directionality flaw,"
+testing whether our own fan-in merge is order-biased. Unit-tested
+(13/13 `tests/test_recursive_kv_merge.py`, full suite 115/115), not yet
+run on GPU. Run `python scripts/recursive_poc_check.py --n 50
+--channels kv` with and without `--reverse_child_merge_order` (separate
+`--output_dir`s) and compare EM/F1 on the identical 50 questions via
+`lakv.stats` — a real, order-sensitive difference would be a genuine bug
+to fix before the fan-in result is cited as cleanly as it currently is;
+no difference is a citable, real negative result (robust to order,
+unlike naive KV concatenation).
 
 **Well-grounded future-work seeds identified 2026-09-09 (still not
 started; logged so they don't get lost):**
@@ -585,6 +945,90 @@ on a non-adversarial fan-in decomposition, real-vs-corrupted content
 significantly separates (p=0.0039, n=25), though the full three-tier
 ordering (with `mismatched`) hasn't been run yet. The concatenation-
 topology (LatentMAS-style) variant specifically is still untested.
+
+20. **2026-09-18 research audit + implementation: a topology-agnostic
+    confidence signature, built and unit-tested, not yet run on GPU.**
+    A direct-source literature audit (not just the log's summaries) found
+    that `latentcommpay2026` (arXiv 2608.04893) already runs this
+    project's exact zeroed/random/mismatched methodology across three
+    published systems (LatentMAS/KVComm/C2C) and finds content-
+    specificity is SYSTEM-dependent -- closely paralleling, and
+    predating, this project's own Findings 15/17/18 on ARCHITECTURE-
+    dependence. The paper draft (main_rlm_focus.tex) already cited and
+    differentiated this correctly (topology-as-variable vs. their
+    system-as-variable); added one paragraph making the convergence
+    between the two findings explicit rather than leaving it implicit
+    (Related Work, "Auditing whether KV reuse does what it claims").
+
+    The concrete implementation follow-through: several real-vs-mismatched
+    legs are underpowered on EM/F1 alone at current sample sizes (see
+    "Not yet statistically established" above). The RLM+KV topology
+    already has a fix for an analogous problem -- Finding 18's UPDATE
+    2026-09-17 used turn count/timeout rate (a continuous behavioral
+    proxy) to resolve a leg EM couldn't (mismatched vs. random,
+    p<0.0001 on the proxy vs. p=0.50 on EM) -- but that signal only
+    exists for RLM+KV's variable-length agentic turns, not the other two
+    (fixed-length) topologies. Built the topology-agnostic generalization:
+    `lakv/confidence.py` (`ConfidenceStats`, `stats_from_logits`) computes
+    mean top-1 token probability / entropy from a generation's own
+    per-token logits -- works identically for a sequential pipeline's
+    Finalizer, a fan-in aggregator, or an RLM+KV session's final-answer
+    turn, since all three are ultimately just a sequence of per-token
+    logits. Wired in as an opt-in `capture_confidence` flag:
+    - `lakv/pipeline.py`: `PipelineConfig.capture_confidence`,
+      `RunResult.confidence`. `_generate()` now returns
+      `(text, confidence)`; all three of its internal code paths (no
+      injection / position_offset==0 handoff / manual offset-corrected
+      loop) capture logits when requested, via `output_scores=True` on
+      the `generate()` calls or direct logits in the manual loop.
+    - `lakv/recursive_pipeline.py`: `RecursivePipelineConfig.
+      capture_confidence`, `RecursiveRunResult.confidence`.
+      `_generate_with_injected_kv()`/`_generate_from_text()` likewise
+      return `(text, confidence)`.
+    - `lakv/rlm_repl_kv.py`: `RLMKVSession(..., capture_confidence=...)`,
+      `RLMKVRunResult.confidence`. Trickier than the other two since
+      confidence must track WHICH turn actually produced the final
+      answer (the turn whose code called `final_answer(...)`), not every
+      turn -- `_generate_from_primed()` now returns
+      `(kv, text, confidence)` for its own turn, and `run()` keeps the
+      most recent one (`last_turn_confidence`), used only at the
+      `sandbox.done` return point; stays `None` on `hit_max_turns` (no
+      answer was ever produced, nothing meaningful to report).
+    - `tests/test_confidence.py`: 6 new CPU-only unit tests (peaked vs.
+      near-uniform logits give the expected high/low top1_prob and
+      low/high entropy; multi-token averaging; 1D/2D shape handling;
+      empty-list edge case). Full suite: 121/121 passing (115 existing +
+      6 new), zero regressions from the `_generate*` signature changes.
+    - CLI wiring: `--capture_confidence` added to
+      `scripts/recursive_poc_check.py` and `scripts/rlm_repl_kv_check.py`
+      (per-example and per-channel-mean confidence now logged into their
+      saved JSON). **Not yet wired into `run.py`/`lakv/evaluator.py`**
+      for the sequential pipeline -- that system's PRESETS-based CLI is
+      considerably larger and more entangled; `PipelineConfig.
+      capture_confidence` works today for any caller that constructs a
+      config directly, just isn't yet exposed as a flat CLI flag there.
+      Scoped out of this pass deliberately (the sequential topology's
+      real-vs-mismatched legs are already well-powered per Finding 6,
+      making this topology the lowest-priority place to spend the
+      remaining implementation budget) -- logged here so it isn't
+      silently forgotten if the sequential topology's confidence signal
+      is wanted later.
+
+    **Everything above is unit-tested and compile-clean, not yet
+    exercised on GPU.** Run command for the two topologies where this
+    signal is expected to matter most (the underpowered legs):
+    `python scripts/recursive_poc_check.py --n 50 --channels kv
+    kv_audit_mismatched kv_audit_zeroed kv_audit_random
+    --capture_confidence` and `python scripts/rlm_repl_kv_check.py --n 50
+    --channels kv kv_audit_mismatched kv_audit_zeroed kv_audit_random
+    --capture_confidence`. Validating result: mean top1_prob/entropy
+    gradedly separates real > mismatched > zeroed ~ random, with
+    significance on the specific legs EM currently can't resolve (fan-in's
+    mismatched vs. zeroed/random, p=0.25 on McNemar; RLM+KV's same
+    comparison, p=1.0/p=0.50). A null result here would still be real and
+    reportable -- it would mean Finding 18's UPDATE 2026-09-17 behavioral
+    signature is itself specific to agentic/multi-turn settings, not a
+    general property of corrupted-KV generation.
 
 ## Known issues / settled questions (read before re-investigating)
 

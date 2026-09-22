@@ -230,13 +230,85 @@ machinery with it swapped in.
 
 ## 4. KV-cache trust/health probe — detect a bad relay before generating
 
-**The idea (from user, checked against real literature 2026-09-11):**
-instead of only finding out a relay was corrupted *after* generation (by
-reading a garbled or wrong answer), train a lightweight classifier that
-looks at a relayed KV cache's own statistics — before the receiving agent
-generates anything — and predicts whether it's genuine content or one of
-our substituted conditions (zeroed / random / mismatched). A "logical
-consistency check" on the cache itself, not on its decoded output.
+## REVISED 2026-09-15 — the plan below (mean/std/norm on the pooled
+## tensor) has a real mechanistic problem for two of the three conditions
+## it's supposed to detect. Read this revision before building; the
+## original step-by-step plan under it is now only correct for one
+## condition out of three.
+
+**What's wrong with the original plan, worked out by actually reasoning
+through what each condition IS, not just what it's called:**
+- **Zeroed** is trivially detectable — mean=std=norm=0. This part of the
+  plan is fine, but it's a threshold check, not a research contribution
+  by itself.
+- **Random** is the real problem: `lakv/causal_audit.py`'s
+  `moment_matched_random_kv` — the exact function this probe would be
+  trained against — deliberately matches each tensor's own real mean/std
+  (that's the whole point of "moment-matched," so random isn't a
+  strawman). **Mean/std/norm are blind to random by construction.** The
+  original plan proposed exactly the feature set that can't see the
+  condition it most needs to catch.
+- **Mismatched** is worse than a feature-engineering gap — it's likely a
+  *principled* limitation. Mismatched KV is real, genuinely-computed
+  model output, just for the wrong question; its magnitude statistics
+  look completely normal. A detector with no reference to what the
+  receiver actually asked has no information channel through which it
+  could know the content is wrong. This is a query-blind vs.
+  query-relative distinction, not a bigger-model/better-features problem.
+
+**Independent evidence this isn't just our own reasoning going wrong:**
+two things found on a 2026-09-15 literature check support both halves of
+this critique directly:
+1. **The "When Latent Agents Lie" negative result is sharper than the
+   original citation captured.** Re-reading it: they tested a learned
+   statistical probe on raw KV magnitude and report concrete numbers —
+   "at a 5% honest false-positive budget, the best cheap statistic
+   reached recall 0.354, and a learned L2 probe improved held-out AUC
+   while remaining weak under low-FP thresholding." Their headline
+   framing is that this fails under an *adaptive, detector-aware*
+   adversary ("norm-matched attacks held... magnitude at the honest peer
+   level... rejection recall 0.0"), which is a harder threat model than
+   ours (our conditions aren't optimized to evade a specific detector).
+   But note the weak *non-adaptive* number too (recall 0.354 at 5% FP)
+   — magnitude-based probing is not strong even before an adversary
+   starts trying to beat it, consistent with mismatched-like
+   (norm-matched) content being hard for magnitude features in general,
+   not only under adaptive attack.
+2. **A separate, unrelated probing paper found the specific failure
+   mode we'd expect for "mismatched."** Hidden-state-only probes "score
+   at or below chance when evaluating coherence versus correctness,
+   consistently ranking consistent-but-incorrect turns above
+   inconsistent-but-correct turns" — while attention-pattern probes
+   "remain relatively robust" under the same contamination. Our
+   `A_audit_mismatched` condition (documented elsewhere in this repo) is
+   exactly "consistent but incorrect": coherent, grammatical,
+   plausible-sounding, wrong content. This is a second, independent
+   signal that raw hidden/KV *value* statistics are the wrong place to
+   look for this specific condition — attention patterns or a
+   query-relative comparison are the more promising direction, not a
+   richer value-statistics feature set.
+
+**Revised scope:** build the "genuine vs. degenerate" detector (real +
+mismatched vs. zeroed + random) as the actual near-term deliverable, not
+a full 4-way classifier:
+- Zeroed: magnitude features, trivial, keep as the free floor case.
+- Random: needs **structural** features instead of magnitude — e.g.
+  cosine similarity between K vectors at adjacent sequence positions, or
+  per-layer spectral spread. Real KV has strong token-to-token
+  correlation from being computed by a real forward pass over coherent
+  text; i.i.d. moment-matched noise doesn't, even with identical mean/std.
+  This is still cheap, still computed from the tensor alone, just not
+  what the original plan specified.
+- Mismatched: **explicitly out of scope for this near-term version.**
+  State the reason up front (query-blind statistics can't see it, per
+  the reasoning and citations above) rather than discovering it
+  disappointingly after a run. A future, separate extension could
+  attempt query-relative or attention-based features instead of KV
+  value statistics — a materially bigger, different piece of engineering,
+  not a tweak to this plan.
+
+**Original idea, why it's a checked pattern, and citations for the
+methodology itself (still true, unaffected by the revision above):**
 
 **Why this is a real, checked idea, not a reinvention:** the general
 technique (probe a model's internal states for a quality/truthfulness
@@ -272,48 +344,62 @@ mismatched) built in.
 **What's actually missing, concretely:** value-level KV statistics.
 `causal_audit.py`/`hop_stats` currently logs shape/size metadata
 (byte counts, layer counts) but not statistics of the actual tensor
-values (mean, variance, norm, or an entropy-like signal) at the point of
-substitution. That's the one real gap to close before this is buildable —
-a small, scoped logging addition, not new architecture.
+values at the point of substitution. That's the one real gap to close
+before this is buildable — a small, scoped logging addition, not new
+architecture.
 
-**Step-by-step plan:**
+**Step-by-step plan (revised 2026-09-15 — features corrected, target
+narrowed to the real+mismatched vs. zeroed+random split):**
 1. Add cheap per-hop feature logging to `apply_causal_audit()` (or just
-   after decompression, before generation): `k.mean()`, `k.std()`,
-   `k.norm()`, same for `v`, maybe per-layer rather than pooled across all
-   layers — computed on tensors already in memory, no extra forward pass.
+   after decompression, before generation), per-layer not pooled: for
+   magnitude, `k.mean()`, `k.std()`, `k.norm()` (same for `v`); for
+   structure, adjacent-position cosine similarity and/or per-layer
+   spectral spread — the features that can actually see "random," per
+   the revision above. All computed on tensors already in memory, no
+   extra forward pass.
 2. Run a small batch of existing-style causal-audit configs (`A`,
    `A_audit_zeroed`, `A_audit_random`, `A_audit_mismatched`, ideally across
    the models already in this study) with the new logging on, purely to
    collect labeled feature vectors — real accuracy/generation is a
    byproduct here, not the point of this particular run.
 3. Train a simple probe (logistic regression or a small MLP, following
-   SAPLMA/FACTCHECKMATE's pattern) on those feature vectors against the
-   four ground-truth labels.
-4. Evaluate: can the probe distinguish real from fake *before* any
-   generation happens? If yes, this is both a mechanistic finding (real
-   vs. fake content has a detectable statistical signature in KV space,
-   which would explain *why* our causal audit's downstream accuracy
-   differences exist) and a practical one (a cheap early-warning check
-   deployable ahead of generation).
+   SAPLMA/FACTCHECKMATE's pattern) on those feature vectors for the
+   **binary** genuine-vs-degenerate target (real+mismatched=1,
+   zeroed+random=0), not the original four-way target.
+4. Evaluate: can the probe distinguish genuine from degenerate content
+   *before* any generation happens? Report the mismatched-vs-real
+   sub-question separately and explicitly as unresolved/out-of-scope,
+   not folded into the headline number. If the binary probe works, that's
+   both a mechanistic finding (structurally-real vs. structurally-fake KV
+   has a detectable signature) and a practical early-warning check —
+   more modest than "detects any corrupted relay," honestly scoped
+   instead.
 
-**Known limitations, going in:**
-- Feature choice matters a lot and isn't obvious — pooled mean/std/norm
-  might not carry enough signal; may need per-layer or per-head features,
-  which multiplies the feature space and could need more labeled examples
-  than existing audit runs provide.
-- A probe trained on our specific zeroed/random/mismatched conditions
-  might not generalize to *other* kinds of corruption (e.g., a real
-  adversarial perturbation, per Idea #3's "real version") — it would be
-  detecting *our specific audit conditions*, not corruption in general,
-  unless explicitly tested against other corruption types too.
+**Known limitations, going in (updated):**
+- The mismatched-content half of the original goal is likely not
+  achievable with this design at all, not just harder — see the
+  revision above. Don't scope work time against solving it with this
+  plan; it needs a different (query-relative or attention-based)
+  approach, tracked as a separate, bigger, not-yet-planned extension.
+- Structural features for "random" (adjacent-position cosine similarity,
+  spectral spread) are a reasoned prediction, not yet empirically
+  confirmed on our own model's real KV tensors — verify this actually
+  separates real from random on a small sample before committing to the
+  full logging/training pipeline.
+- A probe trained on our specific zeroed/random conditions might not
+  generalize to *other* kinds of corruption (e.g., a real adversarial
+  perturbation, per Idea #3's "real version") — it would be detecting
+  *our specific audit conditions*, not corruption in general, unless
+  explicitly tested against other corruption types too.
 - Still needs its own honest evaluation split (don't train and test on
-  the same run/questions) and probably its own small statistical
-  treatment (accuracy, precision/recall per class) rather than eyeballing
-  it.
+  the same run/questions) and its own small statistical treatment
+  (accuracy, precision/recall) rather than eyeballing it.
 
-**Estimated cost:** genuinely the lowest-risk idea in this file — a
-logging addition plus a small, fast, CPU-trainable classifier. The
-GPU cost is just re-running configs already built and validated.
+**Estimated cost:** still low relative to every other idea in this file
+— a logging addition plus a small, fast, CPU-trainable classifier — but
+the deliverable is now smaller in scope (binary genuine/degenerate, not
+a full corruption-type classifier) than originally planned. The GPU cost
+is just re-running configs already built and validated.
 
 ---
 

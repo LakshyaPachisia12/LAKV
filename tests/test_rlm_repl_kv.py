@@ -140,15 +140,31 @@ def test_splice_answer_only_drops_child_prompt_framing():
 
     assert spliced_full[0][0].shape[2] == root_len + prompt_len + answer_len
     assert spliced_answer_only[0][0].shape[2] == root_len + answer_len
-    # the answer-only splice's appended segment must match what you'd get
-    # by directly splicing the answer-only slice of child_kv
+
+    # BUG FIXED 2026-09-16: this test's own "expected" used to be computed
+    # by pre-truncating child_kv externally and calling splice_child_kv
+    # with answer_only_from=0 -- which shifted by root_len instead of
+    # root_len - prompt_len, the SAME bug the production code had. That
+    # made this test check "internal truncation == external truncation"
+    # under two copies of the same wrong formula, not real correctness --
+    # it would have passed either way. Now checks the actual invariant
+    # directly: the retained answer tokens' RoPE-encoded positions must
+    # land at exactly root_len, root_len+1, ... (a real continuation),
+    # verified against AnchorTable._rope_shift_k applied with the
+    # explicit correct shift, not by routing through splice_child_kv
+    # twice with mismatched semantics.
     answer_only_child_kv = tuple(
         (k[:, :, prompt_len:, :], v[:, :, prompt_len:, :]) for k, v in child_kv
     )
-    expected = RLMKVSession.splice_child_kv(root_kv, answer_only_child_kv, rope_theta=THETA)
+    expected = tuple(
+        (AnchorTable._rope_shift_k(k, shift=root_len - prompt_len, theta=THETA), v)
+        for k, v in answer_only_child_kv
+    )
     for layer_idx in range(n_layers):
-        assert torch.equal(spliced_answer_only[layer_idx][0], expected[layer_idx][0])
-        assert torch.equal(spliced_answer_only[layer_idx][1], expected[layer_idx][1])
+        appended_k = spliced_answer_only[layer_idx][0][:, :, root_len:, :]
+        appended_v = spliced_answer_only[layer_idx][1][:, :, root_len:, :]
+        assert torch.equal(appended_k, expected[layer_idx][0])
+        assert torch.equal(appended_v, expected[layer_idx][1])
     print("[OK] splice_answer_only_drops_child_prompt_framing")
 
 
@@ -259,6 +275,23 @@ def test_init_rejects_unknown_causal_audit_mode():
     print("[OK] init_rejects_unknown_causal_audit_mode")
 
 
+def test_init_rejects_record_audit_pool_combined_with_substitution_mode():
+    """record_audit_pool is for a held-out pre-pass that BUILDS a pool --
+    combining it with a real substitution mode would let a 'mismatched'
+    run silently repopulate its own pool from the questions it's scoring,
+    the same footgun LAKVPipeline's constructor already guards against."""
+    raised = False
+    try:
+        RLMKVSession.__new__(RLMKVSession).__init__(
+            model=None, tokenizer=None, causal_audit_mode="zeroed",
+            record_audit_pool=object(),
+        )
+    except ValueError:
+        raised = True
+    assert raised, "expected ValueError when record_audit_pool is combined with a non-'none' causal_audit_mode"
+    print("[OK] init_rejects_record_audit_pool_combined_with_substitution_mode")
+
+
 def test_causal_audit_zeroed_then_splice_matches_manual_zero_splice():
     """The actual wiring this session adds: apply_causal_audit(mode,
     child_kv, ...) BEFORE splice_child_kv, not instead of it -- the
@@ -325,6 +358,7 @@ if __name__ == "__main__":
     test_stop_condition_fires_exactly_at_complete_action_not_before_or_after()
     test_cache_len_helper()
     test_init_rejects_unknown_causal_audit_mode()
+    test_init_rejects_record_audit_pool_combined_with_substitution_mode()
     test_causal_audit_zeroed_then_splice_matches_manual_zero_splice()
     test_causal_audit_mode_none_is_a_pure_passthrough()
     print("\nAll Stage 2 (RLM+KV splice) mechanics tests passed.")

@@ -3,7 +3,7 @@
 > Purpose: a scannable table of every confirmed number, distinct from
 > `CLAUDE.md` (dense technical narrative, read that for the *why*) and
 > `docs/naacl2027_paper_draft.md` (academic prose for the actual paper).
-> Last updated 2026-09-14, branch `feat/research-extensions`. Every number
+> Last updated 2026-09-17 (later), branch `feat/research-extensions`. Every number
 > here has a source file and a significance test behind it — see the
 > "source" column, or re-run `python -m lakv.stats <file> <cfgA> <cfgB>` to
 > reproduce any comparison.
@@ -99,11 +99,15 @@ Source: `results/run_20260907_222745` (A), `results/run_20260909_080434` (D, B_i
 |---|---|---|---|---|---|
 | A (uncompressed) | 56.0%/63.3% | 0.0%/0.5% | 0.0%/0.3% | 16.0%/26.4% | 50 |
 | C (layer-selection only) | 20.0%/30.3% | 0.0%/0.5% | 0.0%/0.1% | 14.0%/26.1% | 50 |
+| D (layer-selection + compression) | 22.0%/32.8% | 0.0%/0.5% | 0.0%/0.1% | 16.0%/29.3% | 50 |
+| B_int8 (uniform quantization) | 56.0%/63.3% | 0.0%/0.5% | 0.0%/0.1% | 20.0%/29.3% | 50 |
 | B_int4_kivi (highest compression) | 54.0%/63.2% | 0.0%/0.5% | 0.0%/0.1% | 16.0%/25.0% | 50 |
 
-Source: `results/run_20260911_101259` (A), `results/run_20260913_090529` (C, B_int4_kivi)
+Source: `results/run_20260911_101259` (A), `results/run_20260913_090529` (C, B_int4_kivi), `results/run_20260916_153013` (D, B_int8)
 
-`A` and `B_int4_kivi` replicate the full three-tier ordering cleanly on Mistral, all pairwise comparisons significant (real vs zeroed/random p<0.0001 each for both configs; real vs mismatched p<0.0001 each; mismatched vs zeroed/random p=0.0078 each). `C` is **partial**: mismatched clearly beats zeroed/random (p=0.0156 each — content matters at all), but `C` itself is not significantly different from mismatched here (p=0.5078, F1 CI includes zero) — unlike on Qwen, where this comparison was significant. Most likely explanation: `C`'s own baseline on Mistral is already much lower than on Qwen (20.0% vs 46.0%), independently confirming Finding 3's claim that Mistral is unusually fragile to layer-selection — less headroom to detect a further gap on an already-degraded baseline, not evidence content-identity stops mattering. The `A` and `B_int4_kivi` results on Mistral are written into the paper; the `C`/`B_int4_kivi` Mistral extension above is also written in (see Finding 5, extended to a second model).
+**`D` shows the same partial pattern as `C`** (real vs. mismatched not significant, p=0.375, F1 CI includes zero, though mismatched vs. zeroed/random is, p=0.0078 each) — not a new anomaly, a second confirmation: `D`'s own Mistral baseline (22.0%) is dramatically lower than Qwen's (~50-54%), matching Finding 3's architecture-dependence claim, leaving less headroom to detect a further real-vs-mismatched gap. **`B_int8` replicates the full, clean five-comparison pattern** exactly like Qwen (all p≤0.002). The dividing line is clean: layer-selection configs (`C`, `D`) both show the attenuated pattern on Mistral; quantization-only configs (`A`, `B_int8`, `B_int4_kivi`) all show the full pattern — Finding 3's architecture-dependence claim showing up a second way, not a coincidence.
+
+`A` and `B_int4_kivi` replicate the full three-tier ordering cleanly on Mistral, all pairwise comparisons significant (real vs zeroed/random p<0.0001 each for both configs; real vs mismatched p<0.0001 each; mismatched vs zeroed/random p=0.0078 each). `C` is **partial**: mismatched clearly beats zeroed/random (p=0.0156 each — content matters at all), but `C` itself is not significantly different from mismatched here (p=0.5078, F1 CI includes zero) — unlike on Qwen, where this comparison was significant. Most likely explanation: `C`'s own baseline on Mistral is already much lower than on Qwen (20.0% vs 46.0%), independently confirming Finding 3's claim that Mistral is unusually fragile to layer-selection — less headroom to detect a further gap on an already-degraded baseline, not evidence content-identity stops mattering. **All three (`A`, `C`, `B_int4_kivi`) are now written into the paper** — `A` as "Finding 5, Mistral extension completed," `C`/`B_int4_kivi` as "Finding 5, extended to a second model" (this was previously out of sync: `A` had been run and tabled here since 2026-09-11 but not yet drafted into the actual paper text — fixed 2026-09-15).
 
 **Qwen3-8B, HotpotQA — a third model, and a genuinely different pattern:**
 
@@ -118,13 +122,37 @@ Source: `results/run_20260914_022638`
 
 **Second topology — fan-in decomposition (not sequential chain), Qwen2.5-7B-Instruct:**
 
-| Config | Real | Zeroed | Random | n |
-|---|---|---|---|---|
-| kv (fan-in, both children audited) | 36.0%/49.5% | 0.0%/0.0% | 0.0%/0.0% | 25 |
+| Config | Real | Zeroed | Random | Mismatched | n |
+|---|---|---|---|---|---|
+| kv (fan-in, both children audited) | 40.0%/53.0% | 0.0%/0.8% | 0.0%/0.0% | 6.0%/12.0% | 50 |
 
-Source: `results/recursive_poc_check/run_20260913_083353`. Real vs zeroed and real vs random both significant (McNemar p=0.0039 each; F1 delta +0.495, 95% CI [+0.316, +0.670], excludes zero). Zeroed vs random not yet distinguishable at this n (both floor at 0%, p=1.0) — same "random more garbled than zeroed" texture visible in raw text, just not separable by the crude EM/F1 metric yet. No `mismatched` condition run in this topology yet, so this confirms the real-vs-corrupted half of the three-tier ordering, not the full thing. Written into the paper as "Finding 5, extended to a second topology."
+Source: `results/recursive_poc_check/run_20260913_083353` (real/zeroed/random pilot, n=25), `results/recursive_poc_check/run_20260917_102302` (full n=50 run with `mismatched` added — table above uses this run throughout for consistency). **The cleanest three-tier ladder in the project.** `kv` vs. zeroed: p<0.0001, F1 delta +0.522 [+0.396, +0.645]. `kv` vs. random: p<0.0001, F1 delta +0.530 [+0.403, +0.654]. `kv` vs. **mismatched: p=0.0001** (18/19 discordant pairs favoring real), F1 delta +0.410 [+0.267, +0.546] — the most decisive real-vs-mismatched result anywhere in this paper. Unlike the RLM+KV dynamic prototype (§ below), this topology has no alternate information pathway, so zeroed/random collapse to genuinely near-zero, matching the sequential pipeline exactly. One nuance: mismatched vs. zeroed/random is not significant by McNemar (p=0.25 each, only 3 discordant pairs — the test's own floor at that count) but the F1 CI excludes zero for both (+0.112 [+0.035,+0.200], +0.120 [+0.047,+0.206]) — EM says "not proven," F1 says "trending real," reported both ways. Garbage-signature scan: `kv` 0/50 flagged, mismatched 4/50, zeroed 23/50, random 48/50 — a clean, monotonic match to the accuracy numbers. Written into the paper as "Finding 5, the fan-in topology's ladder completed."
 
-## 5. Two secondary analyses (no new GPU time — analysis of existing data)
+**Third topology — dynamic, model-driven RLM+KV delegation, Qwen2.5-7B-Instruct, n=50:**
+
+| Config | EM | F1 |
+|---|---|---|
+| text | 22.0% | 0.285 |
+| kv (real) | 24.0% | 0.323 |
+| kv_audit_zeroed | 8.0% | 0.112 |
+| kv_audit_random | 6.0% | 0.092 |
+| kv_audit_mismatched | 10.0% | 0.155 |
+
+Source: `results/rlm_kv_check/run_20260916_203322` (`scripts/rlm_repl_kv_check.py`).
+**The full three-tier signature holds**: `kv` vs. zeroed p=0.0078 (F1 delta +0.210 [+0.110, +0.323]); `kv` vs. random p=0.0039 (F1 delta +0.230 [+0.127, +0.347]); `kv` vs. **mismatched p=0.0156** (F1 delta +0.167 [+0.071, +0.274]) — all three significant, completing the ladder this topology was missing. A genuinely stronger result than the C2C cross-architecture bridge (§7 below), where content identity didn't matter at all — here it does. Honest caveat: mismatched vs. zeroed/random is not yet significant (p=1.0/p=0.50, 1-2 discordant pairs) — direction is right (10.0%>8.0%>6.0%) but underpowered for that specific leg. Verified via a garbage-signature scan across all 250 transcripts: 0/50 flagged for `real`/`text`, 3/50 `mismatched`, 4/50 `zeroed`, 36/50 `random` — a clean, monotonic ordering matching the accuracy numbers. `kv` vs. `text` remains not significant (p=1.0). **Important reproducibility caveat, unique to this prototype**: diffing this run against the earlier zeroed/random-only run on the identical 50 questions found 15/50 (30%) `text`-channel raw generations differ between runs under greedy decoding — unlike the main pipeline (confirmed bit-identical across reruns), this REPL-based prototype is not run-to-run deterministic, plausibly GPU floating-point non-associativity cascading through a long, self-referential, code-writing decode loop. Doesn't invalidate the within-run significance results, but the absolute percentages here shouldn't be read as a stable ground truth. Written into the paper, completing the three-topology non-exchangeability evidence base.
+
+## 5. Three secondary analyses (no new GPU time — analysis of existing data)
+
+**Model behavior tracks the causal-audit ordering even more completely than final-answer accuracy (RLM+KV prototype, mined from `run_20260916_203322`):**
+
+| Condition | Timeout rate | Mean turns | Mean delegation calls |
+|---|---|---|---|
+| real | 22% (11/50) | 7.72 | 1.38 |
+| mismatched | 42% (21/50) | 8.48 | 1.12 |
+| zeroed | 72% (36/50) | 9.46 | 0.76 |
+| random | 76% (38/50) | 9.60 | 0.66 |
+
+Reused `lakv.stats.mcnemar_test` with "session finished without exhausting its turn budget" substituted for "correct," on the same paired 50 questions. Every pairwise comparison is significant, **including the one accuracy left unresolved**: real vs. mismatched p=0.0309; real vs. zeroed/random p<0.0001 each; mismatched vs. zeroed p=0.0001; **mismatched vs. random p<0.0001** — accuracy alone couldn't distinguish that last pair (p=1.0/p=0.50). A genuinely new angle: a process/behavioral signature of causal content-corruption, not just an outcome one — the model's own sense of "enough information" tracks content quality gradedly even though it never sees the corrupted content as text. Zero new GPU cost — pure analysis of already-collected transcripts.
 
 **Calibration confidence does not predict cross-architecture safety (and points the wrong way):**
 
@@ -160,15 +188,52 @@ Source: `results/run_20260909_120933`
 
 **Every pairwise comparison in the three-tier ladder is significant**: `A` vs zeroed/random/mismatched p<0.0001 each; mismatched vs zeroed p=0.0001; mismatched vs random p=0.0002 — both headline findings (causal audit ordering, near-free layer selection) replicate on a structurally different task, with larger effect sizes and tighter p-values than the original HotpotQA runs. `D`'s reported ratio predates this session's byte-accounting fix and the later real-packing fix, but turns out to already be correct: it ran on the pre-session code, whose formula was always numerically identical to what real nibble-packing produces (see §3) — no correction needed, unlike an earlier pass through this file briefly claimed. Raw-text check on `A_audit_random` confirms the identical code-fragment/mixed-language garbage signature already documented for HotpotQA (not a parsing bug), plus one example where the model drifts mid-generation into reciting "Janet's ducks" (the canonical GSM8K few-shot exemplar still present in its own system prompt) instead of engaging with the real question — anecdotal, not a general claim.
 
-## 7. What's still open
+## 7. Heterogeneous cross-architecture bridge (C2C), n=50 HotpotQA
+
+Source: `C2C_external/lakv_pipeline_c2c.py` (accuracy benchmark) and
+`C2C_external/lakv_pipeline_c2c_audit.py` (causal audit) — external repo,
+not part of this git history; results transcribed here from real runs.
+
+| Condition | Accuracy | F1 | Latency |
+|---|---|---|---|
+| single_agent_qwen3 (alone) | 56.0% | 67.1% | 25.4s |
+| single_agent_qwen25 (alone) | 54.0% | 61.0% | 37.4s |
+| **real** (C2C bridge, actual projected KV) | 60.0% | 70.9% | 89.0s |
+| zeroed (projector output zeroed) | 0.0% | 0.0% | 262.5s |
+| random (projector output moment-matched noise) | 0.0% | 0.0% | 221.7s |
+| mismatched (bridge fed a different question) | 56.0% | 70.6% | 87.5s |
+| no_comm (sharer channel off) | 56.0% | 67.1% | 49.3s |
+
+`real`/`no_comm` are bit-identical to the earlier accuracy-only run's
+`F_c2c`/`single_agent_qwen3` — same 50 questions, greedy decoding, full
+determinism confirmed. **`real` is not significantly different from
+either standalone model** (vs. qwen3 p=0.75, vs. qwen25 p=0.58) — no
+proven accuracy win from the bridge yet. **The causal audit is the real
+finding**: `real` vs. `zeroed`/`random` p<0.0001 each, F1 delta +0.709
+[+0.593, +0.822] — the channel is unambiguously load-bearing, same
+"random is worse than zeroed" garbage-token texture already seen
+elsewhere in this project. But `real` vs. `mismatched` is **not
+significant** (p=0.625, F1 delta +0.003 [-0.059, +0.067]) — swapping in
+a completely different question's content through the same pathway makes
+no detectable difference. Read together: this bridge requires a real
+projection to be *present*, but doesn't detectably depend on *which*
+question produced it — a different, weaker property than same-model
+relay satisfies everywhere else in this paper (§4 above). Written into
+the paper draft's Limitations, right after the KVCOMM cross-architecture
+gap sentence.
+
+## 8. What's still open
 
 - Causal audit now covers `A`, `D`, `B_int8`, `C`, and `B_int4_kivi` on
   Qwen2.5 — every relay condition in the paper except the already-broken
-  `B_int4`, which is uninformative to audit further (see §4). `A`,
-  `C`, and `B_int4_kivi` also now confirmed on Mistral (§4) and on a
-  second, fan-in topology for the uncompressed condition (§4) — `D` and
-  `B_int8` remain untested on Mistral and in the fan-in topology, and
-  `mismatched` hasn't been run in the fan-in topology yet.
+  `B_int4`, which is uninformative to audit further (see §4). **All five
+  configs (`A`, `C`, `D`, `B_int8`, `B_int4_kivi`) are now also confirmed
+  on Mistral** (§4) — this gap is closed. **The full three-tier causal-
+  audit ladder (real > mismatched > zeroed/random) is now confirmed on
+  all three topologies tested in this paper**: sequential chain
+  (Finding 5), static fan-in decomposition (§4, run 2026-09-17 — the
+  cleanest of the three), and dynamic model-driven RLM+KV delegation
+  (§4, run 2026-09-16). No causal-audit gaps remain open in this paper.
 - `B_int4_kivi`'s trend below `A`/`B_int8` (52% vs 56-57%) is not yet statistically confirmed as a real cost (7-12 discordant examples, p=0.36-0.50).
 - `D` vs `C` on Qwen not significant (p=0.14, underpowered at n=100).
 - Bleed-through analysis is manual/partial (20 of 36 examples, one annotator) — an automated or fully-annotated version would be needed to turn this into a quantified claim.

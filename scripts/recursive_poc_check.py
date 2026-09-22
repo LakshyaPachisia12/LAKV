@@ -19,7 +19,22 @@ the effect: exact-match barely moved (partial redundancy from the other,
 untouched child papered over a real qualitative effect visible in 5 of 10
 raw outputs still showing the expected garbled-gibberish signature). Pass
 an integer instead for the weaker, partial-corruption condition
-specifically. Prints everything: per-child findings, the synthesis
+specifically.
+
+"kv_audit_mismatched" (added 2026-09-16, completing the three-tier
+ladder for this topology -- see docs/PROGRESS_REPORT.md) needs a
+pre-built KVAuditPool of held-out sessions' real per-child KVs. Built
+here via the same held-out-pre-pass pattern Evaluator._build_audit_pool
+(lakv/evaluator.py) and scripts/rlm_repl_kv_check.py's own
+kv_audit_mismatched support already use: when this channel is requested,
+--n_held_out additional examples are drawn from BEYOND the scored range
+(never overlapping, so a donor's own question can never be substituted
+back into itself), run once with record_audit_pool set
+(causal_audit_mode="none" -- real per-child KV recorded, keyed by child
+index, not substituted) to populate the pool, then the scored
+"kv_audit_mismatched" runs consume it via audit_pool.
+
+Prints everything: per-child findings, the synthesis
 reasoning (when applicable), the audit logs (when auditing), final
 answers, and real EM/F1 scores via
 lakv/qa_scoring.py (the same scorer the rest of this project uses), so
@@ -41,6 +56,14 @@ Usage:
     python scripts/recursive_poc_check.py --n 15 --channels kv kv_synthesis text
     python scripts/recursive_poc_check.py --n 15 --channels kv kv_audit_zeroed kv_audit_random
     python scripts/recursive_poc_check.py --n 15 --channels kv kv_audit_zeroed --causal_audit_child_idx -1
+    python scripts/recursive_poc_check.py --n 50 --channels text kv kv_audit_zeroed kv_audit_random kv_audit_mismatched
+    python scripts/recursive_poc_check.py --n 50 --channels kv kv_audit_mismatched --capture_confidence
+
+--capture_confidence (added 2026-09-18, see lakv/confidence.py) logs the
+aggregator's mean top-1 token probability / entropy per example -- a
+continuous signal that can resolve real-vs-mismatched differences EM/F1
+alone can't at this topology's current n=50 (see CLAUDE.md: that leg is
+underpowered by McNemar, p=0.25, though F1's CI already trends real).
 """
 
 import argparse
@@ -56,12 +79,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
+from lakv.causal_audit import KVAuditPool
 from lakv.recursive_pipeline import (
     RecursiveKVPipeline, RecursivePipelineConfig, load_hotpotqa_structured,
 )
 
 
-CHANNEL_CHOICES = ["text", "kv", "kv_synthesis", "kv_audit_zeroed", "kv_audit_random"]
+CHANNEL_CHOICES = ["text", "kv", "kv_synthesis", "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched"]
 
 # channel name -> (return_channel, causal_audit_mode)
 _CHANNEL_SPEC = {
@@ -70,6 +94,7 @@ _CHANNEL_SPEC = {
     "kv_synthesis": ("kv_synthesis", "none"),
     "kv_audit_zeroed": ("kv", "zeroed"),
     "kv_audit_random": ("kv", "random"),
+    "kv_audit_mismatched": ("kv", "mismatched"),
 }
 
 
@@ -92,6 +117,22 @@ def main():
         choices=CHANNEL_CHOICES,
     )
     parser.add_argument("--output_dir", default="results/recursive_poc_check")
+    parser.add_argument("--n_held_out", type=int, default=20,
+                         help="Held-out examples (drawn from beyond --n, never overlapping) "
+                              "used to build the KVAuditPool for 'kv_audit_mismatched'. "
+                              "Ignored if that channel isn't requested.")
+    parser.add_argument("--reverse_child_merge_order", action="store_true",
+                         help="Diagnostic (2026-09-18): reverse which child gets the "
+                              "privileged, unshifted first position in the fan-in merge, "
+                              "testing whether our merge inherits CanonicalMerge's "
+                              "documented 'directionality flaw'. Rerun the same --channels "
+                              "at the same --n with and without this flag and compare "
+                              "EM/F1 on the identical examples via lakv.stats.")
+    parser.add_argument("--capture_confidence", action="store_true",
+                         help="Log the aggregator's mean top-1 token probability / entropy "
+                              "per example (lakv/confidence.py) -- a continuous signal that "
+                              "can resolve real-vs-audited differences EM/F1 can't at this "
+                              "topology's current sample sizes.")
     args = parser.parse_args()
     causal_audit_child_idx = (
         args.causal_audit_child_idx if args.causal_audit_child_idx == "all"
@@ -99,12 +140,31 @@ def main():
     )
 
     model, tokenizer = load_model(args.model_name, device="cuda")
-    data = load_hotpotqa_structured(split=args.split, n=args.n)
+    needs_pool = "kv_audit_mismatched" in args.channels
+    total_n = args.n + (args.n_held_out if needs_pool else 0)
+    all_data = load_hotpotqa_structured(split=args.split, n=total_n)
+    data = all_data[:args.n]
+    held_out_data = all_data[args.n:] if needs_pool else []
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.output_dir) / f"run_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[recursive_poc_check] transcripts will be saved to: {out_dir}")
+
+    audit_pool = None
+    if needs_pool:
+        print(f"\n{'=' * 70}\nBuilding KVAuditPool from {len(held_out_data)} held-out examples "
+              f"(never overlapping the scored {args.n})\n{'=' * 70}")
+        audit_pool = KVAuditPool(max_size_per_agent=len(held_out_data))
+        pool_config = RecursivePipelineConfig(
+            n_children=args.n_children, return_channel="kv",
+            causal_audit_mode="none", record_audit_pool=audit_pool,
+        )
+        pool_pipeline = RecursiveKVPipeline(model, tokenizer, pool_config, device="cuda")
+        for item in held_out_data:
+            pool_pipeline.run(item["question"], item["passages"])
+        print(f"[recursive_poc_check] pool built, "
+              f"{[audit_pool.size(i) for i in range(args.n_children)]} entries per child")
 
     summary = {}
     all_records = {}
@@ -116,11 +176,16 @@ def main():
             n_children=args.n_children, return_channel=return_channel,
             causal_audit_mode=causal_audit_mode,
             causal_audit_child_idx=causal_audit_child_idx,
+            audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
+            reverse_child_merge_order=args.reverse_child_merge_order,
+            capture_confidence=args.capture_confidence,
         )
         pipeline = RecursiveKVPipeline(model, tokenizer, config, device="cuda")
 
         n_correct = 0
         f1_total = 0.0
+        confidence_sum = {"mean_top1_prob": 0.0, "mean_entropy": 0.0}
+        n_with_confidence = 0
         records = []
         for i, item in enumerate(data):
             result = pipeline.run(item["question"], item["passages"])
@@ -139,6 +204,18 @@ def main():
                 print(f"  Aggregator reasoning: {result.aggregator_reasoning_text[:400]!r}")
             if result.audit_logs:
                 print(f"  Audit logs: {result.audit_logs}")
+            confidence_dict = None
+            if result.confidence is not None:
+                confidence_dict = {
+                    "mean_top1_prob": result.confidence.mean_top1_prob,
+                    "mean_entropy": result.confidence.mean_entropy,
+                    "n_tokens": result.confidence.n_tokens,
+                }
+                confidence_sum["mean_top1_prob"] += result.confidence.mean_top1_prob
+                confidence_sum["mean_entropy"] += result.confidence.mean_entropy
+                n_with_confidence += 1
+                print(f"  Confidence: top1_prob={result.confidence.mean_top1_prob:.3f} "
+                      f"entropy={result.confidence.mean_entropy:.3f} (n_tokens={result.confidence.n_tokens})")
             print(f"Final answer ({channel}): {result.answer[:300]!r} -> extracted: {pred!r} | EM={em} F1={f1:.2f}")
 
             records.append({
@@ -152,22 +229,42 @@ def main():
                 "child_texts": result.child_texts,
                 "aggregator_reasoning_text": result.aggregator_reasoning_text,
                 "audit_logs": result.audit_logs,
+                "confidence": confidence_dict,
             })
 
         n = len(data)
-        summary[channel] = (n_correct, n, f1_total / max(n, 1))
+        mean_confidence = None
+        if n_with_confidence > 0:
+            mean_confidence = {
+                "mean_top1_prob": confidence_sum["mean_top1_prob"] / n_with_confidence,
+                "mean_entropy": confidence_sum["mean_entropy"] / n_with_confidence,
+                "n_examples": n_with_confidence,
+            }
+        summary[channel] = (n_correct, n, f1_total / max(n, 1), mean_confidence)
         all_records[channel] = records
-        print(f"\n[{channel}] {n_correct}/{n} exact match ({100 * n_correct / max(n,1):.1f}%), mean F1={f1_total / max(n,1):.3f}")
+        conf_str = ""
+        if mean_confidence is not None:
+            conf_str = (f", mean confidence top1_prob={mean_confidence['mean_top1_prob']:.3f} "
+                        f"entropy={mean_confidence['mean_entropy']:.3f}")
+        print(f"\n[{channel}] {n_correct}/{n} exact match ({100 * n_correct / max(n,1):.1f}%), "
+              f"mean F1={f1_total / max(n,1):.3f}{conf_str}")
 
     print(f"\n{'=' * 70}\nSUMMARY (n={len(data)}, NOT statistically powered at this size)\n{'=' * 70}")
-    for channel, (n_correct, n, mean_f1) in summary.items():
-        print(f"  {channel:15s} {n_correct}/{n} EM ({100 * n_correct / max(n,1):.1f}%)  mean F1={mean_f1:.3f}")
+    for channel, (n_correct, n, mean_f1, mean_confidence) in summary.items():
+        conf_str = ""
+        if mean_confidence is not None:
+            conf_str = (f"  top1_prob={mean_confidence['mean_top1_prob']:.3f} "
+                        f"entropy={mean_confidence['mean_entropy']:.3f}")
+        print(f"  {channel:15s} {n_correct}/{n} EM ({100 * n_correct / max(n,1):.1f}%)  mean F1={mean_f1:.3f}{conf_str}")
 
     out_path = out_dir / "transcripts.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
             "args": vars(args),
-            "summary": {c: {"n_correct": nc, "n": n, "mean_f1": mf1} for c, (nc, n, mf1) in summary.items()},
+            "summary": {
+                c: {"n_correct": nc, "n": n, "mean_f1": mf1, "confidence": conf}
+                for c, (nc, n, mf1, conf) in summary.items()
+            },
             "records": all_records,
         }, f, indent=2)
     print(f"\n[recursive_poc_check] full transcripts + audit logs saved to: {out_path}")

@@ -43,7 +43,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lakv.anchor_table import AnchorTable
-from lakv.recursive_pipeline import RecursiveKVPipeline
+from lakv.recursive_pipeline import RecursiveKVPipeline, RecursivePipelineConfig
 
 
 THETA = 1_000_000.0
@@ -301,6 +301,21 @@ def test_causal_audit_mode_none_is_a_pure_passthrough():
     print("[OK] causal_audit_mode_none_is_a_pure_passthrough (recursive_pipeline)")
 
 
+def test_init_rejects_record_audit_pool_combined_with_substitution_mode():
+    """record_audit_pool is for a held-out pre-pass that BUILDS a pool --
+    combining it with a real substitution mode would let a 'mismatched'
+    run silently repopulate its own pool from the questions it's scoring,
+    the same footgun LAKVPipeline's and RLMKVSession's constructors
+    already guard against."""
+    raised = False
+    try:
+        RecursivePipelineConfig(causal_audit_mode="zeroed", record_audit_pool=object())
+    except ValueError:
+        raised = True
+    assert raised, "expected ValueError when record_audit_pool is combined with a non-'none' causal_audit_mode"
+    print("[OK] init_rejects_record_audit_pool_combined_with_substitution_mode")
+
+
 if __name__ == "__main__":
     test_rope_shift_additivity()
     test_rope_shift_zero_is_noop()
@@ -314,4 +329,5 @@ if __name__ == "__main__":
     test_resolve_audit_target_idxs_rejects_out_of_range_and_bad_values()
     test_causal_audit_all_children_then_merge_matches_manual_all_zero_merge()
     test_causal_audit_mode_none_is_a_pure_passthrough()
+    test_init_rejects_record_audit_pool_combined_with_substitution_mode()
     print("\nAll recursive KV merge tests passed.")

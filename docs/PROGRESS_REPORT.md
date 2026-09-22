@@ -7,6 +7,368 @@ forward, whenever there's real progress to record.
 
 ---
 
+## 2026-09-18 (later) — Read the actual competing papers directly, and built a new measurement the log's summaries alone wouldn't have caught
+
+- Asked for a proper outside-in audit of the whole project: what's
+  actually novel, what's weak, and what to build next. Instead of just
+  re-reading this project's own notes, went and read the real papers
+  directly.
+- Found something important: one of the papers already cited runs this
+  project's own "swap the notes with wrong/blank/scrambled ones" test,
+  on three other published systems instead of on our own setups, and
+  finds the exact same kind of pattern this project independently found
+  — whether the wrong notes matter depends on which system you're
+  looking at. Good news: the paper draft already cites and correctly
+  sets itself apart from that work; added one paragraph making the
+  overlap between the two findings explicit instead of leaving it
+  unsaid.
+- Built something new in response: several of this project's own "real
+  notes clearly beat wrong notes" comparisons aren't proven strongly
+  enough yet by plain right/wrong scoring, at the current amount of
+  data. Earlier this week, one specific setup (the free-form
+  delegation one) got past that exact problem using a different kind of
+  signal — not "was the final answer right," but "did the AI keep
+  hesitating and re-checking, or commit confidently." That signal
+  resolved a comparison plain right/wrong scoring couldn't. Today,
+  built the general version of that idea so it works for the other two
+  setups too, not just that one — measuring how CONFIDENT the AI's own
+  next-word predictions are while it writes its answer, which can be
+  computed the same way regardless of which setup is being tested.
+- Checked it with real tests before considering it done (peaked vs.
+  spread-out fake predictions give the expected high/low readings,
+  averaging multiple answers works correctly, edge cases don't crash)
+  — 6 new tests, all passing, full project test suite still 121/121
+  with zero breakage from the changes needed to wire this in.
+- Wired it into the two check scripts as an optional flag so it can
+  actually be turned on and used on the next real run; deliberately left
+  it out of the main three-agent pipeline's bigger, older command-line
+  setup for now, since that setup's own comparisons are already
+  well-proven and don't need this as urgently — noted clearly so it
+  isn't forgotten later.
+- Bottom line, asked honestly: this project is real and defensible, but
+  its central "wrong notes hurt" story is no longer uniquely ours to
+  claim — another paper got there first, on different systems. What's
+  still genuinely unclaimed is testing that same idea across different
+  SHAPES of multi-AI setups (fixed step-by-step vs. split-the-work vs.
+  free-form) while holding the AI model and test itself fixed, plus this
+  new confidence-based way of measuring it. That's the real, sharper
+  story to build the rest of the paper around going forward.
+
+---
+
+## 2026-09-18 — Fixed a real flakiness bug, and built a check for a bias risk another paper flagged
+
+- Earlier this week the free-form code-writing delegation setup was found
+  to give slightly different answers on reruns, even with nothing changed
+  — about 3 in 10 answers differed run to run, unlike the rest of this
+  project, which reproduces exactly every time. Tried a real fix today
+  (forcing the underlying math library into a strict, reproducible mode)
+  rather than just living with the caveat.
+- Checked it, not just assumed it worked: reran a slice of questions and
+  compared word-for-word against an old run from before the fix,
+  including the exact questions that used to come out different. All of
+  them matched exactly this time. Real evidence the fix works, not a
+  lucky sample.
+- Also built a second check, prompted by a very similar outside paper
+  that found its own version of this project's split-the-work setup can
+  be biased by which order the pieces get combined in (not by their
+  content, just their order — a real flaw in a similar published method).
+  Added a way to flip that order in our own setup and compare, to test
+  whether the same bias risk applies here. Built and tested the code
+  itself; the actual comparison run is still to be done.
+- Both pieces of work are ready to run at full scale; the determinism fix
+  has only been checked on a smaller slice so far, and the order-bias
+  check hasn't been run on the real model yet at all.
+
+---
+
+## 2026-09-17 — The other delegation setup's real-content test came back, and it's the cleanest one yet
+
+- Ran the same "real notes vs. wrong notes vs. blank notes vs. scrambled
+  notes" test on the other, more structured delegation setup from
+  earlier this week (the split-the-work version, not the free-form
+  code-writing one). This version doesn't let the AI peek at the
+  original material directly on its own the way the other one did, so
+  there's no escape hatch this time — and it shows in the numbers.
+- Real, clean, decisive result — the best version of this test in the
+  whole project so far. Real notes clearly and provably beat wrong
+  notes, blank notes, and scrambled notes, all three, with the real-vs-
+  wrong-notes comparison landing more decisively here than anywhere
+  else this project has tested it.
+- One small, honest nuance: telling "wrong notes" apart from "totally
+  blank/scrambled notes" isn't quite proven by the strict pass/fail
+  count (too few examples flip either way to say so confidently), but
+  the softer, partial-credit scoring does point that way clearly. Said
+  both things plainly instead of picking whichever sounded better.
+- Double-checked by reading the actual raw answers, not just the score:
+  blank notes produce garbled nonsense in about half the answers,
+  scrambled notes produce garbled nonsense in nearly all of them, wrong-
+  but-real notes are almost never garbled at all — a clean, sensible
+  story that lines up with the numbers perfectly.
+- Put together with the last two weeks of work, all three versions of
+  this test — the fixed step-by-step handoff, the split-the-work
+  version, and the free-form code-writing version — now all show real
+  notes matter, properly proven with real statistics, not just assumed.
+  That closes out every remaining gap of this kind in the project.
+- Asked directly what else could make this deeper and more genuinely
+  ours, rather than just adding more of the same. Went back through
+  already-saved results from the free-form delegation setup — no new
+  computer time needed — and found something real: it's not just
+  whether the AI gets the final answer right that shows the notes
+  matter, it's also how it BEHAVES along the way. With real notes, it
+  wraps up quickly and confidently most of the time; with wrong notes,
+  it's noticeably more hesitant; with blank or scrambled notes, it
+  mostly runs out of time still searching, rarely committing to an
+  answer at all. Checked this properly with real statistics, not just
+  eyeballing it — and it's solid, including the exact comparison
+  (wrong notes vs. blank/scrambled notes) that the plain right-or-wrong
+  scoring couldn't quite prove. A genuinely new, complementary angle on
+  the same finding, found for free by looking more carefully at data
+  already sitting there.
+
+---
+
+## 2026-09-16 — The real test on the AI-bridge came back, clean and decisive
+
+- Ran the proper "does this bridge actually care what it's told, or just
+  that it's told something" test at a real sample size (50 questions, not
+  10). The result is clean enough that there's no real doubt left, unlike
+  most of the noisier checks earlier this week.
+- Turning the bridge's signal into blank or into random static caused a
+  total collapse — every single answer went from often-right to always
+  wrong. So the bridge is definitely doing something real and necessary,
+  not just decoration. Interesting bonus: the "random static" failures
+  looked exactly like a very specific, unusual kind of garbage this
+  project has seen before in a completely different part of the work
+  (foreign characters and code fragments mixed in) — the same signature
+  showing up twice, in two unrelated places, is a good sign it's a real,
+  general pattern and not a fluke either time.
+- But swapping in a completely different, wrong question's notes through
+  the same bridge barely changed anything — statistically, not at all.
+  So: the bridge clearly needs *some* real notes to work, but doesn't
+  seem to care much *which* notes it gets. That's a genuinely different,
+  and more precise, answer than the noisy 10-question version gave
+  earlier this week — that one looked similar but wasn't confident enough
+  to say so properly.
+- Wrote all of this into the actual paper now, not just the internal
+  notes — both halves (the plain accuracy check and this real content
+  test) together, since the second one is what actually explains and
+  justifies the first one's otherwise-unremarkable number.
+- Also gave two honest, direct answers today that were hard to hear but
+  needed saying plainly: a considered, reasoned rating on how likely
+  this paper is to get accepted at the conferences being considered
+  (with a specific, concrete fix identified — the "faster" pitch isn't
+  actually backed by the paper's own numbers, and that's a bigger risk
+  than any of the smaller add-on ideas discussed this week), and a
+  similarly honest rating on continuing the earlier delegation/sub-agent
+  detour, which was rated low and explained clearly why, while still
+  helping move it forward since it's a personal call worth respecting
+  even after an honest downside is laid out.
+- Went back into that same delegation/sub-agent detour anyway, since you
+  wanted to keep pushing on it despite the honest downsides. First real
+  check came back with the notes-passing version clearly worse than the
+  plain-text version — not just wrong answers, but genuinely broken,
+  nonsense output in several cases. Read the actual broken output
+  carefully instead of trusting the summary numbers, found a real,
+  precise, fixable cause (the equivalent of stitching a photo into an
+  album at the wrong page number, consistently off by however long each
+  helper's own instructions were), and fixed it directly. Also caught
+  that the existing safety-check test for this exact bug was written in
+  a way that could never have caught it, and fixed that too.
+- Reran the same check after the fix. The headline pass/fail number
+  looked unchanged at first glance, which could easily be mistaken for
+  "the fix did nothing" — but reading the actual output side by side
+  told a different, real story: every single one of the previously
+  broken, nonsense responses is now coherent and sensible. The fix
+  worked exactly as diagnosed. The underlying task is still genuinely
+  hard and still isn't being answered correctly yet, but that's now
+  honestly a separate, harder problem, not this bug anymore. Also
+  noticed something new and interesting along the way: in one case, a
+  helper handed back the exact right answer, and the boss AI just kept
+  investigating other things instead of using it until it ran out of
+  time — a real, different, worth-remembering issue, not something to
+  chase today. Wrote the whole honest before-and-after into the actual
+  paper.
+- You wanted to keep pushing on this specific piece today rather than
+  stop there, so we did — properly. Found a real, specific reason the
+  notes-passing version might not be noticing when a helper already
+  handed back the right answer: the plain-text version literally sees
+  the helper's written words each time, but the notes-passing version
+  only gets a blank cue with no words at all — a real, structural gap
+  between the two, not a guess. Added a small, careful nudge that
+  doesn't cheat by secretly showing the actual words (that would defeat
+  the whole point of testing notes vs. words) — it only prompts "you may
+  have enough now, consider answering," leaving the real judgment
+  entirely up to whatever the notes themselves convey.
+- Small first check (10 questions) came back mixed — a little better
+  overall, but not a clean win, so rather than declare victory or
+  scrap it, agreed to test properly at a bigger size before deciding
+  anything for real.
+- Ran it at 25 questions. Real, clean result this time: the notes-passing
+  version got 6 right versus the plain-text version's 2, and did so by
+  strictly building on top of the plain-text version's own correct
+  answers rather than trading wins for losses. Double-checked there was
+  no hidden broken/garbled output hiding behind the better numbers at
+  this bigger size — there wasn't. One honest cost that came with it: the
+  notes-passing version also ran out of its turn budget noticeably more
+  often, suggesting the new nudge sometimes pushes it to keep checking
+  longer instead of answering sooner. Wrote the complete, honest
+  before-and-after — the real win and the real cost together — into the
+  actual paper.
+- Did a proper, honest deep-dive today to check two things: is any of
+  this RLM work actually going somewhere, and — importantly — is anyone
+  else already doing exactly this, which would make it pointless to keep
+  going? Checked carefully rather than assuming: the pieces individually
+  (the delegating-AI mechanism, passing raw notes instead of text,
+  testing whether real content matters) all already exist separately in
+  outside work, but the specific combination of all three together, with
+  a real "does it actually matter" test applied to it, doesn't appear to
+  exist anywhere yet. Real, honest answer: yes, still worth doing.
+- Ran the real content-matters test (the same kind of test proven
+  throughout this whole project) on this specific setup for the first
+  time, at a real size (50 questions). Result: genuinely exciting and
+  clean. Feeding the AI blank or scrambled notes instead of real ones
+  made it noticeably and provably worse — a real, statistically solid
+  result, not a coincidence. This is the same core finding already
+  proven twice elsewhere in this project, now shown a third time in a
+  completely different, more free-form setup.
+- One honest, important nuance caught while double-checking rather than
+  just celebrating the good number: unlike everywhere else in this
+  project, feeding blank/scrambled notes here didn't crash the AI's
+  performance down to zero, only down partway. Figured out precisely
+  why, not just noted it: in this specific setup, the AI can also just
+  go read the original source material directly itself, completely
+  separately from the notes being tested — so even ruined notes don't
+  fully cut off its information. A real, honest limitation of this
+  specific test, not a weaker version of the finding — explained clearly
+  and written into the paper exactly that way rather than glossed over.
+- Also caught and corrected an earlier read of our own: a smaller,
+  25-question check earlier looked like a clean, one-sided win for the
+  notes version over the plain-text version. At the full 50-question
+  size, that specific comparison is no longer a real, provable
+  difference — flagged this plainly ourselves and corrected the paper's
+  own earlier wording rather than let the more flattering, smaller
+  number stand uncorrected.
+- Fixed a small, easy mix-up along the way: a command failed with a
+  missing-package error because it was accidentally run from the wrong
+  isolated setup (the one built specifically for the AI-bridge work
+  earlier this week, not the project's main one) — pointed out the fix
+  in one line and moved on.
+- The other queued task from earlier today — checking the second AI
+  model's real-content test on the two remaining configs — finished
+  clean. One config confirmed the same real-content-matters pattern
+  seen everywhere else in this project. The other one showed the exact
+  same partial pattern already found once before on a different config a
+  few days ago — not a new puzzle, a second, independent confirmation of
+  the same explanation already worked out then (that specific config
+  already performs worse on this second AI model to begin with, leaving
+  less room to see the fuller effect). Between the two configs, a clean,
+  consistent story emerged: the two techniques that involve dropping
+  whole layers both show this partial pattern on the second AI model;
+  the techniques that only compress without dropping layers both show
+  the full, clean pattern — the same architecture-sensitivity finding
+  from earlier in the project, showing up again through a completely
+  different check. This closes out the last real gap in that part of
+  the testing — every technique in the paper except the one already
+  known to be broken has now been properly checked on both AI models.
+- Finished the piece that was still missing from the delegating-AI real-
+  content test: the "wrong but real notes" comparison. Result: the real
+  finding now landed in full — real notes clearly beat wrong notes,
+  clearly beat blank notes, and clearly beat scrambled notes, all three,
+  properly proven. This is the same complete finding already proven
+  twice elsewhere in this project, now shown a third time in the most
+  free-form, least controlled setup yet — a genuinely stronger result
+  here than the AI-bridge work from a few days ago, where the specific
+  notes turned out not to matter at all. One honest loose end still
+  open: telling "wrong but real" apart from "totally blank/scrambled"
+  isn't quite proven yet at this size, even though it's pointing the
+  right way — said so plainly rather than round up to a cleaner story
+  than what was actually shown.
+- Caught something important and genuinely surprising while double-
+  checking this result against an earlier one: running the identical
+  check twice, on the identical questions, with nothing changed, gave
+  meaningfully different answers on almost a third of them. Chased this
+  down properly instead of shrugging it off — this specific setup, being
+  much more free-form and open-ended (the AI writing and running its own
+  code turn by turn) than anything else in this project, turns out not
+  to give the exact same answer every time the way the rest of this
+  project reliably does. Confirmed this doesn't undermine today's real
+  finding (that comparison was made fairly, within one single run), but
+  it's a real, distinct, honestly-reported difference from how solid
+  and repeatable this project's other results are — written into the
+  paper plainly rather than glossed over.
+- Also built the same missing piece for the OTHER delegating-AI setup
+  from earlier this week (the more structured, split-the-work version)
+  — same approach, properly tested — so both versions now have the
+  ability to run this same complete check. Only one of the two has
+  actually been run with it so far; the other is ready and queued.
+
+---
+
+## 2026-09-15 — Catching up, closing a leftover gap, and validating the AI-bridge direction
+
+- A lot happened on this project since the last entry (a parallel effort
+  wrote up several more real findings — a second topology test, a second
+  model for the compression story, a third model breaking the pattern in
+  an interesting way). Did a proper deep-search catch-up on all of it
+  before deciding what to do next, instead of assuming nothing changed.
+- Found real, independent validation of the direction we chose to keep
+  pursuing: a separate write-up done the same week, after checking four
+  brand-new outside papers on bridging two different AI models, landed
+  on almost the exact same open question we'd already been chasing —
+  confirmed it's genuinely not been answered yet by anyone else, not
+  something we're duplicating. Also flagged honestly that this area has
+  gotten busy very fast (four outside papers in a few weeks) — worth
+  knowing, not a reason to stop.
+- Found and fixed a real, small documentation mismatch: one summary file
+  claimed a completed test (checking whether a second AI model's real
+  notes causally matter, not just its compressed size) had already been
+  written into the actual paper — it hadn't. The numbers were sitting
+  correct and ready in the summary file since several days ago; the
+  actual paper text was just never updated to match. Pulled the real
+  numbers directly from the saved results to confirm they're solid (all
+  five comparisons clearly significant), then wrote the missing paragraph
+  into the paper properly and fixed the summary file's incorrect claim.
+- Net effect: one more real, already-earned result now actually counts
+  toward the paper instead of sitting finished-but-unwritten, at zero new
+  computer time — and the bridge-between-two-different-AI-models work is
+  queued up to actually run for the first time today.
+- While that first real run was going, looked ahead to a bigger, more
+  ambitious idea you'd floated a few turns back: could this project also
+  build a cheap way to tell, before an AI even answers, whether the notes
+  it just received from another AI look genuine or corrupted? Checked it
+  carefully before building anything, and caught a real problem with the
+  original plan: two of the three kinds of "corrupted" we'd need to
+  detect are specifically built, by our own project's own design, to
+  look statistically normal on the simple check that was planned — so
+  the plan as originally described would have mostly detected the one
+  trivially obvious case and quietly failed at the two that actually
+  matter. Also found real outside evidence backing this concern up, not
+  just our own reasoning: a very closely related published paper already
+  tried almost exactly this and reported it working poorly; a separate,
+  unrelated paper independently found the same kind of simple check
+  specifically struggles exactly where ours would too. Rewrote the plan
+  to be honestly smaller but actually correct: catch the "obviously
+  garbage" cases with better checks, and state plainly, up front, that
+  telling "wrong but plausible-looking" content apart from real content
+  is likely a fundamentally harder, separate problem this simpler version
+  isn't going to solve — logged all of this properly so nobody wastes
+  time re-discovering it later.
+- The first real run of the bridge-between-two-different-AI-models
+  finished. Result: on 50 real questions, the AI using the bridge did
+  marginally better than either AI working alone, but not by a
+  meaningfully real amount — a proper statistical check says this could
+  easily be chance, and using the bridge took roughly twice as long as
+  just using the better of the two AIs by itself. So: it doesn't clearly
+  help, and it clearly costs more time. Logged this plainly rather than
+  reading a small, non-real bump as a win. The more important follow-up
+  test — whether the bridge's answers actually depend on the SPECIFIC
+  real notes it receives, versus just producing plausible-sounding
+  answers regardless — is still queued to run next; today's result
+  can't answer that question by itself.
+
+---
+
 ## 2026-09-11 — A brutally honest gut-check, then three small real additions
 
 - Gave a genuinely harsh answer to a direct question: do any of these

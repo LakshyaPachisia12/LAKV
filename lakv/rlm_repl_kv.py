@@ -55,6 +55,7 @@ from transformers import DynamicCache
 
 from lakv.anchor_table import AnchorTable, question_key
 from lakv.causal_audit import apply_causal_audit, KVAuditPool
+from lakv.confidence import ConfidenceStats, stats_from_logits
 from lakv.rlm_repl import (
     CodeSandbox, RLM_SYSTEM_PROMPT, CODE_FENCE_RE, BARE_CALL_RE,
     _references_passages_variable,
@@ -75,6 +76,7 @@ class RLMKVRunResult:
     turn_texts: List[str] = field(default_factory=list)  # decoded root responses
     child_texts: List[str] = field(default_factory=list)  # decoded sub-call answers, for inspection
     audit_logs: List[dict] = field(default_factory=list)  # one entry per spliced child KV, "none" if not auditing
+    confidence: Optional[ConfidenceStats] = None  # confidence of the turn that produced the final answer; only set when capture_confidence=True and the session finished (None on hit_max_turns)
 
 
 class RLMKVSession:
@@ -88,7 +90,10 @@ class RLMKVSession:
                  child_max_new_tokens: int = 200, root_max_new_tokens: int = 300,
                  causal_audit_mode: str = "none",
                  audit_pool: Optional["KVAuditPool"] = None,
-                 audit_generator: Optional[torch.Generator] = None):
+                 audit_generator: Optional[torch.Generator] = None,
+                 kv_decision_cue: bool = True,
+                 record_audit_pool: Optional["KVAuditPool"] = None,
+                 capture_confidence: bool = False):
         """causal_audit_mode: "none" (real child KV spliced, default) /
         "zeroed" / "random" / "mismatched" -- substitutes the child's KV
         BEFORE it is spliced onto the root's cache, mirroring
@@ -99,11 +104,47 @@ class RLMKVSession:
         meaningful when return_channel="kv" -- ignored for "text" (no KV
         is ever spliced there, so there is nothing to substitute).
         "mismatched" requires a pre-built audit_pool (see KVAuditPool) of
-        held-out sessions' real child KVs; "zeroed"/"random" need none."""
+        held-out sessions' real child KVs; "zeroed"/"random" need none.
+
+        kv_decision_cue: experimental addition (2026-09-16), only takes
+        effect when return_channel="kv". Adds a content-free "consider
+        calling final_answer now" nudge after every splice -- see the
+        comment at its call site for the real-model observation that
+        motivated it. Default True; pass False to reproduce this file's
+        exact pre-2026-09-16 behavior for comparison.
+
+        record_audit_pool: when given, every child call's REAL (pre-
+        substitution) KV is recorded into this pool instead of being used
+        for a substitution -- mirrors LAKVPipeline's record_audit_pool
+        (lakv/pipeline.py) exactly, used only by a held-out pre-pass that
+        BUILDS a pool for a later 'mismatched' run to consume via
+        audit_pool above. causal_audit_mode should be "none" whenever
+        this is set -- never pass both record_audit_pool and a non-"none"
+        causal_audit_mode on the same session, for the same reason
+        LAKVPipeline forbids combining audit_pool and record_audit_pool:
+        a 'mismatched' run would silently repopulate its own pool from
+        the questions it's scoring.
+
+        capture_confidence: process-level confidence signature (2026-09-18
+        research audit -- see lakv/confidence.py's module docstring).
+        When True, RLMKVRunResult.confidence is populated with the mean
+        top-1 probability / entropy of the ROOT TURN that actually
+        produced the final answer (the turn whose code called
+        final_answer(...)), generalizing this session's existing
+        behavioral signature (turn count, timeout rate, delegation
+        calls -- see docs/PROGRESS_REPORT.md 2026-09-17) with a signal
+        the other two topologies in this project can also produce."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
         if causal_audit_mode not in ("none", "zeroed", "random", "mismatched"):
             raise ValueError(f"Unknown causal_audit_mode: {causal_audit_mode!r}")
+        if record_audit_pool is not None and causal_audit_mode != "none":
+            raise ValueError(
+                "record_audit_pool is for a held-out pre-pass that BUILDS a pool -- "
+                "causal_audit_mode must be 'none' whenever it's set, never a "
+                "substitution mode (that would let a 'mismatched' run repopulate "
+                "its own pool from the questions it's scoring)."
+            )
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
@@ -114,6 +155,16 @@ class RLMKVSession:
         self.causal_audit_mode = causal_audit_mode
         self.audit_pool = audit_pool
         self.audit_generator = audit_generator
+        self.kv_decision_cue = kv_decision_cue
+        self.record_audit_pool = record_audit_pool
+        self.capture_confidence = capture_confidence
+        # Seeded, reproducible donor selection for "mismatched" mode --
+        # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py),
+        # so this prototype's causal audit is deterministic the same way
+        # every other one in this project is, not left to fall back on
+        # apply_causal_audit()'s unseeded global-random default.
+        import random as _random_module
+        self._audit_rng = _random_module.Random(0)
         self._eos_ids = self._get_stop_token_ids()
 
     def _get_stop_token_ids(self) -> set:
@@ -231,7 +282,7 @@ class RLMKVSession:
         return logits.argmax(-1, keepdim=True)  # greedy, matching Stage 1
 
     def _generate_from_primed(self, kv: tuple, next_logits: torch.Tensor,
-                               max_new_tokens: int) -> Tuple[tuple, str]:
+                               max_new_tokens: int) -> Tuple[tuple, str, Optional[ConfidenceStats]]:
         """Given an already-primed cache and logits for its next token,
         generate token-by-token (not via model.generate()'s fast path --
         see _sample_next_token's docstring for why that loses session-
@@ -252,6 +303,7 @@ class RLMKVSession:
         equally, since the bug lives in this shared root loop, not the
         notes-vs-summary swap being tested."""
         generated: List[int] = []
+        confidence_logits: List[torch.Tensor] = []
         running_kv = kv
         logits = next_logits
         cur_pos = self._cache_len(kv)
@@ -260,6 +312,12 @@ class RLMKVSession:
             tok_id = next_token.item()
             if tok_id in self._eos_ids:
                 break
+            if self.capture_confidence:
+                # Raw (pre-repetition-penalty) logits -- same treatment
+                # applied identically to every audit condition, so it
+                # doesn't bias the real-vs-audited comparison this exists
+                # to serve. See lakv/confidence.py's module docstring.
+                confidence_logits.append(logits)
             generated.append(tok_id)
             running_kv, logits = self._extend(running_kv, next_token)
             cur_pos += 1
@@ -268,7 +326,8 @@ class RLMKVSession:
                 break
         text = self.tokenizer.decode(generated, skip_special_tokens=True)
         self._session_generated_ids.extend(generated)
-        return running_kv, text
+        confidence = stats_from_logits(confidence_logits) if self.capture_confidence else None
+        return running_kv, text, confidence
 
     def _run_child(self, passages_context: str) -> Tuple[tuple, str, int]:
         """Compute a sub-call's own KV cache (its prompt + its generated
@@ -322,14 +381,36 @@ class RLMKVSession:
         why. The dropped prefix still shaped the answer tokens' own K/V
         via attention when the child computed them; it just isn't
         re-included as separate, foreign-framed content in the root's
-        own context."""
+        own context.
+
+        BUG FIXED 2026-09-16: this used shift=root_len unconditionally,
+        which is only correct when answer_only_from == 0 (matching
+        merge_child_kv's validated usage in recursive_pipeline.py, which
+        always splices a child's KV in full starting at its own position
+        0 -- that usage never exercises a non-zero starting offset). Once
+        answer_only_from is dropped, the retained answer tokens' own
+        RoPE-encoded positions already start at answer_only_from, not 0
+        -- shifting by the full root_len re-based them to
+        root_len + answer_only_from instead of root_len, a real
+        position-drift bug (same class as this project's own documented
+        offset-corrector alignment bugs, just newly introduced by this
+        file's answer-only truncation, which the original validated
+        primitive was never tested against). Root-caused from a real-model
+        run (2026-09-16, n=10) where every example that actually crossed
+        the child-call boundary showed the "kv" channel degrading into
+        word-salad or outright repetition-loop collapse relative to the
+        SAME question's "text" channel -- consistent with worse drift on
+        longer child prompts (bigger answer_only_from -> bigger error).
+        Fix: shift by root_len - answer_only_from, so the retained
+        tokens' positions land at exactly root_len, root_len+1, ...,
+        matching what a real continuation would look like."""
         root_len = RLMKVSession._cache_len(root_kv)
         merged_layers = []
         for (rk, rv), (ck, cv) in zip(root_kv, child_kv):
             if answer_only_from > 0:
                 ck = ck[:, :, answer_only_from:, :]
                 cv = cv[:, :, answer_only_from:, :]
-            ck_shifted = AnchorTable._rope_shift_k(ck, shift=root_len, theta=rope_theta)
+            ck_shifted = AnchorTable._rope_shift_k(ck, shift=root_len - answer_only_from, theta=rope_theta)
             merged_layers.append((
                 torch.cat([rk, ck_shifted], dim=2),
                 torch.cat([rv, cv], dim=2),
@@ -352,7 +433,7 @@ class RLMKVSession:
         )["input_ids"].to(self.device)
 
         kv, next_logits = self._extend(None, input_ids)
-        kv, response = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
+        kv, response, last_turn_confidence = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
 
         pending_child_kv: Dict[str, Optional[tuple]] = {"kv": None, "prompt_len": 0}
         child_texts: List[str] = []
@@ -362,6 +443,15 @@ class RLMKVSession:
             if self.return_channel == "kv":
                 pending_child_kv["kv"] = kv_tuple
                 pending_child_kv["prompt_len"] = prompt_len
+                if self.record_audit_pool is not None:
+                    # Held-out pre-pass only (causal_audit_mode is forced
+                    # "none" whenever record_audit_pool is set -- see
+                    # __init__): record the REAL, full (prompt+answer)
+                    # child KV, matching exactly what apply_causal_audit()
+                    # substitutes against below -- pool.sample()'s
+                    # target_shape check needs the same pre-truncation
+                    # shape a 'mismatched' run will later compare against.
+                    self.record_audit_pool.add(0, q_key, kv_tuple, question_text=question)
             child_texts.append(decoded_text)
             return decoded_text
 
@@ -392,7 +482,7 @@ class RLMKVSession:
                         "block to continue, or call final_answer(...) "
                         "inside one to finish.",
                     )
-                    kv, response = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
+                    kv, response, last_turn_confidence = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
                     turn_texts.append(response)
                     continue
 
@@ -425,7 +515,7 @@ class RLMKVSession:
                         "check a few more passages first -- the answer "
                         "may still be sitting in one you haven't read.",
                     )
-                    kv, response = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
+                    kv, response, last_turn_confidence = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
                     turn_texts.append(response)
                     continue
 
@@ -433,6 +523,7 @@ class RLMKVSession:
                     answer=sandbox.answer, hit_max_turns=False,
                     llm_query_calls=llm_query_calls, turn_texts=turn_texts,
                     child_texts=child_texts, audit_logs=audit_logs,
+                    confidence=last_turn_confidence,
                 )
 
             if turn.error:
@@ -442,6 +533,7 @@ class RLMKVSession:
                     self.causal_audit_mode, pending_child_kv["kv"],
                     agent_idx=0, question_key=q_key,
                     pool=self.audit_pool, generator=self.audit_generator,
+                    rng=self._audit_rng,
                 )
                 audit_logs.append(audit_log)
                 kv = self.splice_child_kv(
@@ -449,6 +541,32 @@ class RLMKVSession:
                     answer_only_from=pending_child_kv["prompt_len"],
                 )
                 kv, next_logits = self._extend(kv, self._turn_marker_ids())
+                if self.kv_decision_cue:
+                    # Real-model testing (2026-09-16) found the "kv" channel
+                    # specifically prone to never stopping even after a
+                    # sub-call plainly found the answer (one example made 8
+                    # calls, the 2nd already correct, and ran out of turns
+                    # without ever calling final_answer) -- a plausible
+                    # mechanistic reason: "text" channel sees the actual
+                    # decoded answer as an explicit "[llm_query result] ..."
+                    # cue (see the stdout branch below); "kv" only gets a
+                    # bare turn marker after a splice, with nothing textual
+                    # signaling that something decisive may have just
+                    # arrived. This adds a content-FREE decision cue --
+                    # it does not reveal the child's answer (that would
+                    # partially reintroduce the text channel's own
+                    # mechanism, confounding the very comparison this
+                    # channel exists to make) -- only prompts the model to
+                    # pause and consider whether it already has enough
+                    # information, leaving what "enough" means entirely to
+                    # what the spliced KV itself conveys.
+                    kv, next_logits = self._extend_text(
+                        kv,
+                        "A sub-call's answer was just added to your "
+                        "context above. If you now have enough information "
+                        "to answer the question, call final_answer(...) "
+                        "instead of checking more passages.",
+                    )
             else:
                 kv, next_logits = self._extend_text(kv, f"[stdout]\n{turn.stdout}")
 
@@ -479,7 +597,7 @@ class RLMKVSession:
                     "one you haven't read.",
                 )
 
-            kv, response = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
+            kv, response, last_turn_confidence = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)
             turn_texts.append(response)
 
         return RLMKVRunResult(

@@ -69,6 +69,7 @@ from transformers import DynamicCache
 
 from lakv.anchor_table import AnchorTable, question_key
 from lakv.causal_audit import apply_causal_audit, KVAuditPool
+from lakv.confidence import ConfidenceStats, stats_from_logits
 
 
 CHILD_SYSTEM_PROMPT = (
@@ -191,6 +192,44 @@ class RecursivePipelineConfig:
     causal_audit_mode: str = "none"
     causal_audit_child_idx: Union[int, str] = -1  # int, or "all"
     audit_pool: Optional["KVAuditPool"] = None
+    # When given, every child's REAL (pre-substitution) KV is recorded
+    # into this pool instead of being used for a substitution -- mirrors
+    # LAKVPipeline's record_audit_pool (lakv/pipeline.py) and
+    # RLMKVSession's (lakv/rlm_repl_kv.py) exactly, used only by a
+    # held-out pre-pass that BUILDS a pool for a later 'mismatched' run
+    # to consume via audit_pool above. causal_audit_mode must be "none"
+    # whenever this is set -- see __post_init__.
+    record_audit_pool: Optional["KVAuditPool"] = None
+    # Diagnostic, added 2026-09-18: CanonicalMerge (Section~\ref{sec:related}
+    # in the RLM-focused paper draft) identifies a real "directionality
+    # flaw" in naive fan-in KV concatenation -- which child's cache gets
+    # the privileged, unshifted first position can bias the merged
+    # result, independent of which child actually computed what. Our own
+    # merge_child_kv always treats child_kvs[0] as unshifted/first; this
+    # flag reverses the list ONLY at the merge call site (after audit
+    # substitution, so causal_audit_child_idx's target indexing is
+    # unaffected -- a substituted child stays "child k" for pool/logging
+    # purposes regardless of where it physically lands in the merge). A
+    # real accuracy difference between False and True on the identical
+    # examples would mean our own merge inherits the same order bias;
+    # no difference is itself a positive, checkable result.
+    reverse_child_merge_order: bool = False
+    # Process-level confidence signature (2026-09-18 research audit --
+    # see lakv/confidence.py's module docstring). When True,
+    # RecursiveRunResult.confidence is populated with the aggregator's
+    # mean top-1 token probability / entropy during its own final-answer
+    # generation, generalizing the RLM+KV behavioral signature to this
+    # topology's fixed (non-agentic) structure. Off by default.
+    capture_confidence: bool = False
+
+    def __post_init__(self):
+        if self.record_audit_pool is not None and self.causal_audit_mode != "none":
+            raise ValueError(
+                "record_audit_pool is for a held-out pre-pass that BUILDS a pool -- "
+                "causal_audit_mode must be 'none' whenever it's set, never a "
+                "substitution mode (that would let a 'mismatched' run repopulate "
+                "its own pool from the questions it's scoring)."
+            )
 
 
 @dataclass
@@ -206,6 +245,7 @@ class RecursiveRunResult:
     hop_stats: List[RecursiveHopStat]
     aggregator_reasoning_text: str = ""
     audit_logs: List[dict] = field(default_factory=list)  # one entry per substituted child, empty if causal_audit_mode == "none"
+    confidence: Optional[ConfidenceStats] = None  # only set when RecursivePipelineConfig.capture_confidence
 
 
 class RecursiveKVPipeline:
@@ -220,6 +260,14 @@ class RecursiveKVPipeline:
         self.tokenizer = tokenizer
         self.config = config
         self.device = device
+        # Seeded, reproducible donor selection for "mismatched" mode --
+        # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py)
+        # and RLMKVSession's (lakv/rlm_repl_kv.py), so this prototype's
+        # causal audit is deterministic the same way every other one in
+        # this project is, not left to fall back on apply_causal_audit()'s
+        # unseeded global-random default.
+        import random as _random_module
+        self._audit_rng = _random_module.Random(0)
         self._eos_ids = self._get_stop_token_ids()
 
     def _get_stop_token_ids(self) -> set:
@@ -375,7 +423,9 @@ class RecursiveKVPipeline:
         seq_len = int(kv_tuple[0][0].shape[2])
         return kv_tuple, text, seq_len
 
-    def _generate_with_injected_kv(self, question: str, merged_kv: tuple) -> str:
+    def _generate_with_injected_kv(
+        self, question: str, merged_kv: tuple, capture_confidence: bool = False,
+    ) -> Tuple[str, Optional[ConfidenceStats]]:
         user_content = f"Question: {question}"
         input_ids = self._build_prompt_ids(self.config.aggregator_system_prompt, user_content)
         cache = self._to_dynamic_cache(merged_kv)
@@ -402,7 +452,8 @@ class RecursiveKVPipeline:
         first_token = self._sample_next_token(next_logits)
         first_tok_id = first_token.item()
         if first_tok_id in self._eos_ids:
-            return ""
+            return "", None
+        confidence_logits = [next_logits] if capture_confidence else []
         handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
         with torch.no_grad():
             gen_out = self.model.generate(
@@ -412,9 +463,13 @@ class RecursiveKVPipeline:
                 max_new_tokens=max(self.config.aggregator_max_new_tokens - 1, 1),
                 use_cache=True,
                 return_dict_in_generate=True,
+                output_scores=capture_confidence,
                 **self.config.generation_kwargs,
             )
-        return self.tokenizer.decode(gen_out.sequences[0].tolist(), skip_special_tokens=True)
+        if capture_confidence:
+            confidence_logits.extend(gen_out.scores)
+        confidence = stats_from_logits(confidence_logits) if capture_confidence else None
+        return self.tokenizer.decode(gen_out.sequences[0].tolist(), skip_special_tokens=True), confidence
 
     def _run_aggregator_reasoning(self, question: str, merged_kv: tuple) -> Tuple[tuple, str]:
         """Intermediate synthesis step, mirroring this project's existing
@@ -473,7 +528,9 @@ class RecursiveKVPipeline:
         text = self.tokenizer.decode(gen_out.sequences[0].tolist(), skip_special_tokens=True)
         return self._to_tuple(gen_out.past_key_values), text
 
-    def _generate_from_text(self, question: str, child_texts: List[str]) -> str:
+    def _generate_from_text(
+        self, question: str, child_texts: List[str], capture_confidence: bool = False,
+    ) -> Tuple[str, Optional[ConfidenceStats]]:
         findings = "\n\n".join(f"Sub-agent {i}: {t}" for i, t in enumerate(child_texts))
         user_content = f"{findings}\n\nQuestion: {question}"
         input_ids = self._build_prompt_ids(self.config.aggregator_system_prompt, user_content)
@@ -483,10 +540,12 @@ class RecursiveKVPipeline:
                 max_new_tokens=self.config.aggregator_max_new_tokens,
                 use_cache=True,
                 return_dict_in_generate=True,
+                output_scores=capture_confidence,
                 **self.config.generation_kwargs,
             )
         new_tokens = gen_out.sequences[0, input_ids.shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+        confidence = stats_from_logits(list(gen_out.scores)) if capture_confidence else None
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True), confidence
 
     def run(self, question: str, passages: List[str]) -> RecursiveRunResult:
         groups = split_passages(passages, self.config.n_children)
@@ -501,6 +560,17 @@ class RecursiveKVPipeline:
             child_kvs.append(kv)
             child_texts.append(text)
             hop_stats.append(RecursiveHopStat(child_idx=i, seq_len=seq_len))
+            if self.config.record_audit_pool is not None:
+                # Held-out pre-pass only (causal_audit_mode is forced
+                # "none" whenever record_audit_pool is set -- see
+                # RecursivePipelineConfig.__post_init__). Keyed by this
+                # child's own index (i), matching apply_causal_audit's
+                # own agent_idx=target_idx usage below, so a later
+                # 'mismatched' run substituting child index k draws only
+                # from held-out sessions' child-k KVs, not a different
+                # child's.
+                self.config.record_audit_pool.add(
+                    i, question_key(question), kv, question_text=question)
 
         audit_logs: List[dict] = []
         if self.config.causal_audit_mode != "none" and self.config.return_channel in ("kv", "kv_synthesis"):
@@ -512,25 +582,29 @@ class RecursiveKVPipeline:
                 substituted_kv, audit_log = apply_causal_audit(
                     self.config.causal_audit_mode, child_kvs[target_idx],
                     agent_idx=target_idx, question_key=question_key(question),
-                    pool=self.config.audit_pool,
+                    pool=self.config.audit_pool, rng=self._audit_rng,
                 )
                 child_kvs[target_idx] = substituted_kv
                 audit_logs.append(audit_log)
 
+        merge_order_kvs = list(reversed(child_kvs)) if self.config.reverse_child_merge_order else child_kvs
+
+        cc = self.config.capture_confidence
         reasoning_text = ""
         if self.config.return_channel == "kv":
-            merged_kv = self.merge_child_kv(child_kvs, rope_theta=self._get_rope_theta())
-            answer = self._generate_with_injected_kv(question, merged_kv)
+            merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
+            answer, confidence = self._generate_with_injected_kv(question, merged_kv, capture_confidence=cc)
         elif self.config.return_channel == "kv_synthesis":
-            merged_kv = self.merge_child_kv(child_kvs, rope_theta=self._get_rope_theta())
+            merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
             extended_kv, reasoning_text = self._run_aggregator_reasoning(question, merged_kv)
-            answer = self._generate_with_injected_kv(question, extended_kv)
+            answer, confidence = self._generate_with_injected_kv(question, extended_kv, capture_confidence=cc)
         elif self.config.return_channel == "text":
-            answer = self._generate_from_text(question, child_texts)
+            answer, confidence = self._generate_from_text(question, child_texts, capture_confidence=cc)
         else:
             raise ValueError(f"Unknown return_channel: {self.config.return_channel!r}")
 
         return RecursiveRunResult(
             answer=answer, child_texts=child_texts, hop_stats=hop_stats,
             aggregator_reasoning_text=reasoning_text, audit_logs=audit_logs,
+            confidence=confidence,
         )

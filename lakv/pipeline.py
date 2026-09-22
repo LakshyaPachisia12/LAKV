@@ -24,6 +24,7 @@ from lakv.kv_compressor import KVCompressor, KVMessage
 from lakv.offset_corrector import OffsetCorrector
 from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
 from lakv.causal_audit import KVAuditPool, apply_causal_audit
+from lakv.confidence import ConfidenceStats, stats_from_logits
 
 
 # Synthetic (non-eval) few-shot exemplars for the Reasoner: demonstrate
@@ -234,6 +235,16 @@ class PipelineConfig:
     # constructor args — "mismatched" requires a pre-built KVAuditPool passed
     # as audit_pool at construction time.
     causal_audit_mode: str = "none"
+    # Process-level confidence signature (2026-09-18 research audit,
+    # generalizing the RLM+KV behavioral signature -- see
+    # lakv/confidence.py's module docstring for the full motivation).
+    # When True, RunResult.confidence is populated with the Finalizer's
+    # mean top-1 token probability / entropy during its own answer
+    # generation -- a continuous signal that can resolve real-vs-audited
+    # differences EM/F1 can't at this project's sample sizes. Off by
+    # default: costs a small amount of extra bookkeeping (output_scores=
+    # True on the generate() calls) for no benefit unless actually read.
+    capture_confidence: bool = False
     _custom_layer_indices: Optional[List[int]] = None  # ablation: override tier selection
     # Off by default: the exemplars measurably grow the Reasoner's prompt (and
     # therefore its KV cache — Config A's KV/hop went 37.6MB -> 56.7MB with
@@ -278,6 +289,7 @@ class RunResult:
     overall_compression_ratio: float
     hop_texts: List[str]            # decoded text per intermediate hop; hop_texts[0] is the Reasoner
     finalizer_latency_seconds: float = 0.0  # wall-clock time for the last agent's generation call only
+    confidence: Optional[ConfidenceStats] = None  # only set when PipelineConfig.capture_confidence
 
 
 # ─── pipeline ─────────────────────────────────────────────────────────────────
@@ -381,6 +393,7 @@ class LAKVPipeline:
         pending_position_offset = 0
         total_bytes = 0
         answer = ""
+        confidence: Optional[ConfidenceStats] = None
         finalizer_latency = 0.0
         q_key = make_key(question)
         self.last_run_offset_logs = []
@@ -449,12 +462,13 @@ class LAKVPipeline:
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 _t0 = time.perf_counter()
-                answer = self._generate(
+                answer, confidence = self._generate(
                     input_ids,
                     injected_kv_tuple,
                     max_new_tokens=self.config.final_max_new_tokens,
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
+                    capture_confidence=self.config.capture_confidence,
                 )
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
@@ -597,6 +611,7 @@ class LAKVPipeline:
             overall_compression_ratio=total_orig / max(total_comp, 1e-9),
             hop_texts=hop_texts,
             finalizer_latency_seconds=finalizer_latency,
+            confidence=confidence,
         )
 
     def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
@@ -806,8 +821,11 @@ class LAKVPipeline:
         max_new_tokens: Optional[int] = None,
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
-    ) -> str:
-        """Run generation for the final agent.
+        capture_confidence: bool = False,
+    ) -> Tuple[str, Optional[ConfidenceStats]]:
+        """Run generation for the final agent. Returns (answer_text,
+        confidence_stats) -- confidence_stats is None unless
+        capture_confidence=True (see lakv/confidence.py).
 
         When KV is injected from a prior agent, model.generate() can't be called
         directly on the full prompt — its first-call bookkeeping (which tokens
@@ -841,10 +859,17 @@ class LAKVPipeline:
                 output_ids = self.model.generate(
                     input_ids=input_ids,
                     max_new_tokens=max_new_tokens,
+                    return_dict_in_generate=capture_confidence,
+                    output_scores=capture_confidence,
                     **self.config.generation_kwargs,
                 )
-            new_tokens = output_ids[0, input_ids.shape[1]:]
-            return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            if capture_confidence:
+                new_tokens = output_ids.sequences[0, input_ids.shape[1]:]
+                confidence = stats_from_logits(list(output_ids.scores))
+            else:
+                new_tokens = output_ids[0, input_ids.shape[1]:]
+                confidence = None
+            return self.tokenizer.decode(new_tokens, skip_special_tokens=True), confidence
 
         # ── KV injection: forward-prime then manual greedy decode ─────
         cache = self._to_dynamic_cache(injected_kv_tuple)
@@ -889,6 +914,10 @@ class LAKVPipeline:
             # length-1 mask that triggers the exact crash this works around).
             first_token = self._sample_next_token(next_logits)
             first_tok_id = first_token.item()
+            # First token's logits captured manually (the prime step's own
+            # forward pass), since it's sampled before any generate() call
+            # exists to report output_scores for it.
+            confidence_logits = [next_logits] if (capture_confidence and first_tok_id not in eos_ids) else []
             if first_tok_id in eos_ids or max_new_tokens <= 1:
                 generated_ids = [] if first_tok_id in eos_ids else [first_tok_id]
             else:
@@ -901,21 +930,28 @@ class LAKVPipeline:
                         max_new_tokens=max_new_tokens - 1,
                         use_cache=True,
                         return_dict_in_generate=True,
+                        output_scores=capture_confidence,
                         **self.config.generation_kwargs,
                     )
                 generated_ids = gen_out.sequences[0].tolist()
-            return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+                if capture_confidence:
+                    confidence_logits.extend(gen_out.scores)
+            confidence = stats_from_logits(confidence_logits) if capture_confidence else None
+            return self.tokenizer.decode(generated_ids, skip_special_tokens=True), confidence
 
         # ── position_offset != 0 (offset-corrected configs): keep the exact
         # manual loop — generate() doesn't know about the custom RoPE-offset
         # trick those configs apply, and silently getting that wrong is
         # exactly the kind of bug that already broke Config E once before. ──
         generated: List[int] = []
+        confidence_logits: List[torch.Tensor] = []
         for _ in range(max_new_tokens):
             next_token = self._sample_next_token(next_logits, generated_ids=generated)  # (1, 1)
             tok_id = next_token.item()
             if tok_id in eos_ids:
                 break
+            if capture_confidence:
+                confidence_logits.append(next_logits)
             generated.append(tok_id)
             with torch.no_grad():
                 out = self.model(
@@ -928,7 +964,8 @@ class LAKVPipeline:
             next_logits   = out.logits[:, -1, :]
             cur_pos += 1
 
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        confidence = stats_from_logits(confidence_logits) if capture_confidence else None
+        return self.tokenizer.decode(generated, skip_special_tokens=True), confidence
 
 
 
