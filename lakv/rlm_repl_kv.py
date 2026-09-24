@@ -93,7 +93,8 @@ class RLMKVSession:
                  audit_generator: Optional[torch.Generator] = None,
                  kv_decision_cue: bool = True,
                  record_audit_pool: Optional["KVAuditPool"] = None,
-                 capture_confidence: bool = False):
+                 capture_confidence: bool = False,
+                 max_direct_reads_before_nudge: Optional[int] = None):
         """causal_audit_mode: "none" (real child KV spliced, default) /
         "zeroed" / "random" / "mismatched" -- substitutes the child's KV
         BEFORE it is spliced onto the root's cache, mirroring
@@ -133,7 +134,31 @@ class RLMKVSession:
         final_answer(...)), generalizing this session's existing
         behavioral signature (turn count, timeout rate, delegation
         calls -- see docs/PROGRESS_REPORT.md 2026-09-17) with a signal
-        the other two topologies in this project can also produce."""
+        the other two topologies in this project can also produce.
+
+        max_direct_reads_before_nudge: added 2026-09-24 on branch
+        feat/rlm-long-context, opt-in (None = disabled, matching this
+        session's pre-existing behavior exactly). Diagnosed directly
+        from real-model runs (docs/RLM_LONG_CONTEXT_LOG.md): at a
+        ~50-60-passage haystack, 55-60% of sessions never call
+        llm_query at all, identically regardless of causal_audit_mode
+        -- the root reads a few passages directly, gets lucky finding
+        something relevant, and answers without ever exercising the
+        audited delegation channel at all. Raising max_turns did not
+        move this rate (it isn't a turn-budget problem -- the decision
+        not to delegate is made in the first few turns, well before
+        the turn budget is ever a constraint). When set to an integer,
+        fires a one-time nudge once the session has read that many
+        passages directly (touched `passages` as code, not merely
+        mentioned it in prose -- see _references_passages_variable)
+        WITHOUT ever calling llm_query, encouraging delegation instead
+        of continuing to read one passage at a time. Deliberately NOT
+        the default even on this branch: at the native ~10-passage
+        scale this mechanism was originally built for, reading most or
+        all passages directly is often a legitimate, sometimes
+        necessary strategy, and this nudge has not been validated
+        there -- only pass this for the long-context regime it was
+        diagnosed for."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
         if causal_audit_mode not in ("none", "zeroed", "random", "mismatched"):
@@ -158,6 +183,7 @@ class RLMKVSession:
         self.kv_decision_cue = kv_decision_cue
         self.record_audit_pool = record_audit_pool
         self.capture_confidence = capture_confidence
+        self.max_direct_reads_before_nudge = max_direct_reads_before_nudge
         # Seeded, reproducible donor selection for "mismatched" mode --
         # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py),
         # so this prototype's causal audit is deterministic the same way
@@ -459,6 +485,7 @@ class RLMKVSession:
         touched_passages = False
         nudged_about_grounding = False
         nudged_about_repetition = False
+        nudged_about_over_reading = False
         low_exploration_confirmed = False
         last_code: Optional[str] = None
         passage_touch_turns = 0
@@ -595,6 +622,27 @@ class RLMKVSession:
                     "actual passages directly before asking further "
                     "questions -- the answer may still be sitting in "
                     "one you haven't read.",
+                )
+            elif (self.max_direct_reads_before_nudge is not None
+                    and passage_touch_turns >= self.max_direct_reads_before_nudge
+                    and sandbox.llm_query_calls == 0
+                    and not nudged_about_over_reading):
+                # Opt-in, long-context-regime nudge -- see __init__'s
+                # docstring for the full diagnosis. Fires once, the
+                # opposite condition to the grounding nudge above (that
+                # one fires for too little direct reading; this one for
+                # too much with zero delegation attempted at all).
+                nudged_about_over_reading = True
+                kv, next_logits = self._extend_text(
+                    kv,
+                    f"Note: you have directly read {passage_touch_turns} "
+                    f"passages yourself without ever calling llm_query. "
+                    f"With this many passages, reading them one at a "
+                    "time yourself is slow and easy to miss things in. "
+                    "Try delegating a batch of passages to llm_query "
+                    "instead -- e.g. llm_query('\\n\\n'.join(passages[i] "
+                    "for i in range(10, 20)) + '\\n\\nQuestion: ' + "
+                    "question) -- to search more of them at once.",
                 )
 
             kv, response, last_turn_confidence = self._generate_from_primed(kv, next_logits, self.root_max_new_tokens)

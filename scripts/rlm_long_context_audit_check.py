@@ -99,6 +99,18 @@ def main():
                               "beyond --n, never overlapping) used to build the KVAuditPool "
                               "for 'kv_audit_mismatched'. Ignored if that channel isn't requested.")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max_direct_reads_before_nudge", type=int, default=None,
+                         help="Diagnosed 2026-09-24 (docs/RLM_LONG_CONTEXT_LOG.md): 55-60%% of "
+                              "sessions never delegate at all at this scale, identically across "
+                              "every causal-audit condition, capping the informative sample at "
+                              "0-4/20 per channel. Raising --max_turns did not move this rate -- "
+                              "it isn't a turn-budget problem, the decision not to delegate is "
+                              "made in the first few turns. When set (e.g. 5), nudges the model "
+                              "to delegate once it has read this many passages directly with zero "
+                              "llm_query calls. Off by default -- this is the second fix attempt "
+                              "at the same bottleneck; if it doesn't move the leak rate either, "
+                              "that's a real, diagnosed limitation of this task design at this "
+                              "model scale, not a reason to keep iterating further.")
     args = parser.parse_args()
 
     model, tokenizer = load_model(args.model_name, device="cuda")
@@ -131,6 +143,7 @@ def main():
             model, tokenizer, device="cuda", return_channel="kv",
             max_turns=args.max_turns, causal_audit_mode="none",
             record_audit_pool=audit_pool,
+            max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
         )
         for ex in held_out:
             pool_session.run(ex.question, ex.passages)
@@ -144,6 +157,7 @@ def main():
             model, tokenizer, device="cuda", return_channel="kv",
             max_turns=args.max_turns, causal_audit_mode=causal_audit_mode,
             audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
+            max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
         )
 
         records = []
