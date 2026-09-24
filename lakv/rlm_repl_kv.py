@@ -67,6 +67,47 @@ CHILD_SYSTEM_PROMPT = (
     "You have no memory of any other conversation."
 )
 
+# Added 2026-09-24, branch feat/rlm-long-context. RLM_SYSTEM_PROMPT
+# (imported above, unedited) has exactly ONE worked example, and it
+# demonstrates reading a single passage directly, then answering --
+# despite llm_query being described in prose earlier in the same
+# prompt, there is no worked example of ever calling it. At the native
+# ~10-passage scale this is probably harmless (direct reading is often
+# a fine strategy there), but diagnosed as a plausible root cause of
+# the long-context leak-rate problem (docs/RLM_LONG_CONTEXT_LOG.md):
+# the model's only concrete behavioral template IS "check one passage,
+# you're probably done," which is a false affordance once there are
+# dozens of passages and genuine search is needed. This adds a SECOND
+# worked example demonstrating batch delegation as an explicit
+# alternative strategy, rather than only correcting behavior
+# after-the-fact via max_direct_reads_before_nudge -- the two are not
+# mutually exclusive; see RLMKVSession.__init__'s docstring.
+LONG_CONTEXT_SYSTEM_PROMPT = RLM_SYSTEM_PROMPT + (
+    "\n\nHere is a SECOND worked example, for when there are MANY "
+    "passages (dozens or more) -- reading them one at a time yourself "
+    "is slow and easy to miss things in. Delegating a BATCH of several "
+    "passages at once to llm_query is a faster way to search:\n\n"
+    "You write, in turn 1:\n"
+    "```python\n"
+    "llm_query('\\n\\n'.join(passages[i] for i in range(20)) + "
+    "'\\n\\nQuestion: ' + question)\n"
+    "```\n\n"
+    "The system reports back: [llm_query result] \"None of these "
+    "passages mention the answer.\"\n\n"
+    "You write, in turn 2:\n"
+    "```python\n"
+    "llm_query('\\n\\n'.join(passages[i] for i in range(20, 40)) + "
+    "'\\n\\nQuestion: ' + question)\n"
+    "```\n\n"
+    "The system reports back: [llm_query result] \"1932\"\n\n"
+    "You write, in turn 3:\n"
+    "```python\n"
+    "final_answer(\"1932\")\n"
+    "```\n\n"
+    "When there are many passages, prefer this batch-delegation "
+    "strategy over reading passages one at a time yourself."
+)
+
 
 @dataclass
 class RLMKVRunResult:
@@ -94,7 +135,8 @@ class RLMKVSession:
                  kv_decision_cue: bool = True,
                  record_audit_pool: Optional["KVAuditPool"] = None,
                  capture_confidence: bool = False,
-                 max_direct_reads_before_nudge: Optional[int] = None):
+                 max_direct_reads_before_nudge: Optional[int] = None,
+                 system_prompt: Optional[str] = None):
         """causal_audit_mode: "none" (real child KV spliced, default) /
         "zeroed" / "random" / "mismatched" -- substitutes the child's KV
         BEFORE it is spliced onto the root's cache, mirroring
@@ -158,7 +200,23 @@ class RLMKVSession:
         all passages directly is often a legitimate, sometimes
         necessary strategy, and this nudge has not been validated
         there -- only pass this for the long-context regime it was
-        diagnosed for."""
+        diagnosed for.
+
+        system_prompt: added 2026-09-24 alongside
+        max_direct_reads_before_nudge, same rationale. Defaults to the
+        shared RLM_SYSTEM_PROMPT (imported from rlm_repl.py) unchanged
+        -- that constant is not edited by this change, so every
+        existing caller (including the native ~10-passage regime this
+        session class was originally built for) is unaffected. Pass
+        LONG_CONTEXT_SYSTEM_PROMPT (below) to add a second worked
+        example demonstrating batch delegation via llm_query, not just
+        single-passage direct reads -- see that constant's own comment
+        for why the ORIGINAL prompt's only worked example may itself be
+        a root cause of the leak-rate problem this nudge also targets:
+        it's the model's only concrete behavioral template, and it
+        demonstrates "read one passage, then answer" with no delegation
+        example anywhere, despite llm_query being described in prose
+        earlier in the same prompt."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
         if causal_audit_mode not in ("none", "zeroed", "random", "mismatched"):
@@ -184,6 +242,7 @@ class RLMKVSession:
         self.record_audit_pool = record_audit_pool
         self.capture_confidence = capture_confidence
         self.max_direct_reads_before_nudge = max_direct_reads_before_nudge
+        self.system_prompt = system_prompt if system_prompt is not None else RLM_SYSTEM_PROMPT
         # Seeded, reproducible donor selection for "mismatched" mode --
         # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py),
         # so this prototype's causal audit is deterministic the same way
@@ -448,7 +507,7 @@ class RLMKVSession:
         q_key = question_key(question)
         audit_logs: List[dict] = []
         init_messages = [
-            {"role": "system", "content": RLM_SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": f"Question: {question}"},
         ]
         prompt_text = self.tokenizer.apply_chat_template(

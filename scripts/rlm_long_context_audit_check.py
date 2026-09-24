@@ -60,7 +60,7 @@ from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.causal_audit import KVAuditPool
 from lakv.long_context_hotpotqa import build_long_context_examples
-from lakv.rlm_repl_kv import RLMKVSession
+from lakv.rlm_repl_kv import RLMKVSession, LONG_CONTEXT_SYSTEM_PROMPT
 from lakv.stats import mcnemar_test
 
 
@@ -111,6 +111,14 @@ def main():
                               "at the same bottleneck; if it doesn't move the leak rate either, "
                               "that's a real, diagnosed limitation of this task design at this "
                               "model scale, not a reason to keep iterating further.")
+    parser.add_argument("--long_context_prompt", action="store_true",
+                         help="Use LONG_CONTEXT_SYSTEM_PROMPT (adds a second worked example "
+                              "demonstrating batch delegation, not just single-passage direct "
+                              "reads -- see lakv/rlm_repl_kv.py's comment on it) instead of the "
+                              "shared RLM_SYSTEM_PROMPT. A more fundamental attempt at the same "
+                              "leak-rate bottleneck than --max_direct_reads_before_nudge alone: "
+                              "sets the behavioral prior from turn 1 instead of correcting it "
+                              "mid-session. Combine both for the strongest version of this fix.")
     args = parser.parse_args()
 
     model, tokenizer = load_model(args.model_name, device="cuda")
@@ -133,6 +141,11 @@ def main():
     out_dir = Path(args.output_dir) / f"run_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[rlm_long_context_audit_check] results will be saved to: {out_dir}")
+    if args.long_context_prompt:
+        print("[rlm_long_context_audit_check] using LONG_CONTEXT_SYSTEM_PROMPT "
+              "(second worked example: batch delegation)")
+
+    system_prompt = LONG_CONTEXT_SYSTEM_PROMPT if args.long_context_prompt else None
 
     audit_pool = None
     if needs_pool:
@@ -144,6 +157,7 @@ def main():
             max_turns=args.max_turns, causal_audit_mode="none",
             record_audit_pool=audit_pool,
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
+            system_prompt=system_prompt,
         )
         for ex in held_out:
             pool_session.run(ex.question, ex.passages)
@@ -158,6 +172,7 @@ def main():
             max_turns=args.max_turns, causal_audit_mode=causal_audit_mode,
             audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
+            system_prompt=system_prompt,
         )
 
         records = []
