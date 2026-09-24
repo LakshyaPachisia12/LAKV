@@ -42,6 +42,7 @@ Usage:
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -159,8 +160,13 @@ def main():
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
             system_prompt=system_prompt,
         )
-        for ex in held_out:
-            pool_session.run(ex.question, ex.passages)
+        for i, ex in enumerate(held_out):
+            _t0 = time.perf_counter()
+            result = pool_session.run(ex.question, ex.passages)
+            _elapsed = time.perf_counter() - _t0
+            print(f"  [pool {i + 1}/{len(held_out)}] {_elapsed:.0f}s  "
+                  f"hit_max_turns={result.hit_max_turns} turns={len(result.turn_texts)} "
+                  f"queries={result.llm_query_calls} approx_tokens={ex.approx_tokens}")
         print(f"[rlm_long_context_audit_check] pool built, {audit_pool.size(0)} entries recorded")
 
     all_records = {}
@@ -177,14 +183,16 @@ def main():
 
         records = []
         for i, ex in enumerate(scored):
+            _t0 = time.perf_counter()
             result = session.run(ex.question, ex.passages)
+            _elapsed = time.perf_counter() - _t0
             if result.hit_max_turns:
                 pred, em, f1 = None, False, 0.0
             else:
                 pred = extract_qa_answer(result.answer or "")
                 em = exact_match_score(pred, ex.answer)
                 f1 = f1_score(pred, ex.answer)
-            print(f"  [{channel}] ex{i}: EM={em} F1={f1:.2f} hit_max_turns={result.hit_max_turns} "
+            print(f"  [{channel}] ex{i}: {_elapsed:.0f}s EM={em} F1={f1:.2f} hit_max_turns={result.hit_max_turns} "
                   f"turns={len(result.turn_texts)} queries={result.llm_query_calls}")
             records.append({
                 "idx": i, "correct": bool(em), "f1": f1,
