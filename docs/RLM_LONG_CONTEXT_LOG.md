@@ -142,19 +142,68 @@ doesn't push the model toward needing MULTIPLE passages combined before
 it can answer, so a single lucky early read is still often "enough" to
 produce something scoreable even if wrong.
 
+## Iterating on the leak-rate bottleneck (2026-09-24)
+
+Three follow-up attempts at the same diagnosed cause, in order:
+
+**1. `max_turns` 15→25 alone.** Modestly helped sessions that had
+already started delegating finish instead of timing out (`deleg_completed`
+rose for 3 of 4 channels), but did nothing for the dominant problem —
+the zero-delegation leak rate stayed flat or got slightly worse (55%→60%
+at n=20). Confirmed this makes sense: the decision not to delegate
+happens in the first few turns, well before turn budget is ever a
+constraint.
+
+**2. Root-cause candidate found by reading the system prompt directly**:
+`RLM_SYSTEM_PROMPT`'s only worked example demonstrates reading a single
+passage directly, then answering — there is no worked example of
+`llm_query` anywhere, despite it being described in prose. That's the
+model's only concrete behavioral template, and it's a plausible false
+affordance once there are dozens of passages instead of ten. Built two
+targeted, opt-in fixes on `RLMKVSession` (neither touches the shared
+default, so the native ~10-passage regime is unaffected):
+`max_direct_reads_before_nudge` (a corrective nudge once N passages are
+read directly with zero delegation) and `LONG_CONTEXT_SYSTEM_PROMPT`
+(a second worked example demonstrating batch delegation, targeting the
+prior from turn 1 instead of correcting it mid-session).
+
+**3. Real debugging detour**: a run appeared to hang for hours with zero
+console output. Checked directly via `nvidia-smi` rather than assuming
+either "it's fine" or "it's broken" — GPU at 100% utilization, 23.8/24.5GB
+VRAM in use, process genuinely alive and computing. The real bug: the
+15-example held-out pool pre-pass had no progress output at all, making
+a slow-but-working run indistinguishable from a hang. Fixed (per-example
+elapsed time now printed for both the pool pre-pass and the scored loop).
+
+**Result with the nudge alone** (`max_direct_reads_before_nudge=5`,
+`max_turns=25`, n=20, `results/rlm_long_context_audit/run_20260924_132910`):
+delegated-and-completed rate `kv` 25% (5/20), `kv_audit_zeroed` 25%,
+`kv_audit_mismatched` 25%, `kv_audit_random` **0%** — real improvement
+over the pre-nudge 10-20% range. Checked whether this is the same
+leaky-pathway artifact as before (identical completion sets across
+channels) — **it isn't this time**: `kv`={3,8,12,14,17} vs.
+`zeroed`=`mismatched`={3,8,14,17,19}, real per-example variation, not a
+byte-identical no-op. `kv` vs. `kv_audit_random`: p=0.0625 (5 discordant
+pairs, **all 5 favoring kv, zero favoring random**) — not formally
+significant, but the cleanest, most one-sided pattern this branch has
+produced; one more discordant pair in the same direction would cross
+p<0.05. `kv_audit_random` at 0% across every single run on this branch
+regardless of configuration is itself now a robust, repeatedly-confirmed
+result — the fourth topology in this project (after sequential, fan-in,
+native RLM+KV) where random noise uniquely and completely blocks
+genuine delegation from ever succeeding.
+
 ## Where this leaves the branch
 
-Two independent experiments on this branch (dose-response, causal
-audit) have now shown the same shape: promising-looking direction at
-very small n, weak or dominated-by-a-confound at the n actually tried.
-Neither is proof the underlying non-exchangeability claim is false at
-long context — both are consistent with the scaffolding (turn budget,
-passage-shuffling design) not yet being matched to this much larger
-passage count, exactly the risk flagged before this branch's work
-started ("the hand-tuned nudge thresholds were tuned for ~10 passages...
-at 100+, they'll almost certainly need retuning"). That retuning hasn't
-happened yet. Next step, if continuing: raise `max_turns` substantially
-(e.g. 25-30) for the causal-audit script specifically, since the
-current bottleneck is measurably timeouts-during-delegation, not
-garbage output or a broken mechanism, before spending more GPU time at
-the current turn budget.
+The nudge fix is the first intervention on this branch that produced a
+real, if still underpowered, directional signal rather than a flat or
+shrinking one. Given the specific comparison that matters (`kv` vs.
+`kv_audit_random`) is already clean 5-0 on discordant pairs, the
+efficient next step is NOT rerunning all four channels at a bigger n —
+`kv_audit_mismatched` requires the expensive 15-example pool pre-pass,
+which is most of this configuration's runtime, and doesn't touch the
+comparison currently closest to significance. Run just
+`--channels kv kv_audit_random` (which skips the pool build entirely,
+since only `kv_audit_mismatched` needs it) at a somewhat larger n
+(e.g. 30-35) to try to push the existing clean 5-0 pattern over the
+significance line without paying for the full four-channel cost again.
