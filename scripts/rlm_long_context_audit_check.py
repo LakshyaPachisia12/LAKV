@@ -120,7 +120,28 @@ def main():
                               "leak-rate bottleneck than --max_direct_reads_before_nudge alone: "
                               "sets the behavioral prior from turn 1 instead of correcting it "
                               "mid-session. Combine both for the strongest version of this fix.")
+    parser.add_argument("--repetition_nudge_max_fires", type=int, default=1,
+                         help="Diagnosed 2026-10-02 (docs/RLM_LONG_CONTEXT_LOG.md, free re-analysis "
+                              "of an already-saved run): under real kv content, 50%% of sessions "
+                              "(10/20) repeated the exact same delegation query at least once -- "
+                              "an honest 'not found' response with no clear next move. Under "
+                              "kv_audit_random/kv_audit_mismatched this never happened (0/20 each). "
+                              "The repetition nudge has always fired only ONCE per session by "
+                              "default (matches that exact prior behavior); pass a higher number "
+                              "(e.g. 3) or 0 for unlimited to let it keep firing on later repeats "
+                              "too. Targets a DIFFERENT mechanism than --max_direct_reads_before_nudge "
+                              "/--long_context_prompt (search efficiency once delegating, not "
+                              "whether delegation happens at all) -- expected to help kv/zeroed's "
+                              "timeout rate specifically, independent of the confidence-vs-honesty "
+                              "finding those two are about.")
     args = parser.parse_args()
+    # RLMKVSession's own unlimited sentinel is None, not 0 -- convert here
+    # so the CLI can use a plain integer type (argparse doesn't take None
+    # from the command line) while --repetition_nudge_max_fires 0 still
+    # means "unlimited" as documented above.
+    repetition_nudge_max_fires = (
+        None if args.repetition_nudge_max_fires == 0 else args.repetition_nudge_max_fires
+    )
 
     model, tokenizer = load_model(args.model_name, device="cuda")
 
@@ -159,6 +180,7 @@ def main():
             record_audit_pool=audit_pool,
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
             system_prompt=system_prompt,
+            repetition_nudge_max_fires=repetition_nudge_max_fires,
         )
         for i, ex in enumerate(held_out):
             _t0 = time.perf_counter()
@@ -179,6 +201,7 @@ def main():
             audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
             system_prompt=system_prompt,
+            repetition_nudge_max_fires=repetition_nudge_max_fires,
         )
 
         records = []

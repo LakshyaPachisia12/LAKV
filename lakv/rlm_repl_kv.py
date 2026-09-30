@@ -136,7 +136,8 @@ class RLMKVSession:
                  record_audit_pool: Optional["KVAuditPool"] = None,
                  capture_confidence: bool = False,
                  max_direct_reads_before_nudge: Optional[int] = None,
-                 system_prompt: Optional[str] = None):
+                 system_prompt: Optional[str] = None,
+                 repetition_nudge_max_fires: Optional[int] = 1):
         """causal_audit_mode: "none" (real child KV spliced, default) /
         "zeroed" / "random" / "mismatched" -- substitutes the child's KV
         BEFORE it is spliced onto the root's cache, mirroring
@@ -216,7 +217,29 @@ class RLMKVSession:
         it's the model's only concrete behavioral template, and it
         demonstrates "read one passage, then answer" with no delegation
         example anywhere, despite llm_query being described in prose
-        earlier in the same prompt."""
+        earlier in the same prompt.
+
+        repetition_nudge_max_fires: added 2026-10-02, diagnosed from a
+        free (no-GPU) re-analysis of an already-saved long-context run
+        (docs/RLM_LONG_CONTEXT_LOG.md): under return_channel="kv" with
+        real, uncorrupted content, 50% of sessions (10/20) repeated the
+        EXACT SAME delegation query at least once -- the model gets an
+        honest "not found" response and doesn't know how to adapt, so it
+        just retries. Under kv_audit_random/kv_audit_mismatched, this
+        never happened (0/20 each) -- any well-formed response, even a
+        wrong one, seems to prevent the model from feeling stuck enough
+        to repeat. The existing repetition nudge (below, in run()) only
+        ever fires ONCE per session (see the original
+        nudged_about_repetition boolean this replaces), so a session
+        that repeats a second, third, or later time gets no further
+        help. Default 1 preserves that exact prior behavior unchanged.
+        Pass a higher integer (e.g. 3) or None (unlimited) to let it
+        keep firing -- this targets a DIFFERENT mechanism than
+        max_direct_reads_before_nudge/system_prompt above (search
+        efficiency once delegation is already happening, not whether
+        delegation happens at all in the first place) and is expected to
+        help real/zeroed's timeout rate specifically, independent of the
+        confidence-vs-honesty finding those other two are about."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
         if causal_audit_mode not in ("none", "zeroed", "random", "mismatched"):
@@ -243,6 +266,7 @@ class RLMKVSession:
         self.capture_confidence = capture_confidence
         self.max_direct_reads_before_nudge = max_direct_reads_before_nudge
         self.system_prompt = system_prompt if system_prompt is not None else RLM_SYSTEM_PROMPT
+        self.repetition_nudge_max_fires = repetition_nudge_max_fires
         # Seeded, reproducible donor selection for "mismatched" mode --
         # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py),
         # so this prototype's causal audit is deterministic the same way
@@ -543,7 +567,7 @@ class RLMKVSession:
         sandbox = CodeSandbox(question, passages, llm_query=llm_query_and_capture)
         touched_passages = False
         nudged_about_grounding = False
-        nudged_about_repetition = False
+        repetition_nudge_fire_count = 0
         nudged_about_over_reading = False
         low_exploration_confirmed = False
         last_code: Optional[str] = None
@@ -656,17 +680,39 @@ class RLMKVSession:
             else:
                 kv, next_logits = self._extend_text(kv, f"[stdout]\n{turn.stdout}")
 
-            if code_repeated and not nudged_about_repetition:
-                nudged_about_repetition = True
-                kv, next_logits = self._extend_text(
-                    kv,
-                    "Note: that is the exact same code as your last "
-                    "attempt, and it will produce the same result "
-                    "again. Try a different approach -- e.g. a "
-                    "different search term, or just printing each "
-                    "passage directly to see what's actually there, "
-                    "instead of re-running the same filter.",
-                )
+            can_still_nudge_repetition = (
+                self.repetition_nudge_max_fires is None
+                or repetition_nudge_fire_count < self.repetition_nudge_max_fires
+            )
+            if code_repeated and can_still_nudge_repetition:
+                repetition_nudge_fire_count += 1
+                # Escalate the wording once this has fired more than once
+                # for the same session -- a real-model finding (2026-10-02,
+                # see repetition_nudge_max_fires's docstring) showed the
+                # original single-shot version left a session with no
+                # further help after its first repeat, which happened in
+                # half of real-content long-context sessions.
+                if repetition_nudge_fire_count == 1:
+                    note = (
+                        "Note: that is the exact same code as your last "
+                        "attempt, and it will produce the same result "
+                        "again. Try a different approach -- e.g. a "
+                        "different search term, or just printing each "
+                        "passage directly to see what's actually there, "
+                        "instead of re-running the same filter."
+                    )
+                else:
+                    note = (
+                        f"Note: you have now repeated this exact code "
+                        f"{repetition_nudge_fire_count} times -- whatever "
+                        "you're trying is not working. Stop and try "
+                        "something genuinely different: a batch of "
+                        "passages you haven't checked yet, a different "
+                        "search term, or reconsider whether the answer "
+                        "might require combining information from two "
+                        "different passages rather than one."
+                    )
+                kv, next_logits = self._extend_text(kv, note)
             elif (not touched_passages and not nudged_about_grounding
                     and sandbox.llm_query_calls >= 2):
                 nudged_about_grounding = True
