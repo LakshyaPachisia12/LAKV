@@ -125,6 +125,61 @@ def test_raises_when_filler_pool_too_small(patch_loader):
         lch.build_long_context_examples(tokenizer, n=3, filler_pool_size=10)
 
 
+def test_filler_pool_start_decouples_filler_from_n(patch_loader):
+    # Real bug found 2026-10-02: with the default (filler_pool_start=None),
+    # a same-seed run with n=20 vs n=30 gives the SAME first 20 questions
+    # DIFFERENT filler, because the filler pool starts right after n.
+    # Reproduce that here, then confirm passing an explicit
+    # filler_pool_start makes the first 20 examples' filler identical
+    # regardless of n.
+    patch_loader(n_questions=80, words_per_passage=8, n_passages=10)
+    tokenizer = WordCountTokenizer()
+
+    default_n20 = lch.build_long_context_examples(
+        tokenizer, n=20, target_tokens=400, filler_pool_size=15, check_every=3, seed=0,
+    )
+    default_n30 = lch.build_long_context_examples(
+        tokenizer, n=30, target_tokens=400, filler_pool_size=15, check_every=3, seed=0,
+    )
+    # Bug reproduced: same question 0-19, but at least one gets different
+    # filler because the pool start shifted from 20 (n=20 case) to 30
+    # (n=30 case).
+    assert any(
+        default_n20[i].passages != default_n30[i].passages for i in range(20)
+    ), "expected the diagnosed filler-shift bug to reproduce with default args"
+
+    fixed_n20 = lch.build_long_context_examples(
+        tokenizer, n=20, target_tokens=400, filler_pool_size=15, check_every=3,
+        seed=0, filler_pool_start=50,
+    )
+    fixed_n30 = lch.build_long_context_examples(
+        tokenizer, n=30, target_tokens=400, filler_pool_size=15, check_every=3,
+        seed=0, filler_pool_start=50,
+    )
+    for i in range(20):
+        assert fixed_n20[i].passages == fixed_n30[i].passages, (
+            f"idx={i} should be identical once filler_pool_start is fixed"
+        )
+
+
+def test_scored_start_draws_a_disjoint_set_for_a_held_out_pool(patch_loader):
+    fake_data = patch_loader(n_questions=60, words_per_passage=8, n_passages=10)
+    tokenizer = WordCountTokenizer()
+
+    scored = lch.build_long_context_examples(
+        tokenizer, n=10, target_tokens=300, filler_pool_size=10, check_every=3,
+        seed=0, filler_pool_start=40,
+    )
+    held_out = lch.build_long_context_examples(
+        tokenizer, n=5, target_tokens=300, filler_pool_size=10, check_every=3,
+        seed=0, scored_start=20, filler_pool_start=40,
+    )
+    scored_questions = {ex.question for ex in scored}
+    held_out_questions = {ex.question for ex in held_out}
+    assert scored_questions.isdisjoint(held_out_questions)
+    assert held_out_questions == {fake_data[i]["question"] for i in range(20, 25)}
+
+
 def test_max_filler_per_example_caps_growth_even_if_target_unreached(patch_loader):
     patch_loader(n_questions=20, words_per_passage=5, n_passages=10)
     tokenizer = WordCountTokenizer()

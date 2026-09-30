@@ -146,13 +146,26 @@ def main():
     model, tokenizer = load_model(args.model_name, device="cuda")
 
     needs_pool = "kv_audit_mismatched" in args.channels
-    total_needed = args.n + (args.n_held_out if needs_pool else 0)
-    all_examples = build_long_context_examples(
-        tokenizer, n=total_needed, target_tokens=args.target_tokens,
+    # Fixed, --n-independent offsets (2026-10-02 fix -- see
+    # lakv/long_context_hotpotqa.py's filler_pool_start/scored_start
+    # docstring for the bug this closes): a same-seed run with a
+    # different --n used to get DIFFERENT filler for the SAME first
+    # questions, because the filler pool started right after n. 300 is
+    # comfortably beyond any --n this branch has used in practice, so
+    # scaling --n up is now a genuine apples-to-apples "more data on the
+    # same task instances" comparison instead of an independent resample.
+    FILLER_POOL_START = 300
+    held_out_scored_start = FILLER_POOL_START + args.filler_pool_size
+    scored = build_long_context_examples(
+        tokenizer, n=args.n, target_tokens=args.target_tokens,
         split=args.split, filler_pool_size=args.filler_pool_size, seed=args.seed,
+        filler_pool_start=FILLER_POOL_START,
     )
-    scored = all_examples[:args.n]
-    held_out = all_examples[args.n:total_needed] if needs_pool else []
+    held_out = build_long_context_examples(
+        tokenizer, n=args.n_held_out, target_tokens=args.target_tokens,
+        split=args.split, filler_pool_size=args.filler_pool_size, seed=args.seed,
+        scored_start=held_out_scored_start, filler_pool_start=FILLER_POOL_START,
+    ) if needs_pool else []
 
     actual_tokens = [ex.approx_tokens for ex in scored]
     print(f"[rlm_long_context_audit_check] scored examples: n={len(scored)}, "

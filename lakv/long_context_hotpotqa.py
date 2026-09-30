@@ -98,6 +98,8 @@ def build_long_context_examples(
     seed: int = 0,
     check_every: int = 5,
     max_filler_per_example: int = 2000,
+    scored_start: int = 0,
+    filler_pool_start: Optional[int] = None,
 ) -> List[LongContextExample]:
     """Builds `n` needle-in-haystack examples.
 
@@ -107,6 +109,28 @@ def build_long_context_examples(
     -- same discipline as KVAuditPool elsewhere in this project) until
     the combined passage list's token count (measured with the real
     tokenizer, not a heuristic) reaches approximately `target_tokens`.
+
+    scored_start / filler_pool_start: added 2026-10-02 -- by default
+    (scored_start=0, filler_pool_start=None) this reproduces the
+    function's original behavior exactly: scored questions are
+    all_data[:n], and filler is drawn from immediately after that range
+    (all_data[n:n+filler_pool_size]). That default ties the filler
+    pool's position to n, which is a real, diagnosed problem: two runs
+    with the same seed but a different n get DIFFERENT filler for the
+    SAME first n questions, since the filler pool's start shifts with n.
+    A same-question, same-seed comparison across an n=20 and an n=30 run
+    showed the identical question getting a different haystack and a
+    different final answer ("no" vs "yes") purely from this shift, not
+    from any real non-determinism -- see docs/RLM_LONG_CONTEXT_LOG.md.
+    Pass an explicit `filler_pool_start` (comfortably beyond any n you
+    intend to scale up to within one set of experiments you want to
+    compare) to decouple filler position from n entirely, so scaling n
+    up is a genuine apples-to-apples "more data on the same task
+    instances" comparison instead of an independent resample with
+    different noise. `scored_start` lets a second, non-overlapping call
+    draw a DIFFERENT set of scored-shaped questions (e.g. to build a
+    held-out KVAuditPool for kv_audit_mismatched) from a fixed position
+    that doesn't move as the main experiment's own n changes either.
 
     Each example gets its own independently-shuffled slice of the filler
     pool (not a shared order truncated to different lengths, and no
@@ -130,16 +154,19 @@ def build_long_context_examples(
     looping until the pool runs out silently.
     """
     rng = random.Random(seed)
-    total_needed = n + filler_pool_size
+    pool_start = filler_pool_start if filler_pool_start is not None else scored_start + n
+    total_needed = max(scored_start + n, pool_start + filler_pool_size)
     all_data = _load_raw_hotpotqa(split, total_needed)
     if len(all_data) < total_needed:
         raise ValueError(
-            f"Requested n={n} + filler_pool_size={filler_pool_size} = "
-            f"{total_needed} examples, but split {split!r} only has "
-            f"{len(all_data)} available. Reduce filler_pool_size or n."
+            f"Requested scored_start={scored_start} + n={n} and "
+            f"filler_pool_start={pool_start} + filler_pool_size={filler_pool_size} "
+            f"need {total_needed} examples, but split {split!r} only has "
+            f"{len(all_data)} available. Reduce filler_pool_size, n, or the "
+            f"start offsets."
         )
-    scored = all_data[:n]
-    filler_source = all_data[n:total_needed]
+    scored = all_data[scored_start:scored_start + n]
+    filler_source = all_data[pool_start:pool_start + filler_pool_size]
     filler_passages: List[str] = [
         p for item in filler_source for p in item["passages"]
     ]
