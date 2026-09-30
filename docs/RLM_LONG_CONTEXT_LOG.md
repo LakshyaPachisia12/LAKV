@@ -265,3 +265,54 @@ model decides it's done searching*, not just whether it answers
 correctly — a genuinely new angle this project hasn't shown at native
 context scale, where real content usually resolves fast enough that
 this timing effect never has room to appear.
+
+## Important correction (2026-10-02): the "confident-wrong stops search early" finding did not replicate, and a real bug explains why
+
+Ran the planned n=30 confirmatory replication
+(`--n 30 --target_tokens 16000 --max_turns 25 --long_context_prompt
+--channels kv kv_audit_random kv_audit_mismatched`,
+`results/rlm_long_context_audit/run_20260930_091125`) to solidify the
+two significant findings above at higher power. One held up and got
+stronger; the other did not hold up, and investigating why surfaced a
+real, previously-unnoticed bug in the loader.
+
+**`kv` vs. `kv_audit_random` (delegated-and-completed): replicated
+cleanly and got much stronger.** n=20: p=0.0156, 7 discordant pairs, all
+favoring `kv`. n=30: **p<0.0001**, 18 discordant pairs, all 18 still
+favoring `kv` (kv-only=18, random-only=0) — a genuinely decisive,
+one-sided result now confirmed across two separate samples. **This is
+the solid, headline, citable result from this branch.**
+
+**`kv` vs. `kv_audit_mismatched`: did NOT replicate.** n=20: p=0.0215,
+mismatched completing far more than `kv` (75% vs. 35%). n=30: p=0.4240,
+not significant, and the direction is no longer as extreme (`kv` 60%,
+`kv_audit_mismatched` 47%). Before writing this off as noise, checked
+directly whether this was even a fair comparison — it wasn't. Diffed
+`kv`'s raw answers on the SAME first 20 question indices between the
+n=20 and n=30 runs (same seed, same target_tokens, same everything
+except `--n` itself): **14 of 20 differ**, including one case (idx=0)
+where the identical question's answer flipped from "no" to "yes"
+between the two runs. Traced this to source: `build_long_context_
+examples`'s filler pool starts immediately after the scored range
+(`all_data[n:n+filler_pool_size]`), so changing `--n` from 20 to 30
+shifted where the filler came from, giving even "the same" first 20
+questions a genuinely different haystack in each run. This was never
+non-determinism -- it's a real design gap, now fixed (`scored_start`/
+`filler_pool_start` params, `lakv/long_context_hotpotqa.py`, pinned to
+fixed offsets in `scripts/rlm_long_context_audit_check.py`).
+
+**Honest bottom line**: the n=30 run was not a controlled replication of
+the n=20 run — it was an independent resample with different noise. That
+means `kv` vs. `random` surviving cleanly across two genuinely different
+samples is if anything a *stronger* result than a same-sample replication
+would have been. It also means the mismatched finding's failure to
+replicate is genuinely ambiguous — it could mean the original n=20
+result was a fluke, or it could mean the effect is real but sensitive to
+which specific filler surrounds each question, and we don't yet know
+which. **Do not report the "confident-wrong content causes premature
+stopping" mechanism as a confirmed finding.** It's a real, honestly
+documented single-run observation with a plausible mechanism, not a
+replicated result. The `kv`-vs-`random` finding is the one to write up
+with confidence. Any future rerun of this specific comparison should use
+the now-fixed `filler_pool_start` pinning so it's a genuine, controlled
+replication this time.
