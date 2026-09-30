@@ -207,3 +207,61 @@ comparison currently closest to significance. Run just
 since only `kv_audit_mismatched` needs it) at a somewhat larger n
 (e.g. 30-35) to try to push the existing clean 5-0 pattern over the
 significance line without paying for the full four-channel cost again.
+
+## The `--long_context_prompt` run: real progress, plus a genuinely new mechanism (2026-09-30)
+
+Ran `--n 20 --target_tokens 16000 --max_turns 25 --long_context_prompt`
+(no nudge, prompt-only; `results/rlm_long_context_audit/run_20260928_132337`).
+Confirmed directly in transcripts that the second worked example is
+doing exactly what it was designed to do: real batch delegation
+(`llm_query(passages[0:20]...)`, then `passages[20:40]...`) rather than
+one-at-a-time reads. Completion rates rose substantially across the
+board (delegated-and-completed: `kv` 35%, `kv_audit_zeroed` 35%,
+`kv_audit_mismatched` **75%**, `kv_audit_random` 0%) — a real
+improvement in absolute terms over every prior configuration on this
+branch.
+
+**But `kv_audit_mismatched` completing far MORE often than real `kv` is
+not "mismatched succeeding" — checked this directly, not assumed.**
+Pulled matched transcripts for the same question under both conditions
+(same seed → same needle+haystack, only the spliced content differs).
+Real `kv`: 14 turns, repeats an identical query twice, falls back to
+scanning individual passages one at a time, times out at 25 with no
+answer. `kv_audit_mismatched`, same question: 4 turns, two clean batch
+queries, converges on a confident (wrong) answer. Systematic across all
+20 questions, not anecdotal: `kv` times out 12/20 (60%), `zeroed` 12/20
+(60%, statistically identical to kv, p=1.0), `kv_audit_random` **19/20
+(95%)**, `kv_audit_mismatched` **4/20 (20%)**.
+
+**Two real, statistically significant results, both already sitting in
+this one run's data, no new GPU cost**:
+- `kv` vs. `kv_audit_random` (timeout rate): **p=0.0156**, all 7
+  discordant pairs favor `kv` finishing where random doesn't — the
+  expected-direction result, now actually significant.
+- `kv` vs. `kv_audit_mismatched` (timeout rate): **p=0.0215**, but
+  inverted — mismatched times out *less* than real content.
+
+**Mechanism, not a bug**: an honest sub-call response ("this passage
+doesn't answer the question" — common, since most 20-passage batches out
+of ~90 genuinely lack the 2-hop link) correctly signals "keep searching,"
+consuming turn budget without resolving. A corrupted-but-coherent
+mismatched response is a complete, confident-sounding answer to a
+DIFFERENT question, which reads to the root as resolved even though it
+isn't. Both conditions land at ~5% EM regardless — the corrupted content
+doesn't make the model MORE accurate, it makes it STOP SOONER. Same
+underlying theme as this entire project's "random looks like real signal
+and misdirects" finding (Finding 6), now showing up as a timing effect
+rather than an accuracy effect, and in the opposite direction from the
+native-context behavioral signature (Finding 18) for a sensible reason:
+at native scale the task usually resolves quickly even with real content;
+at this scale even real content often doesn't finish within budget.
+`kv_audit_zeroed` sits with `kv`, not with `mismatched` — its
+near-content-free substitution apparently doesn't create the same false
+sense of resolution a coherent-but-wrong answer does.
+
+**Read this as the actual headline finding for this branch, ahead of
+the raw accuracy story**: content-identity causally shapes *when the
+model decides it's done searching*, not just whether it answers
+correctly — a genuinely new angle this project hasn't shown at native
+context scale, where real content usually resolves fast enough that
+this timing effect never has room to appear.
