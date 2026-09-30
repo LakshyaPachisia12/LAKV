@@ -775,40 +775,41 @@ as Finding 5's original observation, replicated cleanly a second time.
 
 \paragraph{Finding 5, extended to a third topology -- content-dependence
 survives a deliberately unfavorable stress test.} We built the RLM-style
-dynamic delegation loop described in Section~\ref{sec:method}: the model
-itself decides, turn by turn, what to delegate and when, with a sub-call's
-answer relayed as real KV cache (\texttt{kv}) rather than RLM's own
+dynamic delegation loop described in Section~\ref{sec:method}. The model
+itself decides, turn by turn, what to delegate and when. A sub-call's
+answer is relayed as real KV cache (\texttt{kv}) instead of RLM's own
 decoded-text channel (\texttt{text}). We are explicit that this is the
-least favorable of our three topologies for demonstrating anything: our
+least favorable of our three topologies for demonstrating anything. Our
 distractor-setting HotpotQA questions (ten passages, a few thousand
-tokens) do not need RLM-style decomposition at all -- unlike the
-context regimes RLM itself targets -- so a real-model REPL loop
-constructing its own delegation strategy here is solving a harder
-coordination problem than the task requires, and getting it to produce
-coherent output at all needed real scaffolding (Section~\ref{sec:method},
-grounding and low-exploration nudges). Consistent with that framing,
-$\texttt{kv}$ vs.\ $\texttt{text}$ accuracy remains statistically
-unresolved at $n=50$ (24.0\%/32.3\% vs.\ 22.0\%/28.5\%, $p=1.0$) -- we do
-not claim an accuracy win here, and this topology's contribution does not
-rest on one: the question this section answers is not ``does KV relay
-beat text relay under model-driven delegation'' but ``does content-identity
+tokens) do not need RLM-style decomposition at all -- unlike the context
+regimes RLM itself targets. A real-model REPL loop constructing its own
+delegation strategy here is solving a harder coordination problem than
+the task requires, and getting it to produce coherent output at all
+needed real scaffolding (Section~\ref{sec:method}: grounding and
+low-exploration nudges). Consistent with that framing, $\texttt{kv}$
+vs.\ $\texttt{text}$ accuracy remains statistically unresolved at $n=50$
+(24.0\%/32.3\% vs.\ 22.0\%/28.5\%, $p=1.0$). We do not claim an accuracy
+win here, and this topology's contribution does not rest on one: the
+question this section answers is not ``does KV relay beat text relay
+under model-driven delegation'' but ``does content-identity
 non-exchangeability survive even here, where the topology is at its most
-adversarial to any clean result.'' The causal audit does resolve: $\texttt{kv}$ vs.\
-$\texttt{kv\_audit\_zeroed}$, $p=0.0078$ (F1 delta $+0.210$
-[$+0.110,+0.323$]); vs.\ $\texttt{kv\_audit\_random}$, $p=0.0039$ (F1
-delta $+0.230$ [$+0.127,+0.347$]); and, completing the ladder, vs.\
-$\texttt{kv\_audit\_mismatched}$, $p=0.0156$ (F1 delta $+0.167$
-[$+0.071,+0.274$]) -- the full three-tier signature, now confirmed on a
-topology the model constructs for itself rather than one fixed in
-advance. One honest, mechanistically important caveat, unique to this
-topology: zeroed/random do not collapse to near-zero the way every other
-audit in this paper does (8.0\%/6.0\% rather than $\approx$0\%), because
-here uniquely the root retains direct sandboxed access to the source
-passages independent of any sub-call (Section~\ref{sec:method}) --
-corrupting a sub-call's answer does not remove all of the root's
-information the way corrupting an entire relayed context does elsewhere
-in this paper. This audit is real and significant, but structurally
-narrower than the fixed topologies' own, and we report it as such.
+adversarial to any clean result.'' The causal audit does resolve:
+$\texttt{kv}$ vs.\ $\texttt{kv\_audit\_zeroed}$, $p=0.0078$ (F1 delta
+$+0.210$ [$+0.110,+0.323$]); vs.\ $\texttt{kv\_audit\_random}$,
+$p=0.0039$ (F1 delta $+0.230$ [$+0.127,+0.347$]); and, completing the
+ladder, vs.\ $\texttt{kv\_audit\_mismatched}$, $p=0.0156$ (F1 delta
+$+0.167$ [$+0.071,+0.274$]). This is the full three-tier signature, now
+confirmed on a topology the model constructs for itself rather than one
+fixed in advance. One honest, mechanistically important caveat is
+unique to this topology: zeroed and random do not collapse to
+near-zero the way every other audit in this paper does (8.0\%/6.0\%
+rather than $\approx$0\%). This is because here, uniquely, the root
+retains direct sandboxed access to the source passages, independent of
+any sub-call (Section~\ref{sec:method}). Corrupting a sub-call's answer
+does not remove all of the root's information, the way corrupting an
+entire relayed context does elsewhere in this paper. This audit is real
+and significant, but structurally narrower than the fixed topologies'
+own, and we report it as such.
 
 A second, complementary signal, mined from the same transcripts at no
 additional cost, gives a more complete confirmation than accuracy alone:
