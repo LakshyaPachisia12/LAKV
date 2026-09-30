@@ -134,6 +134,14 @@ def main():
                               "whether delegation happens at all) -- expected to help kv/zeroed's "
                               "timeout rate specifically, independent of the confidence-vs-honesty "
                               "finding those two are about.")
+    parser.add_argument("--capture_confidence", action="store_true",
+                         help="Log the mean top-1 token probability / entropy of the root "
+                              "turn that produced each session's final answer "
+                              "(lakv/confidence.py) -- built during the native-length work "
+                              "(CLAUDE.md finding 20) but never wired into this script until "
+                              "now. Free additional signal: checks whether the model's own "
+                              "confidence at answer time tracks the delegated-and-completed "
+                              "pattern already established here, independent of it.")
     args = parser.parse_args()
     # RLMKVSession's own unlimited sentinel is None, not 0 -- convert here
     # so the CLI can use a plain integer type (argparse doesn't take None
@@ -215,6 +223,7 @@ def main():
             max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
             system_prompt=system_prompt,
             repetition_nudge_max_fires=repetition_nudge_max_fires,
+            capture_confidence=args.capture_confidence,
         )
 
         records = []
@@ -228,8 +237,18 @@ def main():
                 pred = extract_qa_answer(result.answer or "")
                 em = exact_match_score(pred, ex.answer)
                 f1 = f1_score(pred, ex.answer)
+            conf_str = ""
+            confidence_dict = None
+            if result.confidence is not None:
+                confidence_dict = {
+                    "mean_top1_prob": result.confidence.mean_top1_prob,
+                    "mean_entropy": result.confidence.mean_entropy,
+                    "n_tokens": result.confidence.n_tokens,
+                }
+                conf_str = (f" top1_prob={result.confidence.mean_top1_prob:.3f} "
+                            f"entropy={result.confidence.mean_entropy:.3f}")
             print(f"  [{channel}] ex{i}: {_elapsed:.0f}s EM={em} F1={f1:.2f} hit_max_turns={result.hit_max_turns} "
-                  f"turns={len(result.turn_texts)} queries={result.llm_query_calls}")
+                  f"turns={len(result.turn_texts)} queries={result.llm_query_calls}{conf_str}")
             records.append({
                 "idx": i, "correct": bool(em), "f1": f1,
                 "predicted": pred, "raw_answer": result.answer,
@@ -239,6 +258,7 @@ def main():
                 "audit_logs": result.audit_logs,
                 "approx_tokens": ex.approx_tokens,
                 "question": ex.question, "gold": ex.answer,
+                "confidence": confidence_dict,
             })
 
         n = len(scored)
