@@ -19,46 +19,46 @@
 \maketitle
 
 \begin{abstract}
-Relaying key-value (KV) cache between agents in multi-agent LLM systems
-rests on an assumption that is rarely tested directly: that some
-dimension of the cache -- which layer, which channel, which question's
-content -- can be treated as interchangeable for compression or reuse. We
-test this with a causal audit -- substituting the relayed cache with
-zeroed, random, or another question's real content and measuring whether
-downstream accuracy tracks the substitution -- across a progression of
-three structurally distinct multi-agent topologies: a fixed sequential
-three-agent pipeline, a static fan-in decomposition, and, our central
-contribution, a \emph{dynamic, model-driven} delegation loop in the style
-of Recursive Language Models (RLMs) \citep{rlm2026}, where the model
-itself writes and executes code to decide what to delegate and when, with
-a sub-call's answer relayed as real KV cache rather than RLM's own
-decoded-text return channel. The same three-tier causal ordering (real
-content $>$ wrong-but-real content $>$ no real content) holds, statistically
-significantly, on every topology we test, including this recursive,
-self-directed one -- to our knowledge the first causal audit of
-content-specific KV relay under model-driven, rather than predetermined,
-delegation. On the fan-in topology this produces the cleanest three-tier
-result in our study ($p=0.0001$ for real vs.\ wrong-but-real content,
-the strongest instance of this comparison we observe). On the recursive
-topology we report a second, complementary signal: the model's own
+Multi-agent LLM systems that relay key-value (KV) cache between agents
+usually assume that some part of that cache -- which layer, which
+channel, which question's content -- can be swapped out or reused. This
+assumption is rarely tested directly. We test it with a causal audit: we
+replace the relayed cache with zeroed content, random content, or a
+different question's real content, and check whether accuracy tracks the
+change. We run this audit across three structurally different
+multi-agent topologies: a fixed sequential three-agent pipeline, a static
+fan-in decomposition, and -- our central contribution -- a
+\emph{dynamic, model-driven} delegation loop in the style of Recursive
+Language Models (RLMs) \citep{rlm2026}. In this last topology, the model
+itself writes and runs code to decide what to delegate and when, and a
+sub-call's answer is relayed as real KV cache instead of RLM's own
+decoded-text channel. The same three-tier ordering holds on every
+topology we test: real content beats wrong-but-real content, which beats
+no real content. This holds with statistical significance everywhere,
+including the model-driven topology -- to our knowledge the first causal
+audit of content-specific KV relay under model-driven, rather than
+predetermined, delegation. The fan-in topology gives the cleanest result
+in our study ($p=0.0001$ for real vs.\ wrong-but-real content, the
+strongest instance of this comparison we observe). On the recursive
+topology, we find a second, complementary signal: the model's own
 \emph{behavior} -- how often it commits to an answer within its turn
-budget, not only its final answer -- tracks the same ordering, including
-one comparison (wrong-but-real vs.\ no real content) that final-answer
-accuracy alone leaves statistically unresolved. We ground this
-progression in a fixed-pipeline foundation with its own two headline
-results: relayed KV carries real, content-specific information rather
-than merely being non-empty (established first on the simplest, most
-rigorously replicated topology, then shown to generalize), and a
-calibration procedure's own confidence does not predict -- and actively
-misdirects on -- which of two model architectures is safe to compress
-along the depth axis. We report where four published KV-relay efficiency
-techniques transfer to this setting and where they do not, and report
-honestly where our recursive-delegation results are not yet as mature as
-our fixed-pipeline evidence: a real, diagnosed non-determinism in the
-recursive prototype's decoding loop, since fixed and confirmed
-reproducible under a forced-determinism rerun, and an
-accuracy-over-text-relay comparison that remains statistically
-unresolved even as the causal content-dependence claim is not.
+budget, not just its final answer -- tracks the same ordering. This
+behavioral signal resolves one comparison (wrong-but-real vs.\ no real
+content) that final-answer accuracy alone cannot. We ground this
+progression in a fixed-pipeline foundation with two headline results of
+its own: relayed KV carries real, content-specific information, not just
+a non-empty cache (established on the simplest, most rigorously tested
+topology, then shown to generalize); and a calibration procedure's own
+confidence does not predict -- and actively misleads on -- which of two
+model architectures is safe to compress along the depth axis. We report
+where four published KV-relay efficiency techniques transfer to this
+setting and where they do not. We also report honestly where our
+recursive-delegation results are less mature than our fixed-pipeline
+evidence: a real non-determinism bug in the recursive prototype's
+decoding loop, which we diagnosed and fixed, confirmed reproducible under
+a forced-determinism rerun; and an accuracy-over-text-relay comparison
+that remains statistically unresolved, even though the causal
+content-dependence claim is not.
 \end{abstract}
 
 \section{Introduction}
