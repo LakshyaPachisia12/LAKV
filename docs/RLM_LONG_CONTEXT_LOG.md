@@ -424,3 +424,34 @@ still loses by a similar margin regardless of batch size, the
 disadvantage isn't about granularity at all, and a different explanation
 is needed -- worth checking transcripts again at that point rather than
 assuming either way.
+
+## Correction: the first batch_size=3 attempt was confounded by an unset turn budget (2026-10-01)
+
+Ran `--n 25 --lengths 16000 --long_context_prompt --batch_size 3
+--max_direct_reads_before_nudge 5` without `--max_turns` --
+`results/rlm_long_context_sweep/run_20261001_105052` used the script's
+own default (`max_turns=15`), not the `25` every other run on this
+branch has used. This is a real mistake in the handed-back command, not
+a result -- flagging it plainly rather than let it stand.
+
+Result: `kv` timed out 16/25 (64%!) at `batch_size=3`, vs. 0/25 for
+`text`; `kv` mean turns 12.9 (pinned near the 15 cap), `text` mean turns
+4.6. Both channels' absolute accuracy dropped relative to the
+`batch_size=20` run at the same length (kv 8%->4%, text 24%->12%), and
+the gap narrowed (-16 -> -8 pts) -- but this is consistent with simple
+turn starvation (covering the same ~90-130-passage haystack needs
+roughly 6-7x more delegation calls at `batch_size=3` than at
+`batch_size=20`, and the turn budget was never adjusted to compensate),
+not with the granularity hypothesis actually being confirmed. **This run
+does not test what it was meant to test and should not be read as
+evidence either way.**
+
+Rerun with `--max_turns 40` queued -- not the fully proportional ~165
+turns `batch_size=3` would technically need to match `batch_size=20`'s
+coverage (impractically expensive for an exploratory check), but enough
+to let sessions that were hitting the 15-turn wall actually finish. If
+`kv`'s timeout rate drops sharply and its accuracy improves relative to
+`text` at this budget, that's real signal on the granularity question.
+If it's still timing out heavily even at 40, the turn budget isn't the
+full explanation either, and a higher value or a different diagnosis is
+needed before concluding anything about batch size specifically.
