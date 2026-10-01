@@ -36,6 +36,23 @@ LongRoPE collapse).
 Usage:
     python scripts/rlm_long_context_sweep.py --n 5 --lengths 2000 8000  # quick smoke test
     python scripts/rlm_long_context_sweep.py --n 25 --lengths 2000 8000 16000 32000
+
+UPDATE 2026-10-01: the original attempt at this sweep (no fixes applied)
+trended toward null -- kv's apparent edge over text at 2000 tokens
+shrank from +66.7pts (n=3) to +12.5 (n=8) to +0.0 (n=20), and 8000 tokens
+sat as a trough for both channels. Root-caused via the causal-audit
+pivot (scripts/rlm_long_context_audit_check.py,
+docs/RLM_LONG_CONTEXT_LOG.md): 55-60% of sessions never delegate at all
+regardless of condition, because the model gets lucky reading a passage
+directly before it would ever consider delegating -- that leak-rate
+problem, not a real absence of a length effect, is the most likely
+reason the original sweep never found anything. Two real fixes for it
+(--long_context_prompt, --max_direct_reads_before_nudge) were built on
+the audit-check script afterward but never ported back here until now.
+This is the first run of the ORIGINAL dose-response question with
+those fixes in place -- genuinely unknown whether a real trend emerges
+once the leak confound is reduced, or whether it's still null for a
+different reason.
 """
 
 import argparse
@@ -49,8 +66,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.long_context_hotpotqa import build_long_context_examples
-from lakv.rlm_repl_kv import RLMKVSession
+from lakv.rlm_repl_kv import RLMKVSession, LONG_CONTEXT_SYSTEM_PROMPT
 from lakv.stats import discordant_pair_trend_across_conditions
+
+# Fixed, --n-independent filler-pool offset -- see
+# lakv/long_context_hotpotqa.py's filler_pool_start docstring and
+# scripts/rlm_long_context_audit_check.py's identical constant for the
+# bug this avoids (a same-seed run with a different n silently gets
+# different filler for the same questions otherwise).
+FILLER_POOL_START = 300
 
 
 def main():
@@ -74,7 +98,27 @@ def main():
                          help="Same seed across lengths gives nested haystacks "
                               "per question -- do not vary this between runs "
                               "you intend to compare in the same trend test.")
+    parser.add_argument("--long_context_prompt", action="store_true",
+                         help="Use LONG_CONTEXT_SYSTEM_PROMPT (second worked example: batch "
+                              "delegation) instead of the shared RLM_SYSTEM_PROMPT -- the fix "
+                              "that substantially reduced the zero-delegation leak rate on the "
+                              "causal-audit branch. Applied to BOTH text and kv channels "
+                              "equally, so it isn't a confound on the comparison this script "
+                              "makes.")
+    parser.add_argument("--max_direct_reads_before_nudge", type=int, default=None,
+                         help="Same diagnosis as above -- nudges the model to delegate once it "
+                              "has read this many passages directly with zero llm_query calls. "
+                              "See lakv/rlm_repl_kv.py's docstring for the full rationale.")
+    parser.add_argument("--repetition_nudge_max_fires", type=int, default=1,
+                         help="1 matches original behavior (fires once per session). Pass "
+                              "higher or 0 (unlimited) to let the repeated-query nudge keep "
+                              "firing -- see scripts/rlm_long_context_audit_check.py's own "
+                              "flag for the diagnosis motivating this.")
     args = parser.parse_args()
+    repetition_nudge_max_fires = (
+        None if args.repetition_nudge_max_fires == 0 else args.repetition_nudge_max_fires
+    )
+    system_prompt = LONG_CONTEXT_SYSTEM_PROMPT if args.long_context_prompt else None
 
     model, tokenizer = load_model(args.model_name, device="cuda")
 
@@ -91,6 +135,7 @@ def main():
         examples = build_long_context_examples(
             tokenizer, n=args.n, target_tokens=length, split=args.split,
             filler_pool_size=args.filler_pool_size, seed=args.seed,
+            filler_pool_start=FILLER_POOL_START,
         )
         actual_tokens = [ex.approx_tokens for ex in examples]
         print(f"  actual token counts: min={min(actual_tokens)} max={max(actual_tokens)} "
@@ -101,6 +146,9 @@ def main():
             session = RLMKVSession(
                 model, tokenizer, device="cuda", return_channel=channel,
                 max_turns=args.max_turns,
+                max_direct_reads_before_nudge=args.max_direct_reads_before_nudge,
+                system_prompt=system_prompt,
+                repetition_nudge_max_fires=repetition_nudge_max_fires,
             )
             for i, ex in enumerate(examples):
                 result = session.run(ex.question, ex.passages)
