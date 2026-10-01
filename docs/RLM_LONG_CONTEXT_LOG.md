@@ -455,3 +455,29 @@ to let sessions that were hitting the 15-turn wall actually finish. If
 If it's still timing out heavily even at 40, the turn budget isn't the
 full explanation either, and a higher value or a different diagnosis is
 needed before concluding anything about batch size specifically.
+
+## The properly-controlled batch_size=3 run: the gap narrows, but text got worse, not kv better (2026-10-01)
+
+Reran with `--max_turns 40`
+(`results/rlm_long_context_sweep/run_20261001_155505`). Gap narrowed
+substantially vs. `batch_size=20` at the same length (-16.0 -> -4.0
+pts), and for the first time anywhere on this branch, `kv` won at least
+one discordant pair (kv-only=1, text-only=2, 3 discordant of 25 pairs).
+
+**The specific mechanism is more precise than "kv recovers," and worth
+not rounding away**: `kv`'s own accuracy was IDENTICAL across both
+configs (8.0% at `batch_size=20`, 8.0% at `batch_size=3`) -- completely
+flat. What moved was `text`: 24.0% at `batch_size=20` down to 12.0% at
+`batch_size=3`. **The gap narrowed because `text` got worse at small
+batch sizes, not because `kv` got better.** Both are consistent with
+"delegation granularity matters," but they're different, more specific
+claims -- `text`'s advantage appears to come disproportionately from
+LARGE-batch delegation specifically, more than `kv` suffers from it.
+Worth testing directly rather than assumed either way.
+
+Honest power caveat: n=25, only 3 discordant pairs, p=1.0 -- real
+signal worth following, nowhere near proof. Queued: an independent
+n=25 replication at the same exact configuration (`--seed 1`, so the
+two runs pool to a genuinely independent n=50 rather than re-testing
+the same 25 questions) to find out whether this is real or a small-n
+read of 3 pairs.
