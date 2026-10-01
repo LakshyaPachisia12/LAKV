@@ -316,3 +316,68 @@ replicated result. The `kv`-vs-`random` finding is the one to write up
 with confidence. Any future rerun of this specific comparison should use
 the now-fixed `filler_pool_start` pinning so it's a genuine, controlled
 replication this time.
+
+## A new, unexpected finding: batch delegation may hurt kv specifically, not help it (2026-10-01)
+
+Ported the leak-rate fixes into the dose-response sweep (the ORIGINAL
+`kv`-vs-`text` accuracy question this branch was built to answer) and
+ran a first smoke test: `--n 10 --lengths 2000 8000 16000
+--long_context_prompt --max_direct_reads_before_nudge 5`
+(`results/rlm_long_context_sweep/run_20261001_074928`). The result is a
+clean reversal from every prior run on this branch: `text` beats `kv` at
+every length (2000: 30.0% vs. 0.0%; 8000: 30.0% vs. 10.0%; 16000: 10.0%
+vs. 0.0%), 7 of 8 discordant pairs favoring `text`, though the trend
+test itself is not significant (p=0.76, n=10/length is small).
+
+Checked transcripts directly rather than trust the aggregate, especially
+given `kv` has been at parity with or ahead of `text` on every previous
+run this branch has produced. At 2000 tokens, same question (idx=8,
+"Terry Richardson"): `text` answers correctly in 3 turns after one
+delegation call; `kv` times out after 16 turns with only 1 delegation
+call, never acting on whatever it received. This pattern (more turns,
+more timeouts, delegation that doesn't translate into a decisive answer)
+is consistent across most of `kv`'s wrong answers at this length.
+
+**Plausible mechanism, genuinely new to this project**: the new system
+prompt's worked example demonstrates BATCH delegation -- reading ~20
+passages per `llm_query` call, designed for the ~90-130-passage
+long-context regime. For `text`, the sub-call's answer always comes back
+as a short, decoded, naturally-compressed summary, regardless of how
+many passages went into it. For `kv`, the sub-call's ENTIRE raw
+computational trace over that whole batch gets spliced in -- a much
+larger, more diffuse chunk of cache, with no equivalent "summarization
+bottleneck" picking out what's actually relevant. Encouraging batch
+delegation may have inadvertently created a regime where `text`'s
+forced compression acts as a free filter, while `kv`'s lack of
+compression dilutes the useful signal across a much bigger splice. This
+would mean KV relay's advantage over text relay (if any) depends on
+delegation GRANULARITY -- fine-grained, single-item delegation may favor
+`kv` (small, focused splice); coarse-grained batch delegation may favor
+`text` instead. Untested anywhere else in this project, and the
+inherited `kv_decision_cue`/`llm_query`-per-passage design throughout the
+rest of the project's history always used fine-grained (near-single-
+passage) delegation, which may be exactly why `kv` never showed this
+disadvantage before now.
+
+**Honest caveats**: n=10/length, not significant, and this is the FIRST
+run at this exact configuration -- no replication yet. The timing is
+suspicious in a way worth naming directly: this is also the first run
+combining `--long_context_prompt` with a short (2000-token, near-native)
+length, where the real passage count is often only 10-20 -- i.e., batch
+delegation's own worked example (`passages[0:20]`) may not even be a
+sensible strategy when there are barely 20 passages to begin with. This
+could be a real "fix mismatched to the regime" problem (the prompt was
+tuned for large haystacks, not small ones) rather than proof of the
+broader granularity hypothesis. Both explanations predict the same
+pattern at 2000 tokens; they'd predict DIFFERENT patterns at 16000
+tokens (where batch delegation is actually appropriate) -- and `text`
+still beat `kv` there too (10.0% vs. 0.0%), which favors the granularity
+hypothesis over the small-haystack-mismatch one, but with only n=10 this
+is not remotely confirmed.
+
+**Next step**: replicate at a larger n before trusting this at all, and
+specifically compare the gap's size at 2000 vs. 16000 tokens -- if the
+granularity hypothesis is right, the gap should persist or grow at
+16000 (where batching is actually appropriate and `kv` still loses); if
+the small-haystack-mismatch explanation is right, the gap should
+shrink or vanish at 16000.
