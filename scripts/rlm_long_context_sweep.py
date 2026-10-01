@@ -93,6 +93,15 @@ def main():
                               "turns to search before answering.")
     parser.add_argument("--filler_pool_size", type=int, default=500)
     parser.add_argument("--split", default="validation")
+    parser.add_argument("--source", default="hotpotqa", choices=["hotpotqa", "musique"],
+                         help="Diagnosed 2026-10-02 (docs/RLM_LONG_CONTEXT_LOG.md, grounded in "
+                              "the multi-hop QA literature): HotpotQA is a known instance of the "
+                              "single-passage-shortcut problem this branch's 'escape hatch' "
+                              "finding keeps running into (55-60%% of sessions never delegate at "
+                              "all). MuSiQue (Trivedi et al., TACL 2022) is built specifically to "
+                              "prevent this -- every reasoning hop is checked to be non-bypassable "
+                              "at construction time. Same output shape, same needle-in-haystack "
+                              "construction; only the underlying data source differs.")
     parser.add_argument("--output_dir", default="results/rlm_long_context_sweep")
     parser.add_argument("--seed", type=int, default=0,
                          help="Same seed across lengths gives nested haystacks "
@@ -151,7 +160,7 @@ def main():
         examples = build_long_context_examples(
             tokenizer, n=args.n, target_tokens=length, split=args.split,
             filler_pool_size=args.filler_pool_size, seed=args.seed,
-            filler_pool_start=FILLER_POOL_START,
+            filler_pool_start=FILLER_POOL_START, source=args.source,
         )
         actual_tokens = [ex.approx_tokens for ex in examples]
         print(f"  actual token counts: min={min(actual_tokens)} max={max(actual_tokens)} "

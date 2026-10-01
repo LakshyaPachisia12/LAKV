@@ -42,6 +42,28 @@ BEYOND the scored range, never overlapping, so a filler passage can
 never coincidentally be the real answer to a scored question, and no
 scored question's own passages can leak into another scored question's
 haystack.
+
+UPDATE 2026-10-02 -- MuSiQue support added (module kept its original
+filename despite now supporting more than HotpotQA, to avoid an import-
+path migration across three scripts that already depend on it). Real
+research audit this session surfaced a known, documented problem in the
+multi-hop QA literature: "single-hop QA datasets often get repurposed as
+multi-hop... but the resulting cases usually contain a shortcut where
+one retrieved passage contains the answer directly" -- exactly this
+project's own "escape hatch" finding (55-60% of long-context sessions
+never delegate at all, because a single lucky passage read is often
+enough). HotpotQA is a known instance of this problem. MuSiQue (Trivedi
+et al., "MuSiQue: Multihop Questions via Single-hop Question
+Composition", TACL 2022) was built specifically to fix it: composed from
+chained single-hop questions with "a strict formal condition... to
+ensure every reasoning hop... cannot be bypassed or cheated." Every
+prompt-based fix this branch has tried so far (the nudge, the batch-
+delegation prompt) addresses the SYMPTOM (the model doesn't bother
+delegating); switching the underlying data source addresses the CAUSE
+(the task doesn't actually require it in many cases). Pass
+source="musique" to build_long_context_examples to use it instead of
+HotpotQA -- same output shape (LongContextExample), same needle-in-
+haystack construction, only the raw data loader differs.
 """
 
 from __future__ import annotations
@@ -89,6 +111,62 @@ def _load_raw_hotpotqa(split: str, n: int) -> List[dict]:
     return data
 
 
+def _load_raw_musique(split: str, n: int) -> List[dict]:
+    """MuSiQue loader, same output shape as _load_raw_hotpotqa above:
+    {"question", "answer", "passages"} with passages as List[str],
+    formatted identically via format_passage().
+
+    Skips unanswerable items (MuSiQue-Full's contrastive extension pairs
+    each answerable question with a minimally-altered unanswerable
+    counterpart -- not useful for this project's EM/F1 scoring, which
+    assumes a real answer exists). MuSiQue's own `paragraphs` field
+    already mixes genuinely-supporting passages with distractors (the
+    dataset's own retrieval-style setting) -- treated here exactly like
+    HotpotQA's 10-passage distractor config: ALL of them become the
+    "needle" set this project's existing filler-padding logic then
+    builds a haystack around, unchanged.
+
+    known gap: MuSiQue's `question_decomposition` field gives the exact
+    supporting-paragraph indices and sub-question chain -- genuinely
+    richer ground truth than HotpotQA's supporting_facts. Not consumed
+    here yet (kept out of scope for this first swap-in); a real,
+    well-motivated follow-up would use it to verify the model actually
+    read a genuinely necessary passage, not just got lucky, the same
+    spirit as this file's own needle_idxs diagnostic field.
+    """
+    from datasets import load_dataset
+    ds = load_dataset("dgslibisey/MuSiQue")
+    data = []
+    for item in ds[split]:
+        if not item.get("answerable", True):
+            continue
+        passages = [
+            format_passage(p["title"], [p["paragraph_text"]])
+            for p in item["paragraphs"]
+        ]
+        data.append({
+            "question": item["question"],
+            "answer": item["answer"],
+            "passages": passages,
+        })
+        if n is not None and len(data) >= n:
+            break
+    return data
+
+
+# Valid `source` choices -- deliberately NOT a dict mapping straight to the
+# loader functions: a dict built at module-import time would freeze a
+# reference to the ORIGINAL _load_raw_hotpotqa/_load_raw_musique objects,
+# which silently breaks test monkeypatching (tests replace the MODULE
+# attribute via monkeypatch.setattr, which a frozen dict value never sees
+# again). build_long_context_examples below does the actual dispatch via a
+# plain if/elif on these names instead, which re-resolves the global name
+# fresh on every call and does see monkeypatched replacements correctly --
+# caught this exact bug via the existing test suite failing silently
+# against the real dataset instead of the fake one.
+_SOURCE_CHOICES = ("hotpotqa", "musique")
+
+
 def build_long_context_examples(
     tokenizer,
     n: int,
@@ -100,6 +178,7 @@ def build_long_context_examples(
     max_filler_per_example: int = 2000,
     scored_start: int = 0,
     filler_pool_start: Optional[int] = None,
+    source: str = "hotpotqa",
 ) -> List[LongContextExample]:
     """Builds `n` needle-in-haystack examples.
 
@@ -152,18 +231,33 @@ def build_long_context_examples(
     the requested target_tokens) fails loudly via the returned example's
     approx_tokens being visibly short of target_tokens, rather than
     looping until the pool runs out silently.
+
+    source: "hotpotqa" (default, unchanged behavior) or "musique" --
+    see this module's docstring (UPDATE 2026-10-02) for why MuSiQue
+    exists as an option: it's built specifically to prevent the
+    single-passage shortcut HotpotQA is known to allow, which is this
+    project's own diagnosed "escape hatch" problem. Both loaders return
+    the identical {"question", "answer", "passages"} shape, so
+    everything below this point is completely source-agnostic.
     """
+    if source == "hotpotqa":
+        load_raw = _load_raw_hotpotqa
+    elif source == "musique":
+        load_raw = _load_raw_musique
+    else:
+        raise ValueError(f"Unknown source: {source!r}, expected one of {_SOURCE_CHOICES}")
+
     rng = random.Random(seed)
     pool_start = filler_pool_start if filler_pool_start is not None else scored_start + n
     total_needed = max(scored_start + n, pool_start + filler_pool_size)
-    all_data = _load_raw_hotpotqa(split, total_needed)
+    all_data = load_raw(split, total_needed)
     if len(all_data) < total_needed:
         raise ValueError(
             f"Requested scored_start={scored_start} + n={n} and "
             f"filler_pool_start={pool_start} + filler_pool_size={filler_pool_size} "
-            f"need {total_needed} examples, but split {split!r} only has "
-            f"{len(all_data)} available. Reduce filler_pool_size, n, or the "
-            f"start offsets."
+            f"need {total_needed} examples, but source={source!r} split {split!r} "
+            f"only has {len(all_data)} available. Reduce filler_pool_size, n, or "
+            f"the start offsets."
         )
     scored = all_data[scored_start:scored_start + n]
     filler_source = all_data[pool_start:pool_start + filler_pool_size]
@@ -218,6 +312,7 @@ def main():
     before spending any GPU time on it.
 
     Usage: python -m lakv.long_context_hotpotqa --n 5 --target_tokens 24000
+           python -m lakv.long_context_hotpotqa --n 5 --source musique
     """
     import argparse
     from transformers import AutoTokenizer
@@ -227,12 +322,13 @@ def main():
     parser.add_argument("--target_tokens", type=int, default=24_000)
     parser.add_argument("--filler_pool_size", type=int, default=500)
     parser.add_argument("--model_name", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--source", default="hotpotqa", choices=list(_SOURCE_CHOICES))
     args = parser.parse_args()
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     examples = build_long_context_examples(
         tokenizer, n=args.n, target_tokens=args.target_tokens,
-        filler_pool_size=args.filler_pool_size,
+        filler_pool_size=args.filler_pool_size, source=args.source,
     )
     for i, ex in enumerate(examples):
         print(f"[{i}] approx_tokens={ex.approx_tokens} "

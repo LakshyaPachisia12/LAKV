@@ -93,6 +93,12 @@ def main():
     parser.add_argument("--max_turns", type=int, default=15)
     parser.add_argument("--filler_pool_size", type=int, default=500)
     parser.add_argument("--split", default="validation")
+    parser.add_argument("--source", default="hotpotqa", choices=["hotpotqa", "musique"],
+                         help="Diagnosed 2026-10-02 (docs/RLM_LONG_CONTEXT_LOG.md): HotpotQA is "
+                              "a known instance of the single-passage-shortcut problem behind "
+                              "this branch's 'escape hatch' finding. MuSiQue (Trivedi et al., "
+                              "TACL 2022) is built specifically to prevent it -- every reasoning "
+                              "hop is checked non-bypassable at construction time.")
     parser.add_argument("--channels", nargs="+", default=CHANNEL_CHOICES, choices=CHANNEL_CHOICES)
     parser.add_argument("--output_dir", default="results/rlm_long_context_audit")
     parser.add_argument("--n_held_out", type=int, default=15,
@@ -173,12 +179,13 @@ def main():
     scored = build_long_context_examples(
         tokenizer, n=args.n, target_tokens=args.target_tokens,
         split=args.split, filler_pool_size=args.filler_pool_size, seed=args.seed,
-        filler_pool_start=FILLER_POOL_START,
+        filler_pool_start=FILLER_POOL_START, source=args.source,
     )
     held_out = build_long_context_examples(
         tokenizer, n=args.n_held_out, target_tokens=args.target_tokens,
         split=args.split, filler_pool_size=args.filler_pool_size, seed=args.seed,
         scored_start=held_out_scored_start, filler_pool_start=FILLER_POOL_START,
+        source=args.source,
     ) if needs_pool else []
 
     actual_tokens = [ex.approx_tokens for ex in scored]

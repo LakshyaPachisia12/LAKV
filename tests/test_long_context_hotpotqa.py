@@ -125,6 +125,48 @@ def test_raises_when_filler_pool_too_small(patch_loader):
         lch.build_long_context_examples(tokenizer, n=3, filler_pool_size=10)
 
 
+def test_source_musique_dispatches_to_the_musique_loader_not_hotpotqa(monkeypatch):
+    # Real bug caught while building this: a module-level dict mapping
+    # source name -> loader function, built once at import time, freezes
+    # a reference to the ORIGINAL functions and never sees monkeypatch
+    # replacements again -- silently falling back to the real dataset
+    # instead of the fake one in every other test. Guard against that
+    # regression directly: patch both loaders to distinguishable fakes
+    # and confirm source="musique" calls the musique one, not hotpotqa's.
+    hotpotqa_data = _fake_dataset(30, words_per_passage=10, n_passages=5)
+    musique_data = [
+        {**item, "question": f"musique: {item['question']}"}
+        for item in _fake_dataset(30, words_per_passage=10, n_passages=5)
+    ]
+
+    def _fake_hotpotqa(split, n):
+        return list(hotpotqa_data[:n])
+
+    def _fake_musique(split, n):
+        return list(musique_data[:n])
+
+    monkeypatch.setattr(lch, "_load_raw_hotpotqa", _fake_hotpotqa)
+    monkeypatch.setattr(lch, "_load_raw_musique", _fake_musique)
+    tokenizer = WordCountTokenizer()
+
+    hotpotqa_examples = lch.build_long_context_examples(
+        tokenizer, n=3, target_tokens=200, filler_pool_size=10, check_every=3,
+        source="hotpotqa",
+    )
+    musique_examples = lch.build_long_context_examples(
+        tokenizer, n=3, target_tokens=200, filler_pool_size=10, check_every=3,
+        source="musique",
+    )
+    assert all(not ex.question.startswith("musique:") for ex in hotpotqa_examples)
+    assert all(ex.question.startswith("musique:") for ex in musique_examples)
+
+
+def test_unknown_source_raises():
+    tokenizer = WordCountTokenizer()
+    with pytest.raises(ValueError, match="Unknown source"):
+        lch.build_long_context_examples(tokenizer, n=3, source="not_a_real_source")
+
+
 def test_filler_pool_start_decouples_filler_from_n(patch_loader):
     # Real bug found 2026-10-02: with the default (filler_pool_start=None),
     # a same-seed run with n=20 vs n=30 gives the SAME first 20 questions
