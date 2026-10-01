@@ -82,31 +82,58 @@ CHILD_SYSTEM_PROMPT = (
 # alternative strategy, rather than only correcting behavior
 # after-the-fact via max_direct_reads_before_nudge -- the two are not
 # mutually exclusive; see RLMKVSession.__init__'s docstring.
-LONG_CONTEXT_SYSTEM_PROMPT = RLM_SYSTEM_PROMPT + (
-    "\n\nHere is a SECOND worked example, for when there are MANY "
-    "passages (dozens or more) -- reading them one at a time yourself "
-    "is slow and easy to miss things in. Delegating a BATCH of several "
-    "passages at once to llm_query is a faster way to search:\n\n"
-    "You write, in turn 1:\n"
-    "```python\n"
-    "llm_query('\\n\\n'.join(passages[i] for i in range(20)) + "
-    "'\\n\\nQuestion: ' + question)\n"
-    "```\n\n"
-    "The system reports back: [llm_query result] \"None of these "
-    "passages mention the answer.\"\n\n"
-    "You write, in turn 2:\n"
-    "```python\n"
-    "llm_query('\\n\\n'.join(passages[i] for i in range(20, 40)) + "
-    "'\\n\\nQuestion: ' + question)\n"
-    "```\n\n"
-    "The system reports back: [llm_query result] \"1932\"\n\n"
-    "You write, in turn 3:\n"
-    "```python\n"
-    "final_answer(\"1932\")\n"
-    "```\n\n"
-    "When there are many passages, prefer this batch-delegation "
-    "strategy over reading passages one at a time yourself."
-)
+def make_long_context_system_prompt(batch_size: int = 20) -> str:
+    """Builds LONG_CONTEXT_SYSTEM_PROMPT (below) with a configurable
+    delegation batch size, instead of the originally-hardcoded 20.
+
+    Added 2026-10-01: a real-model dose-response run (n=25/length,
+    docs/RLM_LONG_CONTEXT_LOG.md) found `text` decisively beating `kv`
+    under the batch_size=20 prompt at BOTH 2000 and 16000 tokens (10/10
+    discordant pairs favoring text, zero favoring kv) -- the opposite of
+    this branch's founding hypothesis. The gap shrank from -24pts to
+    -16pts between those two lengths (some support for "batch_size=20 is
+    just mismatched to a ~10-20-passage haystack at 2000 tokens") but did
+    NOT close (some support for a persistent, batch-size-driven
+    disadvantage specific to kv even where batching is appropriate).
+    This function exists to test that directly: hold context length
+    fixed and vary batch_size alone. If kv recovers at a small batch_size
+    (e.g. 3-5) even at 16000 tokens, that confirms the granularity
+    hypothesis (kv's raw, uncompressed splice dilutes relevant signal
+    across a large batch in a way text's decode-to-summary step doesn't);
+    if kv still loses by a similar margin regardless of batch_size, the
+    disadvantage isn't about granularity at all and the explanation is
+    still open.
+    """
+    return RLM_SYSTEM_PROMPT + (
+        f"\n\nHere is a SECOND worked example, for when there are MANY "
+        f"passages (dozens or more) -- reading them one at a time yourself "
+        f"is slow and easy to miss things in. Delegating a BATCH of several "
+        f"passages at once to llm_query is a faster way to search:\n\n"
+        f"You write, in turn 1:\n"
+        f"```python\n"
+        f"llm_query('\\n\\n'.join(passages[i] for i in range({batch_size})) + "
+        f"'\\n\\nQuestion: ' + question)\n"
+        f"```\n\n"
+        f"The system reports back: [llm_query result] \"None of these "
+        f"passages mention the answer.\"\n\n"
+        f"You write, in turn 2:\n"
+        f"```python\n"
+        f"llm_query('\\n\\n'.join(passages[i] for i in range({batch_size}, "
+        f"{2 * batch_size})) + '\\n\\nQuestion: ' + question)\n"
+        f"```\n\n"
+        f"The system reports back: [llm_query result] \"1932\"\n\n"
+        f"You write, in turn 3:\n"
+        f"```python\n"
+        f"final_answer(\"1932\")\n"
+        f"```\n\n"
+        f"When there are many passages, prefer this batch-delegation "
+        f"strategy over reading passages one at a time yourself."
+    )
+
+
+# Kept as the pre-2026-10-01 default (batch_size=20) for anything that
+# imports the constant directly rather than calling the function above.
+LONG_CONTEXT_SYSTEM_PROMPT = make_long_context_system_prompt(batch_size=20)
 
 
 @dataclass

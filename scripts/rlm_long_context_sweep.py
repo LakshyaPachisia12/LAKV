@@ -66,7 +66,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.long_context_hotpotqa import build_long_context_examples
-from lakv.rlm_repl_kv import RLMKVSession, LONG_CONTEXT_SYSTEM_PROMPT
+from lakv.rlm_repl_kv import RLMKVSession, make_long_context_system_prompt
 from lakv.stats import discordant_pair_trend_across_conditions
 
 # Fixed, --n-independent filler-pool offset -- see
@@ -99,12 +99,24 @@ def main():
                               "per question -- do not vary this between runs "
                               "you intend to compare in the same trend test.")
     parser.add_argument("--long_context_prompt", action="store_true",
-                         help="Use LONG_CONTEXT_SYSTEM_PROMPT (second worked example: batch "
-                              "delegation) instead of the shared RLM_SYSTEM_PROMPT -- the fix "
-                              "that substantially reduced the zero-delegation leak rate on the "
-                              "causal-audit branch. Applied to BOTH text and kv channels "
-                              "equally, so it isn't a confound on the comparison this script "
-                              "makes.")
+                         help="Use the batch-delegation worked-example prompt instead of the "
+                              "shared RLM_SYSTEM_PROMPT -- the fix that substantially reduced "
+                              "the zero-delegation leak rate on the causal-audit branch. "
+                              "Applied to BOTH text and kv channels equally, so it isn't a "
+                              "confound on the comparison this script makes.")
+    parser.add_argument("--batch_size", type=int, default=20,
+                         help="Diagnosed 2026-10-01 (docs/RLM_LONG_CONTEXT_LOG.md): a dose-"
+                              "response run under the default batch_size=20 found text "
+                              "decisively beating kv at BOTH 2000 and 16000 tokens (10/10 "
+                              "discordant pairs favoring text), the opposite of this branch's "
+                              "founding hypothesis. The gap shrank between those lengths but "
+                              "did not close, suggesting a real, batch-size-driven disadvantage "
+                              "specific to kv (its raw splice may dilute relevant signal across "
+                              "a large batch in a way text's decode-to-summary step doesn't) on "
+                              "top of some genuine small-haystack mismatch at 2000 tokens. Pass "
+                              "a small value (e.g. 3-5) to test directly whether kv recovers at "
+                              "a smaller batch size, holding context length fixed -- only takes "
+                              "effect with --long_context_prompt also set.")
     parser.add_argument("--max_direct_reads_before_nudge", type=int, default=None,
                          help="Same diagnosis as above -- nudges the model to delegate once it "
                               "has read this many passages directly with zero llm_query calls. "
@@ -118,7 +130,9 @@ def main():
     repetition_nudge_max_fires = (
         None if args.repetition_nudge_max_fires == 0 else args.repetition_nudge_max_fires
     )
-    system_prompt = LONG_CONTEXT_SYSTEM_PROMPT if args.long_context_prompt else None
+    system_prompt = (
+        make_long_context_system_prompt(args.batch_size) if args.long_context_prompt else None
+    )
 
     model, tokenizer = load_model(args.model_name, device="cuda")
 
@@ -126,6 +140,8 @@ def main():
     out_dir = Path(args.output_dir) / f"run_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[rlm_long_context_sweep] results will be saved to: {out_dir}")
+    if args.long_context_prompt:
+        print(f"[rlm_long_context_sweep] using batch-delegation prompt, batch_size={args.batch_size}")
 
     all_records = {}       # length -> channel -> list of per-example records
     per_length_pairs = {}  # length -> list of (kv_record, text_record)
