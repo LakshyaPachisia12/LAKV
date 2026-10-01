@@ -61,7 +61,7 @@ from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.causal_audit import KVAuditPool
 from lakv.long_context_hotpotqa import build_long_context_examples
-from lakv.rlm_repl_kv import RLMKVSession, LONG_CONTEXT_SYSTEM_PROMPT
+from lakv.rlm_repl_kv import RLMKVSession, make_long_context_system_prompt
 from lakv.stats import mcnemar_test
 
 
@@ -113,13 +113,19 @@ def main():
                               "that's a real, diagnosed limitation of this task design at this "
                               "model scale, not a reason to keep iterating further.")
     parser.add_argument("--long_context_prompt", action="store_true",
-                         help="Use LONG_CONTEXT_SYSTEM_PROMPT (adds a second worked example "
-                              "demonstrating batch delegation, not just single-passage direct "
-                              "reads -- see lakv/rlm_repl_kv.py's comment on it) instead of the "
+                         help="Use the batch-delegation worked-example prompt instead of the "
                               "shared RLM_SYSTEM_PROMPT. A more fundamental attempt at the same "
                               "leak-rate bottleneck than --max_direct_reads_before_nudge alone: "
                               "sets the behavioral prior from turn 1 instead of correcting it "
                               "mid-session. Combine both for the strongest version of this fix.")
+    parser.add_argument("--batch_size", type=int, default=20,
+                         help="Diagnosed 2026-10-01 on the dose-response sweep "
+                              "(docs/RLM_LONG_CONTEXT_LOG.md): batch_size=20 made text beat kv "
+                              "decisively at both 2000 and 16000 tokens. Only takes effect with "
+                              "--long_context_prompt also set. Once the granularity question is "
+                              "settled, rerun the causal audit at whichever batch size turns out "
+                              "best for kv -- the content-specificity effect may be cleaner once "
+                              "kv is in its actually-effective regime.")
     parser.add_argument("--repetition_nudge_max_fires", type=int, default=1,
                          help="Diagnosed 2026-10-02 (docs/RLM_LONG_CONTEXT_LOG.md, free re-analysis "
                               "of an already-saved run): under real kv content, 50%% of sessions "
@@ -188,7 +194,9 @@ def main():
         print("[rlm_long_context_audit_check] using LONG_CONTEXT_SYSTEM_PROMPT "
               "(second worked example: batch delegation)")
 
-    system_prompt = LONG_CONTEXT_SYSTEM_PROMPT if args.long_context_prompt else None
+    system_prompt = (
+        make_long_context_system_prompt(args.batch_size) if args.long_context_prompt else None
+    )
 
     audit_pool = None
     if needs_pool:
