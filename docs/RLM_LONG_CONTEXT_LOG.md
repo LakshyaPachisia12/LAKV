@@ -381,3 +381,46 @@ granularity hypothesis is right, the gap should persist or grow at
 16000 (where batching is actually appropriate and `kv` still loses); if
 the small-haystack-mismatch explanation is right, the gap should
 shrink or vanish at 16000.
+
+## Confirmed at n=25: text beats kv decisively and consistently, at both lengths (2026-10-01)
+
+`--n 25 --lengths 2000 16000 --long_context_prompt
+--max_direct_reads_before_nudge 5`
+(`results/rlm_long_context_sweep/run_20261001_084719`). The n=10 smoke
+test's pattern replicated and got MORE one-sided, not less: 2000 tokens
+kv=4.0% text=28.0% (gap -24.0pts, 6/6 discordant pairs favor text);
+16000 tokens kv=8.0% text=24.0% (gap -16.0pts, 4/4 discordant pairs
+favor text). **10 of 10 total discordant pairs across both lengths favor
+text; zero favor kv.** This is no longer a small-n fluke -- `kv` is
+decisively losing to `text` under this configuration, the opposite of
+this branch's founding hypothesis.
+
+The gap shrinking from -24 to -16 between lengths gives partial support
+to the "batch_size=20 is mismatched to a ~10-20-passage haystack at 2000
+tokens" explanation -- but it didn't close, which argues a real,
+batch-size-driven disadvantage specific to `kv` also persists even at
+16000 tokens, where batching is actually an appropriate strategy. Both
+explanations are plausible and may both be partially true; this result
+alone can't separate them.
+
+**Built the direct test**: `lakv/rlm_repl_kv.py`'s
+`make_long_context_system_prompt(batch_size=20)` makes the worked
+example's delegation batch size a controllable parameter instead of a
+hardcoded 20 (the old `LONG_CONTEXT_SYSTEM_PROMPT` constant is preserved,
+computed via this function at its old default, so nothing breaks). Wired
+into `scripts/rlm_long_context_sweep.py` via `--batch_size`. Next run:
+hold length fixed at 16000 (where batching is appropriate) and vary
+batch size alone --
+```
+python scripts/rlm_long_context_sweep.py --n 25 --lengths 16000 --long_context_prompt --batch_size 3 --max_direct_reads_before_nudge 5
+```
+If `kv` recovers significantly at `batch_size=3` relative to the
+`batch_size=20` run above (same length, same n), that confirms the
+granularity hypothesis cleanly: `kv`'s raw, uncompressed splice dilutes
+relevant signal across a large batch in a way `text`'s forced
+decode-to-summary step doesn't, and the disadvantage is about HOW MUCH
+gets delegated per call, not the overall task's difficulty. If `kv`
+still loses by a similar margin regardless of batch size, the
+disadvantage isn't about granularity at all, and a different explanation
+is needed -- worth checking transcripts again at that point rather than
+assuming either way.
