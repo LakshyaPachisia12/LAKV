@@ -95,6 +95,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -198,6 +199,7 @@ def main():
 
         n_correct = 0
         f1_total = 0.0
+        latency_sum = 0.0
         confidence_sum = {"mean_top1_prob": 0.0, "mean_entropy": 0.0}
         n_with_confidence = 0
         records = []
@@ -206,7 +208,11 @@ def main():
             print(f"Question: {item['question']}")
             print(f"Gold answer: {item['answer']}")
 
+            start = time.perf_counter()
             result = session.run(item["question"], item["passages"])
+            elapsed = time.perf_counter() - start
+            latency_sum += elapsed
+            print(f"  Latency: {elapsed:.1f}s")
 
             for t, text in enumerate(result.turn_texts):
                 print(f"  [root turn {t}] {text.strip()[:400]!r}")
@@ -258,9 +264,11 @@ def main():
                 "child_texts": result.child_texts,
                 "audit_logs": result.audit_logs,
                 "confidence": confidence_dict,
+                "latency_s": elapsed,
             })
 
         n = len(data)
+        mean_latency = latency_sum / max(n, 1)
         mean_confidence = None
         if n_with_confidence > 0:
             mean_confidence = {
@@ -268,7 +276,7 @@ def main():
                 "mean_entropy": confidence_sum["mean_entropy"] / n_with_confidence,
                 "n_examples": n_with_confidence,
             }
-        summary[channel] = (n_correct, n, f1_total / max(n, 1), mean_confidence)
+        summary[channel] = (n_correct, n, f1_total / max(n, 1), mean_confidence, mean_latency)
         all_records[channel] = records
         conf_str = ""
         if mean_confidence is not None:
@@ -276,23 +284,24 @@ def main():
                         f"entropy={mean_confidence['mean_entropy']:.3f} "
                         f"(n={mean_confidence['n_examples']}/{n}, excludes timeouts)")
         print(f"\n[{channel}] {n_correct}/{n} exact match ({100 * n_correct / max(n,1):.1f}%), "
-              f"mean F1={f1_total / max(n,1):.3f}{conf_str}")
+              f"mean F1={f1_total / max(n,1):.3f}, mean latency={mean_latency:.1f}s{conf_str}")
 
     print(f"\n{'=' * 70}\nSUMMARY (n={len(data)}, NOT statistically powered)\n{'=' * 70}")
-    for channel, (n_correct, n, mean_f1, mean_confidence) in summary.items():
+    for channel, (n_correct, n, mean_f1, mean_confidence, mean_latency) in summary.items():
         conf_str = ""
         if mean_confidence is not None:
             conf_str = (f"  top1_prob={mean_confidence['mean_top1_prob']:.3f} "
                         f"entropy={mean_confidence['mean_entropy']:.3f}")
-        print(f"  {channel:16s} {n_correct}/{n} EM ({100 * n_correct / max(n,1):.1f}%)  mean F1={mean_f1:.3f}{conf_str}")
+        print(f"  {channel:16s} {n_correct}/{n} EM ({100 * n_correct / max(n,1):.1f}%)  "
+              f"mean F1={mean_f1:.3f}  mean latency={mean_latency:.1f}s{conf_str}")
 
     out_path = out_dir / "transcripts.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
             "args": vars(args),
             "summary": {
-                c: {"n_correct": nc, "n": n, "mean_f1": mf1, "confidence": conf}
-                for c, (nc, n, mf1, conf) in summary.items()
+                c: {"n_correct": nc, "n": n, "mean_f1": mf1, "confidence": conf, "mean_latency_s": lat}
+                for c, (nc, n, mf1, conf, lat) in summary.items()
             },
             "records": all_records,
         }, f, indent=2)

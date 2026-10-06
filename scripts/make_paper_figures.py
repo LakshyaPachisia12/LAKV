@@ -88,7 +88,7 @@ def make_figure_1():
 
     axes[0].set_ylabel("Accuracy (%)", fontsize=10)
     fig.suptitle(
-        "Figure 1: Causal audit — relayed KV carries real, specific content\n"
+        "Causal audit — relayed KV carries real, specific content\n"
         "(real > mismatched > zeroed = random; every pairwise comparison significant, p<0.05)",
         fontsize=10.5, y=1.03,
     )
@@ -131,7 +131,7 @@ def make_figure_2():
     ax.spines["right"].set_visible(False)
     ax.tick_params(axis="x", labelsize=8.5)
     fig.suptitle(
-        "Figure 2: Diagnosing and fixing B_int4's collapse\n"
+        "Diagnosing and fixing B_int4's collapse\n"
         "(*hybrid/kivi_full compared on a matched 50-example subset against kivi's own n=100 run)",
         fontsize=10, y=1.02,
     )
@@ -177,7 +177,7 @@ def make_figure_3():
     ax.spines["right"].set_visible(False)
     ax.axhline(0, color="#999999", linewidth=0.6, linestyle=":")
     fig.suptitle(
-        "Figure 3: Compression vs. accuracy across every relay condition\n"
+        "Compression vs. accuracy across every relay condition\n"
         "(B_int4's collapse shows smaller is not automatically better --\n"
         "B_int4_kivi is the Pareto-best point: smallest cache, accuracy matching D)",
         fontsize=10, y=1.05,

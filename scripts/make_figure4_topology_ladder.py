@@ -110,7 +110,7 @@ def make_figure_4():
 
     axes[0].set_ylabel("Accuracy (%)", fontsize=10)
     fig.suptitle(
-        "Figure 4: the causal-audit ladder across three structurally\n"
+        "The causal-audit ladder across three structurally\n"
         "distinct topologies -- real content beats mismatched content\n"
         "significantly in every topology tested, not only a fixed pipeline",
         fontsize=10.5, y=1.06,

@@ -1,0 +1,999 @@
+\documentclass[11pt]{article}
+
+\usepackage[review]{acl}
+
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\title{Non-Exchangeability in KV-Cache Relay: From Fixed Pipelines to Recursive, Model-Driven Delegation}
+
+\author{Anonymous ACL submission}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Relaying key-value (KV) cache between agents in multi-agent LLM systems
+rests on an untested assumption: that some dimension of the cache --
+which layer, which channel, which question's content -- is interchangeable
+for the purpose of compression or reuse. We test this directly with a
+causal audit: we substitute the relayed cache with zeroed, random, or
+another question's real content and measure whether downstream accuracy
+tracks the substitution. We run this audit across three structurally
+distinct multi-agent topologies of increasing realism -- a fixed
+sequential pipeline, a static fan-in decomposition, and, our central
+contribution, a \emph{dynamic, model-driven} delegation loop in the style
+of Recursive Language Models (RLMs) \citep{rlm2026}, where the model
+itself writes and executes code to decide what to delegate and when. The
+same three-tier ordering -- real content $>$ wrong-but-real content $>$ no
+real content -- holds, statistically significantly, on every topology we
+test, including the self-directed one, which is to our knowledge the
+first causal audit of content-specific KV relay under model-driven rather
+than predetermined delegation. The fan-in topology gives the cleanest
+result in the paper ($p=0.0001$ for real vs.\ wrong-but-real content). On
+the recursive topology, a second signal -- how often the model commits to
+an answer within budget, not only what it answers -- resolves a
+comparison final-answer accuracy alone cannot. We ground this progression
+in a fixed-pipeline foundation with two further headline results: relayed
+KV carries real, content-specific information rather than merely being
+non-empty, and a calibration procedure's own confidence does not
+predict -- and actively misdirects on -- which of two model architectures
+is safe to compress. We benchmark four published KV-relay efficiency
+techniques against this audit, report where each transfers and where it
+fails, and report honestly where our evidence is strongest and where it
+is not: a diagnosed non-determinism in the recursive prototype, since
+fixed and confirmed reproducible, and an accuracy-over-text-relay
+comparison that remains statistically unresolved even where the causal
+content-dependence claim is not.
+\end{abstract}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/fig4_topology_ladder.png}
+\caption{The paper in one figure. We causally audit whether relayed KV
+cache carries real, content-specific information by substituting it with
+zeroed, random, or mismatched content and measuring downstream accuracy.
+The same three-tier ordering -- real $>$ mismatched $>$ zeroed/random --
+holds across three increasingly realistic multi-agent topologies, including
+one the model constructs for itself turn by turn. See
+Section~\ref{sec:results} for the full numbers behind every panel.}
+\label{fig:teaser}
+\end{figure*}
+
+\section{Introduction}
+\label{sec:intro}
+
+Relaying key-value cache between agents in a multi-agent LLM system rests
+on an assumption that is rarely stated and, to our knowledge, never
+directly tested: that some dimension of the cache -- which transformer
+layer, which channel within a head, which question's content -- can be
+treated as generic or interchangeable for the purpose of compression,
+reconstruction, or reuse. Prior audits of this assumption, ours included
+in earlier form, fix the multi-agent structure itself: a predetermined
+sequence or decomposition of who talks to whom, decided in advance by the
+system's designer, not by the model. Recursive Language Models
+\citep{rlm2026} describe a materially different regime already seeing
+real use: a root model writes and executes code in a live Python REPL to
+decide, for itself, what to delegate to a sub-call and when, rather than
+following a fixed script. RLM's own sub-call return channel is
+text -- a decoded string the root model may or may not even read. This
+paper asks whether the same non-exchangeability result holds when that
+return channel is real KV cache instead, and, more fundamentally, whether
+\emph{any} causal content-dependence claim about relayed KV survives the
+move from a designer-fixed topology to one the model itself constructs on
+the fly. No existing audit of KV/latent reuse -- ours or the published
+work we compare against in Section~\ref{sec:related} -- has tested this.
+
+We build the claim up through three structurally distinct topologies,
+each testing more of the design space than the last (Figure~\ref{fig:teaser}).
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item Within a fixed sequential pipeline, we test three axes of the
+exchangeability assumption -- depth, position, and content-identity --
+and find all three false, with content-identity established by direct
+causal intervention rather than inferred from accuracy alone.
+\item We show this generalizes to a static fan-in decomposition, where it
+produces the cleanest three-tier separation in the paper.
+\item Central to this paper, we show it generalizes further to a
+dynamic, model-driven delegation loop built in RLM's own style, with KV
+cache substituted for RLM's decoded-text channel -- including one
+comparison that final-answer accuracy cannot resolve but a complementary
+behavioral signal (how often the model commits within its turn budget)
+resolves cleanly.
+\item We diagnose and, where possible, correct four published KV-relay
+efficiency techniques against this audit \citep{kvcomm2025,turboquant2026,polarquant2026,kivi2024}:
+an offset-correction method and a rotation-based quantization scheme both
+fail from false interchangeability assumptions; a per-channel fix
+resolves the latter; layer-selection's cost is architecture-dependent in
+a way its own calibration signal does not predict.
+\item We report honestly where our newest evidence is less mature: a
+diagnosed non-determinism in the recursive prototype, since fixed and
+confirmed reproducible, and an accuracy-over-text-relay comparison that
+remains unresolved even where content-dependence is not.
+\end{itemize}
+
+Four recent papers anticipate pieces of this argument from different
+angles \citep{pitfallskv2026,rethinkredundancy2026,adak2026,canonicalmerge2026}
+(Section~\ref{sec:related}), but none tests causal content-dependence
+under model-driven delegation -- the dimension we extend all four along.
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Cross-agent KV-cache relay.} KVCOMM \citep{kvcomm2025} corrects
+KV-cache ``offset drift'' when reusing cache across prefix contexts;
+LatentMAS \citep{latentmas2026} relays autoregressively-generated latent
+``thoughts'' via KV-cache working memory. We differ in relaying real,
+decoded reasoning text through a fixed sequential chain, and in
+evaluating on multi-hop QA \citep{hotpotqa2018}, which neither tested on.
+
+\paragraph{Compressing the relayed cache.} We adopt layer-wise selection
+(dropping low-importance layers, reconstructing via \texttt{zeros},
+\texttt{nearest}, or \texttt{interpolate}) and per-head quantization.
+Orthogonal Backfill \citep{orthobackfill2026} injects a low-rank residual
+instead of discarding outright; we considered but did not implement it
+(see Limitations). KVTC \citep{kvtc2026} applies transform coding for up
+to 20$\times$ compression, a third paradigm distinct from uniform
+quantization and rotation.
+
+\paragraph{Rotation-based quantization interacts badly with RoPE-encoded
+keys.} A rotation scheme in the style of TurboQuant \citep{turboquant2026}
+and PolarQuant \citep{polarquant2026} -- distinct papers sharing only two
+authors -- produced severely out-of-distribution output on our real model
+(Figure~\ref{fig:b_int4_journey}). We traced this to RoPE: K is cached
+\emph{after} RoPE mixes channel pairs by a position-dependent phase, and a
+RoPE-agnostic rotation on top disrupts that structure; an isolating
+ablation (rotating only V) confirmed the interaction was with K
+specifically, not a generic quantization artifact.
+
+\paragraph{RoPE-aware KV cache quantization.} KIVI \citep{kivi2024}
+quantizes keys per-channel and values per-token rather than by rotating;
+RotateKV \citep{rotatekv2025} rotates \emph{before} RoPE instead; KVQuant
+\citep{kvquant2024} similarly identifies post-RoPE key quantization as
+the harder case. Our scoped, KIVI-inspired fix (per-channel keys only)
+resolves \texttt{B\_int4}'s collapse -- 0.0\%/0.0\% to 52.0\%/64.1\% F1 at
+$n=100$, matching our strongest layer-selection config (McNemar
+$p=0.86$) at higher compression, no calibration profile required.
+
+\paragraph{Auditing whether KV reuse does what it claims.}
+\citet{kvreusefails2026} shows reuse strategies can silently corrupt an
+LLM judge's comparisons even when end-task accuracy looks stable.
+\citet{latentcommpay2026} proposes the zeroed/random/mismatched
+substitution methodology we adopt directly (Section~\ref{sec:method}),
+finding content-specificity is \emph{system}-dependent across three
+published systems. We extend this along two axes: cross-architecture
+generalization, and delegation-structure generalization -- whether the
+audit still finds content-dependence once the topology itself is no
+longer fixed. Our own extensions (Section~\ref{sec:results}) arrive at
+the same qualitative conclusion while varying different axes -- two
+independent audits converging on ``it depends'' is more informative than
+either alone.
+
+\paragraph{Model-driven delegation and recursive relay.} Recursive
+Language Models \citep{rlm2026} let a root model delegate via a live
+Python REPL rather than a fixed topology, reading a sub-call's answer
+back as decoded text. LatentMAS and CanonicalMerge
+\citep{canonicalmerge2026} relay something richer than text, but both
+over a system-fixed topology. CanonicalMerge is close to our own fan-in
+topology (near-identical models, a closely related task) but reports only
+downstream accuracy, with no causal-intervention test. We build a
+genuinely dynamic delegation loop in RLM's own style, substitute real KV
+cache for its text channel, and apply our causal-audit methodology to
+it -- to our knowledge, no prior work tests whether relayed content is
+causally necessary once delegation is no longer system-fixed.
+
+\paragraph{Layer redundancy is architecture-dependent.} ``No Free Swap''
+\citep{nofreeswap2026} finds layer interchangeability depends on model
+and evaluation protocol, consistent with our own cross-architecture gap
+(Section~\ref{sec:results}). ``Rethinking Layer Redundancy''
+\citep{rethinkredundancy2026} argues redundancy is a joint function of
+model and calibration objective; we test the most direct proxy -- whether
+the calibration signal's own confidence predicts safety
+(Section~\ref{sec:analysis}) -- and it does not. AdaK \citep{adak2026}
+generalizes adaptive KV-budget estimation across our same two
+architectures by estimating budget per-instance rather than committing to
+a fixed calibration-time ranking -- a positive instance of our principle,
+not a counterexample. ``The Pitfalls of KV Cache Compression''
+\citep{pitfallskv2026} makes a general version of the point we
+investigate concretely: our contribution is a causally-grounded,
+cross-axis demonstration within one system, validated via direct audit
+rather than inferred from compression metrics alone.
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Pipeline}
+We study a sequential three-agent pipeline -- Reasoner, Verifier,
+Finalizer -- answering HotpotQA \citep{hotpotqa2018} (distractor
+configuration) questions, where each item bundles its own ten candidate
+passages and requires no retrieval step; our GSM8K \citep{gsm8k2021}
+generalization check uses the same structure. The only thing that varies
+between configurations is \emph{how} one agent's output reaches the next.
+In \texttt{text\_agent}, the Reasoner's decoded text is passed to the
+Verifier as a literal string, re-processed from scratch; in every
+KV-relay configuration (\texttt{A} through \texttt{E}), the Reasoner's
+key-value cache is passed directly, and the Verifier continues generation
+from it instead. \texttt{single\_agent} is a no-relay control. All
+configurations share identical prompts with \texttt{text\_agent}, so any
+accuracy or latency delta is attributable to the relay mechanism itself.
+
+\subsection{Models}
+We evaluate on Qwen2.5-7B-Instruct \citep{qwen2p5_2024} and, to test
+generalization across architecture, Mistral-7B-Instruct-v0.3
+\citep{mistral7b2023} (distinct layer count, attention configuration,
+tokenizer, comparable scale; both decoder-only, grouped-query attention,
+RoPE). Qwen3-8B is evaluated on \texttt{A}/\texttt{D} only ($n=50$) to
+extend the architecture-dependence and calibration-confidence checks to a
+third point. A fourth candidate, Phi-3.5-mini-instruct, was dropped after
+isolating a pre-existing LongRoPE limitation unrelated to our pipeline
+(Limitations).
+
+\subsection{Relay Configurations}
+\texttt{B\_int8}/\texttt{B\_int4} apply uniform per-head min-max
+quantization to every transmitted key/value tensor. \texttt{C} applies
+calibration-driven layer selection, reconstructing dropped layers via
+\texttt{zeros}, \texttt{nearest}, or \texttt{interpolate}. \texttt{D}
+combines layer selection with adaptive per-layer-tier quantization
+(8-bit/4-bit). \texttt{E} adds an anchor-based offset-correction
+mechanism adapted from KVCOMM (a negative result, Section~\ref{sec:results}).
+\texttt{B\_int4} initially collapsed to 0.0\% accuracy -- diagnosed as a
+quantization/RoPE interaction (Section~\ref{sec:related}); our fix
+(\texttt{B\_int4\_kivi}), inspired by KIVI, quantizes keys per-channel
+instead of per-head, leaving values unchanged.
+
+\subsection{Statistical Methodology}
+For every headline comparison we report exact (binomial-form) McNemar's
+test on paired per-example correctness and a paired bootstrap 95\%
+confidence interval (10,000 resamples) for the difference in mean
+token-F1, plus Monte Carlo-estimated power for non-significant
+comparisons, so ``not significant'' and ``confirmed no effect'' are never
+conflated.
+
+\subsection{Causal Audit}
+\label{sec:causal_audit_method}
+To test whether accuracy reflects the specific transmitted content rather
+than merely \emph{some} non-empty cache, we substitute the relayed KV
+with (i) an all-zero cache, (ii) a moment-matched random cache, and (iii)
+another held-out question's real cache (from a pool never in the scored
+set), applied to our three strongest configurations (\texttt{A},
+\texttt{B\_int8}, \texttt{D}). We treat moment-matched-random and
+mismatched-example as the more informative evidence and zero-ablation as
+a supplementary sanity floor, since zero-ablation is a known-imperfect
+causal baseline that can produce large behavioral changes unrelated to
+whether the zeroed content was meaningful.
+
+\subsection{Fan-In Topology}
+To test whether non-exchangeability is an artifact of the sequential
+chain specifically, we build a static fan-in decomposition: HotpotQA's
+ten passages split across two independent child agents, RoPE-shifted and
+concatenated before one aggregator attends over both. The causal audit
+substitutes \emph{every} child's KV (an early design bug left one
+unaudited as a shortcut, see Limitations), matching the sequential
+pipeline's full-relay-corruption strength.
+
+\subsection{Dynamic, Model-Driven Delegation (RLM+KV)}
+Our central topology extension builds a real, sandboxed Python REPL loop
+in RLM's own style \citep{rlm2026}: the root model writes and executes
+code turn by turn, deciding what to inspect directly and when to delegate
+to a child call, until it calls \texttt{final\_answer(...)}. We implement
+two sub-call return channels: \texttt{text} (RLM's own mechanism, decodes
+to text) and \texttt{kv} (RoPE-shifts and splices the sub-call's real KV
+directly onto the root's cache, so the root never observes it as text).
+The causal audit substitutes a sub-call's real KV identically to the
+fixed topologies. One genuine limitation: the root retains direct
+sandboxed access to the original passages independent of any sub-call, so
+corrupting a sub-call's KV does not remove all of the root's information
+the way it does in the fixed topologies (see Results and Limitations).
+
+We implement this directly on \texttt{transformers} \citep{transformers2020}
+rather than \texttt{dspy.RLM}: DSPy is a text-only orchestration layer
+with no exposure to KV cache, so our \texttt{kv} channel is not
+implementable on top of it.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Experimental Setup}
+Unless noted otherwise, all numbers are Qwen2.5-7B-Instruct on HotpotQA
+(distractor configuration), $n=100$, exact token-match accuracy and token-F1,
+with paired McNemar significance and bootstrap F1 confidence intervals
+(Section~\ref{sec:method}). Cross-architecture and topology-generalization
+results use $n=50$, stated explicitly in each subsection.
+
+\subsection{Main Results}
+Table~\ref{tab:main} reports every relay configuration on our primary
+model/task pair. \texttt{A} (uncompressed KV relay) matches
+\texttt{single\_agent}'s accuracy while avoiding \texttt{text\_agent}'s
+full re-prefill; \texttt{B\_int8} compresses 2$\times$ at no measurable
+accuracy cost; \texttt{B\_int4\_kivi} is the Pareto-best point, matching
+\texttt{D}'s accuracy at the smallest relayed cache of any configuration
+tested (Figure~\ref{fig:compression_pareto}); \texttt{E} fails
+catastrophically. We unpack each of these in turn below.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Config} & \textbf{Accuracy} & \textbf{F1} & \textbf{Latency} & \textbf{KV/hop} \\
+\midrule
+single\_agent & 57.0\% & 68.4\% & 1.6s & --- \\
+text\_agent & 54.0\% & 68.3\% & 7.2s & --- \\
+A & 56.0\% & 69.1\% & 8.6s & 144.35 MB \\
+B\_int8 & 57.0\% & 70.5\% & 8.3s & 72.16 MB (2.00x) \\
+B\_int4 (original) & 0.0\% & 0.0\% & 39.4s & 38.38 MB (4.00x) \\
+\textbf{B\_int4\_kivi (fixed)} & \textbf{52.0\%} & \textbf{64.1\%} & 9.6s & 36.43 MB (3.96x vs.\ A) \\
+C & 43.0\% & 57.8\% & 10.0s & 104.16 MB \\
+D & 50.0\% & 61.9\% & 10.2s & 37.82 MB (3.82x vs.\ A) \\
+E & 9.0\% & 17.4\% & 19.8s & 35.63 MB \\
+E\_int8 & 1.0\% & 6.2\% & 22.2s & 49.05 MB \\
+\bottomrule
+\end{tabular}
+\caption{Established results (Qwen2.5-7B-Instruct, HotpotQA, $n=100$).
+Ratios are compressed-vs-A's 144.35~MB, except \texttt{B\_int4} and
+\texttt{B\_int8}, whose self-referential ratio equals their vs.-A ratio
+exactly since neither drops any layers. Real two-values-per-byte nibble
+packing (Section~\ref{sec:method}) makes 4-bit configurations genuinely,
+not just nominally, smaller than 8-bit ones.}
+\label{tab:main}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig3_compression_pareto.png}
+\caption{Compression vs.\ accuracy across every relay condition in
+Table~\ref{tab:main}. \texttt{B\_int4}'s collapse shows smaller is not
+automatically better; \texttt{B\_int4\_kivi} is the Pareto-best point.}
+\label{fig:compression_pareto}
+\end{figure}
+
+\subsection{Technique Scorecard}
+Table~\ref{tab:scorecard} summarizes, at a glance, how every published or
+adapted technique we tested fares once audited across the architectures
+we evaluate it on. We report this separately from Table~\ref{tab:main}
+because a single accuracy number on one model can look like success while
+hiding architecture-dependence that only shows up once a second or third
+model is tested -- exactly the failure mode Section~\ref{sec:results}'s
+remaining findings characterize in detail.
+
+\begin{table*}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{2.9cm}p{2.8cm}p{2.8cm}p{2.0cm}p{2.9cm}}
+\toprule
+\textbf{Technique} & \textbf{Qwen2.5-7B} & \textbf{Mistral-7B-v0.3} & \textbf{Qwen3-8B} & \textbf{Verdict} \\
+\midrule
+Uniform 8-bit quant.\ (\texttt{B\_int8}) & Indistinguishable from uncompressed ($p=1.0$) & Indistinguishable from uncompressed (0 discordant) & not tested & \textbf{Free -- use by default} \\
+Naive uniform 4-bit quant.\ (\texttt{B\_int4}) & Total collapse (0.0\%/0.0\%) & not tested (root cause is pipeline-independent) & not tested & \textbf{Broken -- do not use} \\
+Rotation-based int4 (TurboQuant / PolarQuant) & Out-of-distribution garbage; traced to RoPE-key interaction & not tested & not tested & \textbf{Broken on keys} \\
+Per-channel int4 fix (\texttt{B\_int4\_kivi}, KIVI-inspired) & Matches \texttt{D} ($p=0.86$); 3.96x compression & Matches uncompressed on full causal-audit ladder & not tested & \textbf{Recommended 4-bit fix} \\
+Calibration-driven layer selection (\texttt{C}/\texttt{D}) & Mild, not-yet-significant cost ($p=0.34$) & Severe, significant collapse ($-30.5$ F1, $p=0.0001$) & No measurable cost ($p=1.0$) & \textbf{Architecture-dependent -- audit per model} \\
+KVCOMM-style offset correction (\texttt{E}) & Catastrophic failure ($p\approx0.00003$ vs.\ \texttt{D}) & not tested (dead end already diagnosed) & not tested & \textbf{Fails -- do not use} \\
+\bottomrule
+\end{tabular}
+\caption{Technique scorecard across every architecture we tested each
+technique on. ``Not tested'' is reported explicitly rather than implied
+by omission -- several cells reflect a deliberate scoping decision
+(Limitations), not a null result.}
+\label{tab:scorecard}
+\end{table*}
+
+\paragraph{Uniform 8-bit quantization is a free win.} \texttt{A} vs.\
+\texttt{B\_int8}: McNemar $p=1.0$, only 3 discordant examples out of 100.
+Confirmed on Mistral-7B-Instruct-v0.3 ($n=50$): 0 discordant examples --
+identical per-example outcomes. This is not an underpowered null result;
+the effect is tight enough at this sample size to be a genuine
+near-zero-cost finding.
+
+\paragraph{KVCOMM-style offset correction fails catastrophically, and not
+because of a decoding confound.} \texttt{D} vs.\ \texttt{E}: McNemar
+$p\approx0.00003$, both before and after an unrelated repetition-penalty
+fix (Limitations). Manual inspection of \texttt{E}'s raw output shows
+duplicated phrases and hallucinated content, not merely a
+lower-quality-but-coherent answer.
+
+\paragraph{\texttt{B\_int4\_kivi} matches our strongest layer-selection
+config at genuinely higher compression and lower complexity.}
+\texttt{B\_int4\_kivi} (52.0\%/64.1\%) vs.\ \texttt{D} (50.0\%/61.9\%):
+McNemar $p=0.86$ -- statistically indistinguishable -- while achieving
+3.96x compression versus \texttt{D}'s 3.82x (both vs.\ uncompressed
+\texttt{A}), and requiring no per-model calibration profile (byte-accounting
+correction history in Appendix~\ref{sec:appendix_verification}).
+\texttt{B\_int4\_kivi} also trends below \texttt{A}/\texttt{B\_int8} on
+accuracy (52\% vs.\ 56--57\%), not yet statistically confirmed
+($p=0.36$--$0.50$) -- an open question, not cost-free. As
+Figure~\ref{fig:b_int4_journey} shows, fixing the value side as well does
+not improve on this further and is still worse on compression, since
+per-token quantization's scale/zero-point overhead vastly exceeds K's
+per-channel grouping -- evidence the key/RoPE interaction was the entire
+mechanism behind \texttt{B\_int4}'s collapse.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig2_b_int4_journey.png}
+\caption{The \texttt{B\_int4} diagnosis-to-fix journey: collapse, a broken
+rotation-based attempt, an isolating diagnostic, the working fix
+(\texttt{B\_int4\_kivi}), and two value-side variants that did not
+improve on it.}
+\label{fig:b_int4_journey}
+\end{figure}
+
+\subsection{Causal Audit: Does Relayed Content Causally Matter?}
+\label{sec:causal_audit_results}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig1_causal_audit.png}
+\caption{Causal audit: real $>$ mismatched $>$ zeroed $\approx$ random,
+replicated across \texttt{A}, \texttt{D}, and \texttt{B\_int8}. Every
+pairwise comparison is statistically significant.}
+\label{fig:causal_audit}
+\end{figure}
+
+\paragraph{Headline result: relayed KV demonstrably carries specific, real
+content, not merely a non-empty cache.} We ran the causal audit
+(Section~\ref{sec:causal_audit_method}) on \texttt{A} (uncompressed
+relay, sequential chain), $n=50$ (Table~\ref{tab:causal_audit_full}):
+every pairwise comparison among real/zeroed/random/mismatched is
+significant -- to our knowledge the first direct causal validation of
+this kind for a sequential multi-agent KV-relay chain, underwriting every
+compression result above as a claim about \emph{preserved information}
+rather than an assumption. Qualitatively, \texttt{mismatched}'s wrong
+answers are coherent and grammatical -- real linguistic structure
+attached to the wrong question -- while \texttt{zeroed} produces garbled
+English and \texttt{random} is \emph{more} degraded still (code-fragment
+tokens, mixed-language noise) despite matching real activation
+statistics: a zero vector is a weak key attention can down-weight, while
+realistic random noise resembles genuine signal and actively misdirects
+it.
+
+Table~\ref{tab:causal_audit_full} consolidates every subsequent extension
+of this audit: five configurations on Qwen2.5-7B-Instruct/HotpotQA, five
+on Mistral-7B-Instruct-v0.3, two on Qwen3-8B, one on GSM8K, one on the
+C2C cross-architecture bridge, and the two topology extensions central to
+this paper (fan-in, RLM+KV). Across every Qwen2.5/HotpotQA configuration
+(\texttt{D}, \texttt{B\_int8}, \texttt{C}, \texttt{B\_int4\_kivi}), the
+same three-tier ordering replicates with real vs.\ zeroed/random
+significant at $p<0.0001$ in every case and real vs.\ mismatched
+significant throughout ($p=0.0013$--$0.0192$); a single GSM8K
+\citep{gsm8k2021} confirmatory run replicates it more decisively still
+($p<0.0002$ throughout), showing the claim is not an artifact of one
+task.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Config} & \textbf{Model / Task / Topology} & \textbf{Real} & \textbf{Zeroed} & \textbf{Random} & \textbf{Mismatched} & \textbf{$n$} \\
+\midrule
+\multicolumn{7}{l}{\emph{Qwen2.5-7B-Instruct, HotpotQA, sequential chain}} \\
+A             & --                           & 50.0/64.0 & 0.0/0.0  & 0.0/0.0  & 28.0/37.1 & 50 \\
+D             & --                           & 54.0/60.2 & 0.0/0.0  & 0.0/0.2  & 26.0/32.2 & 50 \\
+B\_int8       & --                           & 54.0/68.0 & 0.0/0.0  & 0.0/0.0  & 24.0/34.4 & 50 \\
+C             & --                           & 46.0/55.7 & 0.0/0.0  & 0.0/0.0  & 24.0/38.9 & 50 \\
+B\_int4\_kivi & --                           & 50.0/61.7 & 0.0/0.0  & 0.0/0.0  & 28.0/34.7 & 50 \\
+\midrule
+\multicolumn{7}{l}{\emph{Generalization: model, task, and topology}} \\
+A             & Mistral-7B-Instruct-v0.3     & 56.0/63.3 & 0.0/0.5  & 0.0/0.3  & 16.0/26.4 & 50 \\
+C             & Mistral-7B-Instruct-v0.3     & 20.0/30.3 & 0.0/0.5  & 0.0/0.1  & 14.0/26.1 & 50 \\
+D             & Mistral-7B-Instruct-v0.3     & 22.0/32.8 & 0.0/0.5  & 0.0/0.1  & 16.0/29.3 & 50 \\
+B\_int8       & Mistral-7B-Instruct-v0.3     & 56.0/63.3 & 0.0/0.5  & 0.0/0.1  & 20.0/29.3 & 50 \\
+B\_int4\_kivi & Mistral-7B-Instruct-v0.3     & 54.0/63.2 & 0.0/0.5  & 0.0/0.1  & 16.0/25.0 & 50 \\
+A             & Qwen3-8B                     & 54.0/67.2 & 46.0/55.8& 0.0/0.0  & 64.0/74.8 & 50 \\
+D             & Qwen3-8B                     & 56.0/71.2 & 46.0/55.8& 2.0/5.0  & 52.0/62.4 & 50 \\
+A             & GSM8K (Qwen2.5)              & 90.0/---  & 0.0/---  & 2.0/---  & 28.0/---  & 50 \\
+F\_c2c        & C2C bridge (Qwen2.5$\to$Qwen3-8B) & 60.0/70.9 & 0.0/0.0 & 0.0/0.0 & 56.0/70.6 & 50 \\
+kv (fan-in)   & Fan-in topology (Qwen2.5)    & 40.0/53.0 & 0.0/0.8  & 0.0/0.0  & 6.0/12.0  & 50 \\
+kv (RLM+KV)   & Dynamic delegation (Qwen2.5) & 24.0/32.3 & 8.0/11.2 & 6.0/9.2  & 10.0/15.5 & 50 \\
+\bottomrule
+\end{tabular}
+\caption{Every real/zeroed/random/mismatched causal-audit comparison in
+this paper: accuracy/F1 (\%) per condition. \emph{Real} vs.\
+\emph{zeroed}/\emph{random} is significant ($p<0.0001$) in every row
+except Qwen3-8B, where content-dependence itself is architecture-dependent
+(see text). \emph{Real} vs.\ \emph{mismatched} is significant in all rows
+except Mistral \texttt{C}/\texttt{D} (underpowered on an already-degraded
+layer-selection baseline), Qwen3-8B (a distinct, architecture-dependent
+finding), and the C2C bridge (channel presence matters, channel identity
+does not -- see text). GSM8K reports accuracy only (no partial-credit F1
+metric for this task).}
+\label{tab:causal_audit_full}
+\end{table*}
+
+\paragraph{Mistral: a consistent, explainable split between quantization
+and layer-selection.} \texttt{B\_int4\_kivi} and \texttt{B\_int8}
+replicate the full five-comparison ladder as cleanly on Mistral as on
+Qwen, but \texttt{C} and \texttt{D} show a more nuanced partial pattern:
+mismatched clearly beats zeroed/random, but neither is statistically
+distinguishable from mismatched itself ($p=0.51$, $p=0.375$) -- unlike on
+Qwen. The likely explanation is not that content-identity stops mattering
+on Mistral, but that \texttt{C}/\texttt{D} already perform poorly there
+before any auditing (20.0\%/22.0\%, well below Qwen's 46.0\%/54.0\%) --
+consistent with Mistral's broader layer-selection fragility, not a
+failure to replicate.
+
+\paragraph{Qwen3-8B: content-dependence itself is architecture-dependent.}
+Random substitution still causes total, highly significant collapse
+($p<0.0001$), but real is \textbf{not} statistically distinguishable from
+either zeroed or mismatched (all four comparisons $p=0.30$--$0.79$, F1
+CIs include zero). Verified as a real effect, not a bug (no pool leakage;
+selective overlap across conditions; full detail in
+Appendix~\ref{sec:appendix_verification}). This extends the same
+meta-point as the calibration-confidence finding below: even this
+paper's own central mechanism varies by architecture, with a
+stronger/larger model here robust enough to partially recover from losing
+or misdirecting real content while remaining defenseless against
+structural noise.
+
+\paragraph{The C2C cross-architecture bridge: channel presence matters,
+channel identity does not.} We ran the released C2C fuser checkpoint
+\citep{c2c2026} bridging Qwen2.5-7B-Instruct to Qwen3-8B and
+causally audited it the same way. Real vs.\ zeroed/random is as decisive
+as any comparison in this paper ($p<0.0001$ each), but real vs.\
+mismatched is \textbf{not} significant ($p=0.625$), nor is real vs.\
+no-communication-at-all ($p=0.754$) -- a genuinely different shape of
+result: the bridge requires a real, well-formed projection to be present
+at all, but not detectably \emph{which} question produced it. Raw text
+rules out a scoring artifact (Appendix~\ref{sec:appendix_verification}).
+
+\subsection{Generalization Across Topologies}
+\label{sec:topology_generalization}
+
+\paragraph{Fan-in: the cleanest three-tier result in this paper.} We
+built the static fan-in decomposition described in
+Section~\ref{sec:method}. Substituting \emph{every} child's KV ($n=50$;
+see Limitations for a real experimental-design bug this required fixing)
+gives the full three-tier ordering (Table~\ref{tab:causal_audit_full}),
+more decisively than the sequential chain: real vs.\ zeroed/random
+$p<0.0001$ each; real vs.\ mismatched $p=0.0001$, 18 of 19 discordant
+pairs favoring real -- the strongest version of this comparison anywhere
+in this paper. Unlike the recursive topology below, this static
+decomposition has no alternate pathway for a corrupted child's answer to
+route around, so zeroed/random collapse to genuinely near-total zero. One
+nuance: mismatched vs.\ zeroed/random is not significant by exact
+McNemar (only 3 discordant pairs), but the F1 bootstrap CI excludes zero
+for both. A garbage-signature scan of all 200 generations gives a clean,
+monotonic qualitative match: 0/50 flagged for real, 4/50 mismatched,
+23/50 zeroed, 48/50 random.
+
+\paragraph{Dynamic delegation: content-dependence survives a deliberately
+unfavorable stress test.} We built the RLM-style dynamic delegation loop
+described in Section~\ref{sec:method}, explicitly the least favorable of
+our three topologies for demonstrating anything: our distractor-setting
+HotpotQA questions do not need RLM-style decomposition at all, so a
+real-model REPL loop constructing its own strategy here solves a harder
+coordination problem than the task requires. Consistent with that
+framing, \texttt{kv} vs.\ \texttt{text} accuracy remains statistically
+unresolved at $n=50$ ($p=1.0$) -- we do not claim an accuracy win here.
+The causal audit does resolve, against all three substitutions
+($p=0.0078$, $p=0.0039$, $p=0.0156$) -- the full three-tier signature,
+confirmed on a topology the model constructs for itself. One caveat:
+zeroed/random do not collapse to near-zero the way every other audit in
+this paper does, because here uniquely the root retains direct sandboxed
+access to the source passages -- corrupting a sub-call's KV does not
+remove all of the root's information, so this audit is real and
+significant but structurally narrower than the fixed topologies' own.
+
+A second signal, mined from the same transcripts at no additional cost,
+gives a more complete confirmation: the model's own \emph{behavior} --
+whether it commits to an answer within budget -- tracks the same
+ordering, including the one comparison accuracy could not resolve.
+Timeout rate is monotonic across conditions (real 22\%, mismatched 42\%,
+zeroed 72\%, random 76\%); substituting ``finished within budget'' for
+``correct'' in the same McNemar test, every comparison is significant,
+including mismatched vs.\ random ($p<0.0001$), the leg accuracy left
+unresolved. An earlier version of this run showed diagnosed
+non-determinism (Limitations); after a forced-determinism fix, every
+number here reproduces bit-identically against an independent rerun.
+
+\paragraph{The same behavioral mechanism also produces a real latency
+cost, not a benefit.} Although \texttt{kv} does not win on accuracy
+against \texttt{text} above, it is measurably slower: 11.4s vs.\ 9.6s
+mean wall-clock time per example ($n=50$), despite splicing only a
+child's generated-answer span -- cheap relative to re-encoding that same
+answer as text for the root to re-prefill. The gap decomposes into the
+same mechanism as the timeout-rate signal above, not a cost in the splice
+operation itself: \texttt{kv} both times out more often (22\% vs.\ 14\%,
+and a timed-out session costs 2--3$\times$ a finished one, 19.6--23.0s
+vs.\ 7.4--9.1s) and, even restricted to sessions that finish within
+budget, needs more root turns (6.79 vs.\ 5.95) and more delegation calls
+(1.38 vs.\ 1.14 \texttt{llm\_query} calls) before committing to an
+answer. This qualifies our efficiency framing elsewhere in this paper:
+KV-relay's prefill-avoidance advantage, real in the sequential pipeline
+(Table~\ref{tab:main}), does not transfer to a topology where the
+relayed unit is a short delegated answer rather than a large shared
+context whose re-encoding was itself expensive -- the behavioral cost of
+working with less legible content outweighs the small compute saving
+here.
+
+\subsection{Analysis}
+\label{sec:analysis}
+
+\paragraph{Layer-selection's accuracy cost is architecture-dependent, not
+a fixed property of a given compression ratio.} On Mistral ($n=50$), a
+near-identical proportion of dropped layers to Qwen's \texttt{D} costs
+30.5 F1 points ($p=0.0001$); on Qwen2.5-7B ($n=100$) the cost is smaller
+and not-yet-significant ($p=0.34$), though Qwen's most generous
+uncertainty bound is still under half of Mistral's confirmed collapse.
+Qwen3-8B ($n=50$) sharpens this further: \texttt{D} numerically edges out
+\texttt{A}, but this is noise ($p=1.0$) -- a second model where the cost
+is indistinguishable from zero, against Mistral's single confirmed
+collapse -- evidence for architecture-dependence, not a fixed
+``usually costly/free'' property.
+
+\paragraph{A calibration signal's own confidence does not predict
+downstream safety, and fails in the wrong direction.} The separation
+between calibration-importance scores for kept versus dropped layers:
+Qwen's mean is 0.491, Mistral's \emph{larger} at 0.673 -- Mistral's
+calibration looks more decisive, yet Mistral collapses harder when that
+ranking is acted upon. This rules out a noisier signal as the
+explanation: the calibration objective can be equally or more confident
+while being less reliable, undetectable from its output alone. Adding
+Qwen3-8B (separation 0.591, near-zero cost) gives a trend consistent with
+this (Pearson $r=0.619$), but $n=3$ is barely more informative than
+$n=2$.
+
+\paragraph{Architecture-dependent layer-selection failures differ in
+kind, not only in rate.} \texttt{D}'s incorrect answers differ in
+character between models: Qwen's are short, close near-misses; Mistral's
+include a long tail of fabricated tangents and repetition loops, not
+explained by a decoding confound (ruled out directly;
+Appendix~\ref{sec:appendix_verification}).
+
+\paragraph{Donor-question content occasionally, but rarely, bleeds
+through under mismatched substitution.} Reviewing incorrect
+\texttt{A\_audit\_mismatched} answers against their donor question, we
+find two instances (one unambiguous) of the donor's content leaking into
+the wrong answer, out of 36 reviewed -- genuine but rare, not the
+dominant explanation for the accuracy loss (full review in
+Appendix~\ref{sec:appendix_verification}).
+
+\section{Conclusion}
+We set out to test an assumption that nearly every KV-relay efficiency
+technique makes implicitly: that some dimension of the cache is
+interchangeable. It is not. Across depth, position, and content-identity,
+and across three increasingly realistic topologies -- a fixed sequential
+chain, a static fan-in decomposition, and a dynamic delegation loop the
+model constructs for itself -- relayed KV cache behaves as a specific,
+non-fungible artifact rather than a generic resource. This holds across
+three model families, with one informative exception (Qwen3-8B's partial
+robustness to content substitution) that itself supports the broader
+claim: non-exchangeability depends on architecture, not a fixed property
+of KV-cache relay. Four published techniques land on different sides of
+this line for diagnosable reasons -- uniform quantization respects it,
+naive rotation and offset-correction do not, and a RoPE-aware per-channel
+fix restores what the naive approach breaks. We release this causal-audit
+methodology as the more durable contribution: future KV-relay techniques
+should be checked against it before their numbers are trusted.
+
+\section*{Limitations}
+\label{sec:limitations}
+
+\paragraph{Causal audit scope and remaining topology questions.} The
+causal audit now covers every relay condition in this paper except
+\texttt{B\_int4} itself, which is uninformative to audit given it already
+collapses unaudited. The bleed-through analysis is narrower: a manual
+review of 20 of 36 incorrect \texttt{A\_audit\_mismatched} examples by one
+annotator, with no automated classifier or inter-annotator agreement
+check -- a qualitative, exploratory observation, not a validated rate.
+Beyond the three topologies tested here, a genuinely adversarial fan-in
+topology \citep{latentagentslie2026} and LatentMAS's layer-wise KV
+concatenation \citep{latentmas2026} remain untested against our specific
+causal-audit methodology; both are real, cited, not-yet-attempted
+extensions, not gaps we found and characterized without naming.
+
+\paragraph{Single-process, single-GPU evaluation.} Every experiment runs
+within one Python process on one RTX 4090: no \texttt{KVMessage} is ever
+serialized or transmitted over a network. Compression-ratio and
+transmitted-byte accounting reflects what a real distributed deployment
+would need to send and is meaningful on that basis, but our latency
+numbers exclude network transfer time, and smaller relayed caches are not
+observed to be faster in this setup, since the model still executes every
+transformer layer regardless of what its injected cache contains. This
+single-GPU constraint also bounded the sample sizes and the number of
+model/config combinations we were able to test.
+
+\paragraph{Statistical power and replication.} Several comparisons --
+INT8's near-zero cost, offset correction's catastrophic failure,
+Mistral-7B's layer-selection collapse -- are significant at conventional
+thresholds even at our evaluation scale. Others are not: at $n=100$, we
+cannot yet statistically distinguish Qwen2.5-7B's layer-selection
+condition from its uncompressed baseline in isolation (power
+$\approx$15\%; roughly 3$\times$ the current sample size would be
+needed). Our cross-architecture claim rests on the independently
+well-powered Mistral-7B result, not the underpowered Qwen-only
+comparison. \texttt{B\_int4\_kivi}'s comparison against \texttt{D} rests
+on a single $n=100$ run each, not a multi-seed or replicated evaluation.
+
+\paragraph{Scope: three models (one only partially), mostly one task,
+greedy decoding.} We test Qwen2.5-7B-Instruct and Mistral-7B-Instruct-v0.3
+on the full suite of configurations, and Qwen3-8B on \texttt{A}/\texttt{D}
+only ($n=50$). A fourth candidate, Phi-3.5-mini-instruct, was evaluated
+and dropped: after fixing two real bugs in how our pipeline hands decode
+off to \texttt{model.generate()} under non-default RoPE scaling, the
+model still failed to produce coherent output once the pipeline's
+cumulative relayed context crossed roughly 4{,}096 tokens -- the model's
+own \texttt{original\_max\_position\_embeddings}. We isolated this to a
+pre-existing limitation of the model/library combination itself: plain,
+unmodified \texttt{model.generate()}, with no relay or pipeline code
+involved at all, degrades into the identical failure signature once
+forced past the same threshold. Whether findings -- particularly
+layer-selection's architecture-dependence -- extend to substantially
+larger or smaller models, mixture-of-experts architectures, or models
+outside this decoder-only, grouped-query-attention, RoPE lineage remains
+largely untested beyond this one additional data point. All of our own
+architecture variation is \emph{between} pipeline runs (the same model
+family fills every agent role within a given run); whether a single
+pipeline mixing architectures across agent roles is even viable is
+untested and, to our knowledge, an open problem in this literature more
+broadly -- KVCOMM itself flags this as future work, and we inherit that
+gap rather than closing it. Nearly all results are on HotpotQA; we ran
+one $n=50$ confirmatory check on GSM8K and both headline findings
+replicated cleanly, but this is one run on one additional task family,
+not a systematic multi-task study. All results use greedy decoding; we
+did not evaluate under sampling or self-consistency.
+
+\paragraph{Nibble-packing is unit-tested, not deployment-tested.} We
+implement real two-values-per-byte packing for every \texttt{bits==4}
+tensor, verified via round-trip pack/unpack exactness and bit-identical
+\texttt{compress}/\texttt{decompress} output with and without packing on
+synthetic tensors. This is standalone tensor-level testing, not an
+end-to-end GPU rerun with the new packing path in the live pipeline; the
+reported accuracy numbers throughout this paper come from pre-packing
+runs, and only the compression-ratio figures reflect the packing-enabled
+compressor.
+
+\paragraph{Partial reproduction of adapted and considered techniques.}
+Our rotation-based quantization covers PolarQuant's core rotate-then-
+quantize mechanism but omits TurboQuant's QJL bias-correction term; our
+KIVI-inspired fix omits the original method's group-wise windowing and
+fp16 residual buffer, implementing full-sequence per-channel quantization
+only. We considered but did not implement a fourth layer-reconstruction
+strategy, Orthogonal Backfill \citep{orthobackfill2026}: its published
+formula requires attention weights this pipeline's \texttt{sdpa} decode
+path does not expose, and given our own evidence that naive/simplified
+reproductions can actively mislead, we chose not to ship an approximated
+version under time pressure.
+
+\paragraph{The recursive topology's evidence is less mature than the rest
+of the paper, by design, not by oversight.} Getting a working, coherent
+baseline required diagnosing and fixing several real failure modes (a
+sub-call's own prompt framing leaking into the receiver's attention when
+spliced without isolating the generated answer span; a session-wide
+repetition-tracking loss specific to a persistent, turn-continuing cache;
+a RoPE position-shift bug specific to splicing an answer-only, prompt-
+truncated child KV). Even with those fixed, the \texttt{kv}-vs-\texttt{text}
+accuracy comparison remains genuinely unresolved at $n=50$ -- we report
+the causal-audit result, which does resolve, as this topology's real
+contribution, and leave the accuracy comparison open rather than claim
+more than the evidence supports.
+
+\paragraph{A boundary we found by testing where RLM's own motivation
+actually lives.} We additionally tested \texttt{kv} vs.\ \texttt{text}
+at the context lengths RLM's own motivating regime targets
+(2,000--16,000 tokens, beyond HotpotQA's native $\sim$2--3K-token
+setting). \texttt{text} decisively outperforms \texttt{kv} at the
+default delegation granularity (10 of 10 discordant pairs favoring
+\texttt{text}, both lengths, $n=25$ each) -- the opposite direction from
+the native-scale comparison above. We hypothesized this reflects
+\texttt{kv}'s uncompressed splice diluting relevant signal across a
+large delegated batch, and tested whether finer-grained delegation
+closes the gap; across two independent samples (batch size 3, $n=25$
+each, pooled $n=50$) it does not: \texttt{kv}'s own accuracy is
+identical (8.0\%) regardless of batch size, and \texttt{text} continues
+to win more discordant pairs in both independent samples (McNemar
+$p=0.34$ pooled, F1 CI $[-0.227,+0.039]$) -- directionally consistent,
+not formally significant, but sufficient to rule out signal dilution
+within a single delegated batch as the explanation.
+
+The real mechanism, found by reusing turn-count and timeout data every
+run on this branch already saves (no new inference required): at every
+long-context configuration we tested, \texttt{kv} fails to finish within
+its turn budget far more often than \texttt{text}, and shrinking the
+delegation batch size makes this \emph{worse}, not better, because
+covering the same haystack in smaller batches requires proportionally
+more delegation calls, and \texttt{kv} was already too slow to resolve
+within budget at the easier, larger batch size. Substituting ``finished
+within budget'' for ``correct'' in the same paired McNemar test used
+throughout this paper: at batch size 20 ($n=25$), $p=0.0005$ (12 of 12
+discordant pairs favor \texttt{text} finishing); at batch size 3 (pooled
+$n=50$), $p<0.000001$ (32 of 33 discordant pairs favor \texttt{text}).
+\texttt{kv}'s mean delegation-call count grows sharply as batch size
+shrinks (3.76 at batch size 20 $\to$ 13.24 and 21.04 at batch size 3
+across our two independent samples) while \texttt{text}'s stays flat
+($\approx$2.4--2.7) --
+the opposite of what the dilution hypothesis predicted, and the reason
+finer-grained delegation did not rescue \texttt{kv}: it does not reduce
+the total work \texttt{kv} needs to do, it only redistributes that work
+into more rounds \texttt{kv} cannot complete in time. This is the same
+behavioral mechanism (more turns and delegation calls needed to act on
+less legible spliced content than on legible decoded text) that explains
+\texttt{kv}'s latency cost at native scale above, now additionally
+explaining an accuracy deficit at long context: a timeout rate this
+lopsided, not a difference in what either channel does once it finishes,
+is the proximate cause of \texttt{text} winning the long-context
+comparison. We report this boundary, and its mechanism, rather than
+leaving the long-context deficit unexplained: near-parity at native
+scale does not extend to the longer-context regime motivating the RLM
+citation itself, and the reason is a turn-budget asymmetry our own
+transcripts make directly visible. Doubling the turn budget (40
+$\to$ 80, $n=15$) does not resolve this: \texttt{kv}'s timeout rate is
+unchanged (53\% vs.\ 52--76\%), and per-example turn counts are sharply
+bimodal -- sessions either resolve in under 35 turns or exhaust the
+entire budget with no examples in between, with the latter group
+further splitting between near-zero delegation attempts and delegation
+loops that never terminate. The deficit is not turn-budget starvation;
+whatever makes spliced content harder to act on than decoded text does
+not resolve given more time. The causal-audit content-dependence
+signature, by contrast, strengthens at this same long-context scale
+(\texttt{kv} vs.\ random substitution, completion rate: $n=30$,
+$p<0.0001$, 18 of 18 discordant pairs) -- this paper's central thesis
+holds even where the accuracy/efficiency comparison does not.
+
+We checked ARR's guidance before deciding whether a separate Ethical
+considerations section was warranted: this work uses two long-established
+public benchmarks (HotpotQA, GSM8K), openly-released model checkpoints,
+no human subjects, no crowdsourcing, and no new data collection -- we are
+not aware of a concern specific to this paper beyond what this section
+already covers.
+
+\bibliography{references_rlm_focus}
+\bibliographystyle{acl_natbib}
+
+\appendix
+\section{Implementation Verification and Correction History}
+\label{sec:appendix_verification}
+
+This appendix collects the diagnostic and verification detail behind
+claims made in the main text, for readers who want to audit our process
+rather than only our results.
+
+\paragraph{Qwen3-8B content-dependence verification (Section~\ref{sec:causal_audit_results}).}
+We verified the null content-dependence result on Qwen3-8B is real, not a
+bug, three ways: no donor-question pool leakage; the zeroed-condition
+byte-identical overlap between \texttt{A} and \texttt{D} traces cleanly
+to \texttt{D}'s own \texttt{zeros} reconstruction strategy composing
+correctly with the audit's own zeroing (not a bug); and real, zeroed, and
+mismatched overlap on only 10--24 of 50 examples pairwise, confirming the
+substitution takes effect selectively rather than being silently
+no-op'd.
+
+\paragraph{C2C raw-text confirmation (Section~\ref{sec:causal_audit_results}).}
+Raw generated text confirms the C2C bridge's null real-vs-mismatched
+result is not a scoring artifact: zeroed/random produce the same
+degenerate-repetition and out-of-vocabulary failure signatures documented
+throughout this paper, now observed on a completely different mechanism
+(a learned cross-model projector, not quantization or layer dropping) --
+the same qualitative texture, not merely the same numbers.
+
+\paragraph{Nibble-packing correction (Section~\ref{sec:results}).} Our
+quantized tensors were initially stored as one full \texttt{torch.uint8}
+per element regardless of bit-width -- no nibble-packing existed anywhere
+in the compressor, so a 4-bit value took the same byte an 8-bit value
+did. We caught this, then rather than only correcting the byte
+\emph{accounting}, implemented real two-values-per-byte nibble packing
+(\texttt{\_pack\_nibbles}/\texttt{\_unpack\_nibbles}), wired into
+\texttt{compress()} (pack after quantizing, \texttt{bits==4} only) and
+\texttt{decompress()} (unpack before dequantizing). Eleven new unit tests
+cover round-trip pack/unpack exactness (including odd-length/padding
+edge cases and full-nibble-range coverage) and, most importantly,
+bit-identical \texttt{compress}/\texttt{decompress} output with vs.\
+without packing -- proving packing is a pure storage-format change with
+zero effect on dequantized values. The corrected, packing-backed numbers
+land back at the originally-reported figures almost exactly, because the
+original formula's arithmetic (0.5 bytes/element for 4-bit) was always
+what real packing would produce -- the bug was that nothing in the
+compressor actually packed anything.
+
+\paragraph{Fan-in audit design bug (Section~\ref{sec:topology_generalization}).}
+An early run of the fan-in causal audit looked like a near-null result
+(3/10 EM for \texttt{kv} vs.\ 3/10 for \texttt{kv\_audit\_zeroed}), but
+reading the raw predictions showed the misleading aggregate was a real
+experimental-design bug, not a null finding: the default
+\texttt{causal\_audit\_child\_idx=-1} only corrupted one of two children,
+leaving the other's real content intact -- a weaker test than intended.
+We fixed this by adding \texttt{causal\_audit\_child\_idx="all"}
+(substitute every child), extracted into a directly-testable
+\texttt{\_resolve\_audit\_target\_idxs()} static method with five unit
+tests. The rerun with \texttt{"all"} is what Section~\ref{sec:topology_generalization}
+reports.
+
+\paragraph{RLM+KV non-determinism fix (Section~\ref{sec:topology_generalization}).}
+An earlier version of the recursive-delegation run was not run-to-run
+deterministic: diffing against an independent rerun on the identical 50
+questions found 30\% of \texttt{text}-channel raw generations differing
+under greedy decoding, plausibly GPU floating-point non-associativity
+cascading through this prototype's long, self-referential, code-writing
+decode loop -- unlike the fixed topologies, which are bit-identical
+across reruns. We forced deterministic CUDA/cuBLAS/cuDNN kernels
+(\texttt{torch.use\_deterministic\_algorithms}, a fixed
+\texttt{CUBLAS\_WORKSPACE\_CONFIG} set before any CUDA context exists) and
+reran the full five-condition ladder independently: every reported
+number -- exact match, F1, timeout rate, and delegation-call count --
+reproduces bit-identically against the pre-fix run (0 of 250 raw answers
+differ across all five conditions). The one residual nuance: 33 of the
+\texttt{random} condition's 50 examples show different intermediate
+turn-by-turn wording before both runs independently exhaust their turn
+budget on the identical question with the identical outcome -- the
+highest-entropy condition's exploratory path is not perfectly pinned
+down, but no scored quantity in the paper is affected.
+
+\paragraph{Phi-3.5-mini-instruct diagnosis (Limitations).}
+Two real pipeline bugs were found and fixed first: (a) our decode
+function's \texttt{position\_offset==0} fast path handed decode off to
+\texttt{model.generate()}, which cannot reconstruct true absolute
+position across an externally-primed cache under LongRoPE; (b) an
+identical unguarded fast path existed in our intermediate-generation
+function for Reasoner/Verifier hops, missed by the first fix. After both
+fixes, accuracy was still 0.0\%/2.0\%. We isolated the remaining cause
+via two scoped GPU diagnostics: (1) our decode function called directly
+with a real, chat-formatted, self-consistent donor cache deliberately
+crossing the 4,096-token \texttt{original\_max\_position\_embeddings}
+threshold mid-decode produced fully coherent output, proving the fixed
+code path itself is correct; (2) plain, unmodified
+\texttt{model.generate()} with zero pipeline code involved, forced via
+\texttt{min\_new\_tokens} past $\sim$4,096 total tokens on a fresh
+prompt, degraded into the identical repetition-garbage signature right
+around the threshold. (2) is decisive: this is a pre-existing
+Phi-3.5-mini + LongRoPE limitation in the installed \texttt{transformers}
+version, present even with no relay, injection, or manual loop involved.
+
+\paragraph{Mistral's layer-selection failure character, full detail
+(Section~\ref{sec:analysis}).} \texttt{D}'s incorrect answers differ
+sharply in character between models. Qwen's are short (mean 18
+characters, 2\% exceed 150) and overwhelmingly close, traceable
+near-misses. Mistral's are markedly longer (mean 109 characters, 15\%
+exceed 150, maximum 1,454) and include a genuine long tail of severe
+failures -- fluent but entirely fabricated tangents, degenerate
+repetition loops -- absent from Qwen's failure set. We checked an obvious
+alternative explanation -- under-penalizing repetition for Mistral
+relative to its own tuned defaults -- against each model's published
+generation defaults, and find the opposite: Qwen's own default
+\emph{is} our \texttt{repetition\_penalty=1.05}, while Mistral's
+specifies none, so our setting applies \emph{more} correction for
+Mistral, not less. The long-tail pattern persists anyway, weakening a
+decoding confound as the explanation and supporting depth-axis
+non-exchangeability differing in \emph{character}, not only magnitude,
+across architectures.
+
+\paragraph{Long-context timeout failure signatures (Limitations, \S\ref{sec:limitations}).}
+Reading the eight timed-out \texttt{kv} transcripts from the
+turn-budget-doubling check directly, two distinct, nameable failure
+modes account for all of them: four abandon delegation after 1--3
+attempts and fall back to reading individual passages one at a time
+(\texttt{print(passages[i])}, sequentially, up through index 78 of
+$\sim$90 in one case -- arithmetically unable to finish this way within
+any reasonable budget); four instead get stuck re-issuing an
+\emph{identical} \texttt{llm\_query} call turn after turn, in one case
+despite the system's own repetition-detection nudge correctly firing
+(\textit{``that is the exact same code as your previous attempts, and it
+will produce the same result again''}) -- the loop is detected and
+named, but not escaped. Neither failure mode resembles a session that is
+gradually making progress and running short on time.
+
+\paragraph{Donor-question bleed-through review, full detail
+(Section~\ref{sec:analysis}).} Unlike ``When Latent Agents Lie''
+\citep{latentagentslie2026}, which studies an adversarial agent
+deliberately substituting hidden state in a fan-in topology, our
+substitution is a non-adversarial intervention in a sequential chain:
+when the receiving agent is wrong, does its answer reflect the donor's
+content, or ordinary confusion on the real question? Manually reviewing
+20 of 36 incorrect \texttt{A\_audit\_mismatched} answers against their
+donor question, we find one unambiguous instance -- a Kansas university
+fight-song question produced ``Ellie Goulding'' in its wrong answer,
+traceable only to a donor question about that singer -- and one weaker,
+ambiguous case; the remainder show ordinary failure on the real
+question's own topic. A genuine but rare phenomenon, not the dominant
+explanation for \texttt{A\_audit\_mismatched}'s accuracy loss -- a manual
+review of a subset, not an exhaustive classification.
+
+\end{document}
