@@ -127,6 +127,13 @@ PROMPT_SETS: Dict[str, List[str]] = {
         ),
     ],
 }
+# 2WikiMultihopQA uses the exact same prompt set as HotpotQA, not a near-
+# duplicate copy: both datasets hand the pipeline a context+question blob in
+# the identical "Context:\n...\n\nQuestion: ..." shape (see run.py's
+# load_2wikimultihopqa), so the HotpotQA prompts' reading-comprehension
+# instructions apply unchanged. Deliberately a reference, not a rewritten
+# literal, so this can never silently drift from HotpotQA's own prompts.
+PROMPT_SETS["2wikimultihopqa"] = PROMPT_SETS["hotpotqa"]
 
 
 # ─── config / result dataclasses ──────────────────────────────────────────────
@@ -233,8 +240,24 @@ class PipelineConfig:
     # present. "none" = unchanged behavior (every existing preset). See
     # lakv/causal_audit.py and LAKVPipeline's audit_pool/record_audit_pool
     # constructor args — "mismatched" requires a pre-built KVAuditPool passed
-    # as audit_pool at construction time.
+    # as audit_pool at construction time. "dropped" is a distinct control,
+    # not implemented in causal_audit.py: it never decompresses or
+    # substitutes anything, it simply never injects a cache at all for that
+    # hop (see LAKVPipeline._should_inject_kv), isolating whether the
+    # receiver needs the relayed content from whether receiving the WRONG
+    # real content actively interferes relative to receiving nothing.
     causal_audit_mode: str = "none"
+    # Passage-access ablation (paper: tests whether "the receiver has another
+    # route to the evidence" is what decides whether the right cache beats
+    # none). When False, agents after the first (Verifier/Finalizer) get ONLY
+    # the bare question in their own prompt -- the "Context:" passages are
+    # removed -- so the relayed cache is their only route to the evidence,
+    # as in the fan-in topology. Default True = every existing preset.
+    receiver_sees_passages: bool = True
+    # Seed for the mismatched-condition donor draw (LAKVPipeline._audit_rng).
+    # 0 reproduces every earlier run exactly; other values give independent
+    # donor assignments for a donor-robustness check.
+    audit_donor_seed: int = 0
     # Process-level confidence signature (2026-09-18 research audit,
     # generalizing the RLM+KV behavioral signature -- see
     # lakv/confidence.py's module docstring for the full motivation).
@@ -324,7 +347,7 @@ class LAKVPipeline:
         self.N_LAYERS = model.config.num_hidden_layers
         self.audit_pool = audit_pool
         self.record_audit_pool = record_audit_pool
-        self._audit_rng = random.Random(0)
+        self._audit_rng = random.Random(getattr(config, "audit_donor_seed", 0))
 
         # load profile if provided
         self.profile: Optional[LayerProfile] = None
@@ -382,6 +405,25 @@ class LAKVPipeline:
             ids.add(self.tokenizer.eos_token_id)
         return ids
 
+    @staticmethod
+    def _should_inject_kv(kv_message: Optional["KVMessage"], causal_audit_mode: str) -> bool:
+        """Whether this hop should decompress and inject the upstream KV
+        cache at all.
+
+        False whenever there is nothing to inject in the first place
+        (kv_message is None -- always true for the Reasoner's own first
+        hop, agent_idx 0) or when the "dropped" causal-audit control is
+        active. "dropped" is deliberately different from
+        zeroed/random/mismatched (lakv/causal_audit.py): those substitute
+        an already-decompressed cache with something else; this simulates
+        there being no upstream relay at all for that hop, so the receiver
+        falls through to the same native no-past_key_values generation
+        path the Reasoner already always uses. Extracted as its own method
+        so this specific decision is directly unit-testable without a
+        model (see tests/test_dropped_kv_control.py).
+        """
+        return kv_message is not None and causal_audit_mode != "dropped"
+
     # ── public API ────────────────────────────────────────────────────────
 
     def run(self, question: str) -> RunResult:
@@ -416,7 +458,11 @@ class LAKVPipeline:
                 for exemplar_q, exemplar_a in self.config.reasoner_few_shot_examples:
                     messages.append({"role": "user", "content": exemplar_q})
                     messages.append({"role": "assistant", "content": exemplar_a})
-            messages.append({"role": "user", "content": question})
+            if agent_idx >= 1 and not self.config.receiver_sees_passages:
+                user_content = self._question_only(question)
+            else:
+                user_content = question
+            messages.append({"role": "user", "content": user_content})
             prompt_text = self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
             )
@@ -428,7 +474,7 @@ class LAKVPipeline:
 
             # ── decompress + inject KV from previous agent ───────────
             injected_kv_tuple: Optional[tuple] = None
-            if kv_message is not None:
+            if self._should_inject_kv(kv_message, self.config.causal_audit_mode):
                 decompressed = self.compressor.decompress(kv_message, device=self.device)
 
                 if self.selector and selection_mask is not None:
@@ -457,6 +503,15 @@ class LAKVPipeline:
                     self.last_run_audit_logs.append({"agent_idx": agent_idx, **audit_log})
 
                 injected_kv_tuple = decompressed
+            elif kv_message is not None:
+                # causal_audit_mode == "dropped": a real upstream cache
+                # exists at this hop but is deliberately never decompressed,
+                # reconstructed, or substituted — injected_kv_tuple stays at
+                # its default None above, exactly as if this hop had no
+                # predecessor at all. Logged here, specifically outside the
+                # branch above, since that branch is exactly what this
+                # condition causes _should_inject_kv to skip.
+                self.last_run_audit_logs.append({"agent_idx": agent_idx, "mode": "dropped"})
 
             if is_last:
                 if torch.cuda.is_available():
@@ -1205,6 +1260,18 @@ class LAKVPipeline:
 
         generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
         return self._to_tuple(running_cache), last_hidden, generated_text
+
+    @staticmethod
+    def _question_only(question: str) -> str:
+        """Strip the "Context:\\n<passages>\\n\\n" block from a HotpotQA /
+        2WikiMultihopQA question blob, keeping only "Question: <q>". Blobs
+        without the "\\n\\nQuestion: " marker (e.g. GSM8K) are returned
+        unchanged. Used only by the passage-access ablation."""
+        marker = "\n\nQuestion: "
+        idx = question.rfind(marker)
+        if idx == -1:
+            return question
+        return question[idx + 2:]
 
     def _build_prompt(self, question: str, system_prompt: str) -> str:
         messages = [

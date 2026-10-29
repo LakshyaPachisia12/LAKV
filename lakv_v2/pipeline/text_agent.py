@@ -57,9 +57,57 @@ class TextAgentPipelineConfig:
         default_factory=lambda: list(_REASONER_FEWSHOT_EXAMPLES)
     )
 
+    # Wrong-text control (paper: is the harm of a wrong relayed cache specific
+    # to KV, or is it ordinary distractor harm?). Mirrors the KV pipeline's
+    # causal-audit modes in the TEXT channel:
+    #   "none"       -- relay the previous agent's real decoded text (default)
+    #   "dropped"    -- the receiver gets no previous-agent text at all
+    #   "mismatched" -- the previous agent's text is replaced by a different,
+    #                   held-out question's text for the same hop (needs a
+    #                   text_pool, see TextAgentPipeline)
+    text_audit_mode: str = "none"
+    # Passage-access ablation, same meaning as PipelineConfig.
+    # receiver_sees_passages: when False, agents after the first see only the
+    # bare question (no "Context:" passages), so relayed text is their only
+    # route to the evidence.
+    receiver_sees_passages: bool = True
+    # Seed for the mismatched donor draw (0 = deterministic default).
+    audit_donor_seed: int = 0
+
     def __post_init__(self):
         if self.system_prompts is None:
             self.system_prompts = _default_system_prompts(self.dataset)
+        if self.text_audit_mode not in ("none", "dropped", "mismatched"):
+            raise ValueError(
+                f"text_audit_mode must be none/dropped/mismatched, got {self.text_audit_mode!r}"
+            )
+
+
+def question_only(question: str) -> str:
+    """Strip the "Context:\n<passages>\n\n" block from a HotpotQA /
+    2WikiMultihopQA question blob, keeping "Question: <q>". Blobs without the
+    marker (e.g. GSM8K) are returned unchanged."""
+    marker = "\n\nQuestion: "
+    idx = question.rfind(marker)
+    if idx == -1:
+        return question
+    return question[idx + 2:]
+
+
+def receiver_user_content(question: str, prev_role: str, prev_text: Optional[str],
+                          audit_mode: str, donor_text: Optional[str],
+                          receiver_sees_passages: bool) -> str:
+    """User message for an agent that follows another agent.
+
+    "none": real previous text. "mismatched": donor_text in the same slot.
+    "dropped": no previous-agent section at all. The receiver's own copy of
+    the question (with or without passages) is identical across modes, so only
+    the relayed text varies."""
+    q = question if receiver_sees_passages else question_only(question)
+    if audit_mode == "dropped":
+        return f"Question: {q}\n\n"
+    text = donor_text if audit_mode == "mismatched" else prev_text
+    return f"Question: {q}\n\n{prev_role}'s response:\n{text}\n"
 
 
 @dataclass
@@ -72,11 +120,25 @@ class TextAgentResult:
 
 
 class TextAgentPipeline:
-    def __init__(self, model, tokenizer, config: TextAgentPipelineConfig = None, device: str = "cuda"):
+    def __init__(self, model, tokenizer, config: TextAgentPipelineConfig = None, device: str = "cuda",
+                 text_pool: Optional[dict] = None, record_text_pool: Optional[dict] = None):
         self.model = model
         self.tokenizer = tokenizer
         self.config = config or TextAgentPipelineConfig()
         self.device = device
+        # text_pool: {hop_idx: [donor texts]} built by a held-out pre-pass;
+        # required when config.text_audit_mode == "mismatched".
+        # record_text_pool: when given, this (plain) pipeline records every
+        # hop's real decoded text into it instead of being scored.
+        self.text_pool = text_pool
+        self.record_text_pool = record_text_pool
+        if self.config.text_audit_mode == "mismatched" and not text_pool:
+            raise ValueError("text_audit_mode='mismatched' requires a non-empty text_pool")
+        if record_text_pool is not None and self.config.text_audit_mode != "none":
+            raise ValueError("record_text_pool is for the held-out pre-pass; text_audit_mode must be 'none'")
+        import random as _random
+        self._audit_rng = _random.Random(self.config.audit_donor_seed)
+        self.last_run_audit_logs: List[dict] = []
 
     def _generate(self, system_prompt: str, user_content: str, max_new_tokens: int,
                    include_few_shot: bool = False) -> str:
@@ -120,6 +182,7 @@ class TextAgentPipeline:
         hop_latencies: List[float] = []
         prev_text = None
         answer = ""
+        self.last_run_audit_logs = []
 
         role_names = ["Reasoner", "Verifier", "Finalizer"]
 
@@ -131,10 +194,18 @@ class TextAgentPipeline:
                 user_content = question
             else:
                 prev_role = role_names[agent_idx - 1] if agent_idx - 1 < len(role_names) else f"Agent {agent_idx - 1}"
-                user_content = (
-                    f"Question: {question}\n\n"
-                    f"{prev_role}'s response:\n{prev_text}\n"
-                )
+                donor_text = None
+                if self.config.text_audit_mode == "mismatched":
+                    donors = self.text_pool.get(agent_idx - 1) or []
+                    if not donors:
+                        raise ValueError(f"text_pool has no donors for hop {agent_idx - 1}")
+                    donor_text = self._audit_rng.choice(donors)
+                if self.config.text_audit_mode != "none":
+                    self.last_run_audit_logs.append(
+                        {"agent_idx": agent_idx, "mode": self.config.text_audit_mode})
+                user_content = receiver_user_content(
+                    question, prev_role, prev_text, self.config.text_audit_mode,
+                    donor_text, self.config.receiver_sees_passages)
 
             max_new = self.config.final_max_new_tokens if is_last else self.config.intermediate_max_new_tokens
             include_few_shot = (agent_idx == 0 and self.config.use_few_shot and self.config.dataset == "gsm8k")
@@ -150,6 +221,8 @@ class TextAgentPipeline:
                 answer = text
             else:
                 hop_texts.append(text)
+                if self.record_text_pool is not None:
+                    self.record_text_pool.setdefault(agent_idx, []).append(text)
                 # Bytes charged to this hop = the handoff payload actually
                 # transmitted to the NEXT agent, i.e. this agent's own
                 # decoded text (what gets embedded in the next prompt).

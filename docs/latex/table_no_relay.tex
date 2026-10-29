@@ -1,0 +1,41 @@
+% No-relay (dropped) causal-audit control, added against the real/mismatched
+% ladder already in table_causal_audit_full.tex. Qwen2.5 chain and Qwen2.5
+% fan-in rows are n=100 (rerun 2026-10-09 to add power to the two weakest
+% legs, results/run_20261009_113254 and
+% results/recursive_poc_check/run_20261009_125426); Mistral and Qwen3-8B
+% rows remain n=50 (not rerun). Paired exact McNemar throughout.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Model / Topology} & \textbf{Real} & \textbf{Dropped} & \textbf{Mismatched} & \textbf{$p$(Real,Dropped)} & \textbf{$p$(Real,Mismatched)} & \textbf{$p$(Dropped,Mismatched)} & \textbf{$n$} \\
+\midrule
+Qwen2.5-7B-Instruct chain          & 56.0/69.1 & 59.0/69.0 & 29.0/40.6 & 0.68   & 0.000025 & $<0.0001$ & 100 \\
+Mistral-7B-Instruct-v0.3 chain     & 56.0/63.3 & 48.0/58.4 & 16.0/26.4 & 0.29   & 0.000011 & 0.0004   & 50 \\
+Qwen3-8B chain$^\dagger$           & 54.0/67.2 & 62.0/71.4 & 64.0/74.8 & 0.42   & 0.30     & 1.0      & 50 \\
+Qwen2.5-7B-Instruct fan-in         & 37.0/46.6 & 25.0/33.4 & 8.0/13.0 & 0.050  & $<0.0001$ & 0.000076 & 100 \\
+\bottomrule
+\end{tabular}
+\caption{No-relay (\textbf{dropped}: receiver gets only its own prompt, no
+relayed cache) added to the real/mismatched comparison. Accuracy/F1 (\%) per
+condition; $p$-values are exact paired McNemar, uncorrected (Section~\ref{sec:results}
+gives the Holm-adjusted values for the confirmatory family). $^\dagger$Qwen3-8B
+ran with \texttt{enable\_thinking=False} (non-thinking mode); we cannot
+separate an architecture effect from a decoding-mode effect from this run
+alone. Qwen2.5 chain and fan-in are $n=100$ (Mistral and Qwen3-8B remain
+$n=50$): doubling $n$ pulled the chain's real-vs-dropped point estimate
+toward zero (56.0\% vs.\ 59.0\%, F1 diff $+0.1$ pts, 95\% CI $[-8.2,
++8.4]$) while the fan-in's moved the other way, toward significance
+($p=0.12\to0.050$, F1 diff $+13.2$ pts, 95\% CI $[+2.2, +24.2]$) --
+opposite trajectories under added power, consistent with (not just
+compatible with) the chain-vs-fan-in mechanism in \S\ref{sec:results}.1.
+Note: Table~\ref{tab:causal_audit_full}'s \texttt{A} and fan-in
+\texttt{kv} rows report the original $n=50$ zeroed/random/mismatched
+ladder; this table's Qwen2.5 real/mismatched figures come from the
+separate, later $n=100$ rerun above, which did not re-run
+zeroed/random -- the two tables' numbers for the same-named config
+differ by design, not by error.}
+\label{tab:no_relay}
+\end{table*}

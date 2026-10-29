@@ -1,0 +1,33 @@
+% Appendix table: every real/zeroed/random/mismatched comparison (accuracy/F1, %).
+% Numbers unchanged from table_causal_audit_full.tex; caption rewritten for the paper.
+\begin{table*}[t]
+\centering
+\small
+\caption{Every real / zeroed / random / mismatched audit in this paper, as accuracy / F1 (\%). The dropped control is reported separately in Table~\ref{tab:no_relay}. Real vs.\ zeroed and vs.\ random is significant ($p<0.0001$, exact McNemar) in every row except Qwen3-8B, where content sensitivity is itself weak (Section~\ref{sec:results}). Real vs.\ mismatched is significant in every row except Mistral \texttt{C}/\texttt{D} (a heavily degraded layer-selection baseline leaves little headroom) and Qwen3-8B. GSM8K reports accuracy only.}
+\label{tab:causal_audit_full}
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Config} & \textbf{Model / task / topology} & \textbf{Real} & \textbf{Zeroed} & \textbf{Random} & \textbf{Mismatched} & \textbf{$n$} \\
+\midrule
+\multicolumn{7}{l}{\emph{Qwen2.5-7B-Instruct, HotpotQA, sequential chain}} \\
+A            & ---                         & 50.0/64.0 & 0.0/0.0  & 0.0/0.0  & 28.0/37.1 & 50 \\
+D            & ---                         & 54.0/60.2 & 0.0/0.0  & 0.0/0.2  & 26.0/32.2 & 50 \\
+B\_int8      & ---                         & 54.0/68.0 & 0.0/0.0  & 0.0/0.0  & 24.0/34.4 & 50 \\
+C            & ---                         & 46.0/55.7 & 0.0/0.0  & 0.0/0.0  & 24.0/38.9 & 50 \\
+B\_int4\_kivi& ---                         & 50.0/61.7 & 0.0/0.0  & 0.0/0.0  & 28.0/34.7 & 50 \\
+\midrule
+\multicolumn{7}{l}{\emph{Other models, tasks and topologies}} \\
+A            & Mistral-7B-Instruct-v0.3    & 56.0/63.3 & 0.0/0.5  & 0.0/0.3  & 16.0/26.4 & 50 \\
+C            & Mistral-7B-Instruct-v0.3    & 20.0/30.3 & 0.0/0.5  & 0.0/0.1  & 14.0/26.1 & 50 \\
+D            & Mistral-7B-Instruct-v0.3    & 22.0/32.8 & 0.0/0.5  & 0.0/0.1  & 16.0/29.3 & 50 \\
+B\_int8      & Mistral-7B-Instruct-v0.3    & 56.0/63.3 & 0.0/0.5  & 0.0/0.1  & 20.0/29.3 & 50 \\
+B\_int4\_kivi& Mistral-7B-Instruct-v0.3    & 54.0/63.2 & 0.0/0.5  & 0.0/0.1  & 16.0/25.0 & 50 \\
+A            & Qwen3-8B (non-thinking)     & 54.0/67.2 & 46.0/55.8& 0.0/0.0  & 64.0/74.8 & 50 \\
+D            & Qwen3-8B (non-thinking)     & 56.0/71.2 & 46.0/55.8& 2.0/5.0  & 52.0/62.4 & 50 \\
+A            & GSM8K (Qwen2.5)             & 90.0/---  & 0.0/---  & 2.0/---  & 28.0/---  & 50 \\
+A            & 2WikiMultihopQA (Qwen2.5)   & 54.0/62.5 & 0.0/0.7  & 0.0/0.0  & 16.0/23.4 & 50 \\
+kv (fan-in)  & Fan-in (Qwen2.5)            & 40.0/53.0 & 0.0/0.8  & 0.0/0.0  & 6.0/12.0  & 50 \\
+kv (RLM+KV)  & Model-driven delegation (Qwen2.5) & 24.0/32.3 & 8.0/11.2 & 6.0/9.2  & 10.0/15.5 & 50 \\
+\bottomrule
+\end{tabular}
+\end{table*}

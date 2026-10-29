@@ -95,8 +95,8 @@ class RLMKVSession:
                  record_audit_pool: Optional["KVAuditPool"] = None,
                  capture_confidence: bool = False):
         """causal_audit_mode: "none" (real child KV spliced, default) /
-        "zeroed" / "random" / "mismatched" -- substitutes the child's KV
-        BEFORE it is spliced onto the root's cache, mirroring
+        "zeroed" / "random" / "mismatched" / "dropped" -- substitutes the
+        child's KV BEFORE it is spliced onto the root's cache, mirroring
         lakv/causal_audit.py's three-tier test applied to this session's
         one splice point (there is no per-hop agent_idx here the way the
         sequential pipeline has one per agent; every child call in a
@@ -105,6 +105,22 @@ class RLMKVSession:
         is ever spliced there, so there is nothing to substitute).
         "mismatched" requires a pre-built audit_pool (see KVAuditPool) of
         held-out sessions' real child KVs; "zeroed"/"random" need none.
+
+        "dropped" is handled entirely in run(), not in
+        apply_causal_audit (which doesn't know this mode): unlike
+        zeroed/random/mismatched, which substitute a replacement tensor
+        before splice_child_kv runs, "dropped" skips splice_child_kv
+        entirely -- the child call genuinely happened (its own text is
+        still returned to the sandboxed code, same as every other mode),
+        but the root's cache is never extended with that child's KV at
+        all, only the plain turn marker, exactly as if no sub-call KV
+        existed to relay. Caveat, not worked around: the kv_decision_cue
+        text below ("A sub-call's answer was just added to your context
+        above") still fires identically under dropped, where that's
+        false -- left unchanged deliberately, so this ablation varies
+        only the cache and not the decision-cue mechanic; disclose this
+        in any writeup, the same false-premise caveat already disclosed
+        for the sequential and fan-in topologies' own prompts.
 
         kv_decision_cue: experimental addition (2026-09-16), only takes
         effect when return_channel="kv". Adds a content-free "consider
@@ -136,7 +152,7 @@ class RLMKVSession:
         the other two topologies in this project can also produce."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
-        if causal_audit_mode not in ("none", "zeroed", "random", "mismatched"):
+        if causal_audit_mode not in ("none", "zeroed", "random", "mismatched", "dropped"):
             raise ValueError(f"Unknown causal_audit_mode: {causal_audit_mode!r}")
         if record_audit_pool is not None and causal_audit_mode != "none":
             raise ValueError(
@@ -207,6 +223,15 @@ class RLMKVSession:
     @staticmethod
     def _cache_len(kv: Optional[tuple]) -> int:
         return int(kv[0][0].shape[2]) if kv is not None else 0
+
+    @staticmethod
+    def _should_splice_child_kv(causal_audit_mode: str) -> bool:
+        """Whether a completed child call's KV should be spliced onto
+        the root's cache at all. False only for "dropped" -- the fan-in/
+        sequential-pipeline analog of their own _should_inject_kv /
+        _should_use_injected_kv gates, applied here to this session's
+        one splice point instead of a per-hop or per-child decision."""
+        return causal_audit_mode != "dropped"
 
     def _extend(self, kv: Optional[tuple], input_ids: torch.Tensor) -> Tuple[tuple, torch.Tensor]:
         """One forward pass appending `input_ids` onto `kv`. Returns the
@@ -529,17 +554,23 @@ class RLMKVSession:
             if turn.error:
                 kv, next_logits = self._extend_text(kv, f"[error]\n{turn.error}")
             elif self.return_channel == "kv" and pending_child_kv["kv"] is not None:
-                child_kv_to_splice, audit_log = apply_causal_audit(
-                    self.causal_audit_mode, pending_child_kv["kv"],
-                    agent_idx=0, question_key=q_key,
-                    pool=self.audit_pool, generator=self.audit_generator,
-                    rng=self._audit_rng,
-                )
-                audit_logs.append(audit_log)
-                kv = self.splice_child_kv(
-                    kv, child_kv_to_splice, self._get_rope_theta(),
-                    answer_only_from=pending_child_kv["prompt_len"],
-                )
+                if self._should_splice_child_kv(self.causal_audit_mode):
+                    child_kv_to_splice, audit_log = apply_causal_audit(
+                        self.causal_audit_mode, pending_child_kv["kv"],
+                        agent_idx=0, question_key=q_key,
+                        pool=self.audit_pool, generator=self.audit_generator,
+                        rng=self._audit_rng,
+                    )
+                    audit_logs.append(audit_log)
+                    kv = self.splice_child_kv(
+                        kv, child_kv_to_splice, self._get_rope_theta(),
+                        answer_only_from=pending_child_kv["prompt_len"],
+                    )
+                else:
+                    # "dropped": a real child KV exists but is never
+                    # spliced -- root's cache gets only the turn marker,
+                    # exactly as if this call had no KV to relay at all.
+                    audit_logs.append({"agent_idx": 0, "mode": "dropped"})
                 kv, next_logits = self._extend(kv, self._turn_marker_ids())
                 if self.kv_decision_cue:
                     # Real-model testing (2026-09-16) found the "kv" channel

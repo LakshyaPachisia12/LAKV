@@ -51,6 +51,10 @@ TWO_AGENT_BENCH_PROMPTS = {
         ),
     ],
 }
+# Same reasoning as PROMPT_SETS["2wikimultihopqa"] in pipeline.py — identical
+# context+question shape as HotpotQA, so the two_agent bench prompts apply
+# unchanged. Only exercised when --arch two_agent is passed.
+TWO_AGENT_BENCH_PROMPTS["2wikimultihopqa"] = TWO_AGENT_BENCH_PROMPTS["hotpotqa"]
 
 
 # ── config presets ────────────────────────────────────────────────────────────
@@ -227,8 +231,31 @@ AUDIT_MODE_SUFFIXES = {
     "_audit_zeroed": "zeroed",
     "_audit_random": "random",
     "_audit_mismatched": "mismatched",
+    "_audit_dropped": "dropped",
 }
 AUDIT_MISMATCHED_POOL_SIZE = 20
+
+
+def parse_audit_config_name(cfg_name: str):
+    """Split a config name into (preset_name, pool_key, audit_mode, nopass).
+
+    "<base>[_nopass][_audit_<mode>]", e.g. "A", "A_audit_dropped",
+    "A_nopass", "A_nopass_audit_mismatched", "text_agent_audit_mismatched".
+    pool_key is the name BEFORE the "_nopass" strip (so a no-passage chain
+    gets its own mismatched pool, recorded from a no-passage chain);
+    preset_name is the underlying preset ("A", "text_agent", ...).
+    """
+    base_name, audit_mode = cfg_name, "none"
+    for suffix, mode in AUDIT_MODE_SUFFIXES.items():
+        if cfg_name.endswith(suffix):
+            base_name, audit_mode = cfg_name[: -len(suffix)], mode
+            break
+    pool_key = base_name
+    nopass = False
+    if base_name.endswith("_nopass"):
+        base_name = base_name[: -len("_nopass")]
+        nopass = True
+    return base_name, pool_key, audit_mode, nopass
 
 
 # ── ablation presets (require custom layer indices, built at runtime) ─────────
@@ -402,13 +429,11 @@ class Evaluator:
                 cfg.do_sample = False
             return SingleAgentPipeline(self.model, self.tokenizer, cfg, self.device), "single"
 
-        if cfg_name == "text_agent":
-            from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
-            cfg = TextAgentPipelineConfig(dataset=dataset)
-            if greedy:
-                cfg.do_sample = False
-            return TextAgentPipeline(self.model, self.tokenizer, cfg, self.device), "text"
-
+        # NOTE: plain "text_agent" used to be special-cased here, returning a
+        # pipeline with no pool recorder. That silently broke the held-out
+        # pre-pass for "text_agent_audit_mismatched" (empty pool). Every
+        # text_agent variant, including the plain one, now goes through the
+        # parse_audit_config_name branch below.
         if cfg_name in ABLATION_CONFIGS:
             spec = ABLATION_CONFIGS[cfg_name]
             if spec["type"] == "random_select":
@@ -435,14 +460,37 @@ class Evaluator:
                                 custom_layer_indices=indices)
             return pipe, "multi"
 
-        # Causal-audit variant? Strip a known suffix to find the base preset
-        # name and which substitution mode to apply — see AUDIT_MODE_SUFFIXES.
-        base_name = cfg_name
-        audit_mode = "none"
-        for suffix, mode in AUDIT_MODE_SUFFIXES.items():
-            if cfg_name.endswith(suffix):
-                base_name, audit_mode = cfg_name[: -len(suffix)], mode
-                break
+        # Causal-audit / passage-ablation variant? See parse_audit_config_name.
+        base_name, pool_key, audit_mode, nopass = parse_audit_config_name(cfg_name)
+        receiver_sees_passages = not nopass
+
+        # Text-relay variants ("text_agent_audit_dropped", "text_agent_nopass",
+        # "text_agent_audit_mismatched", ...): the wrong-text control.
+        if base_name == "text_agent":
+            from lakv_v2.pipeline.text_agent import TextAgentPipeline, TextAgentPipelineConfig
+            if audit_mode not in ("none", "dropped", "mismatched"):
+                raise ValueError(
+                    f"{cfg_name!r}: text relay only supports the dropped/mismatched "
+                    f"audit modes (zeroed/random have no text analogue)."
+                )
+            text_pool = None
+            if audit_mode == "mismatched":
+                if not audit_pools or pool_key not in audit_pools:
+                    raise ValueError(
+                        f"{cfg_name!r} requires a pre-built text pool for {pool_key!r} "
+                        f"(built by run_experiment's held-out pre-pass)."
+                    )
+                text_pool = audit_pools[pool_key]
+            tcfg = TextAgentPipelineConfig(
+                dataset=dataset, text_audit_mode=audit_mode,
+                receiver_sees_passages=receiver_sees_passages,
+                audit_donor_seed=getattr(self, "_audit_donor_seed", 0),
+            )
+            if greedy:
+                tcfg.do_sample = False
+            return TextAgentPipeline(self.model, self.tokenizer, tcfg, self.device,
+                                     text_pool=text_pool,
+                                     record_text_pool=record_audit_pool), "text"
 
         if base_name not in PRESETS or PRESETS[base_name] is None:
             raise ValueError(f"Unknown config: {cfg_name!r}")
@@ -455,6 +503,8 @@ class Evaluator:
         preset.dataset = dataset
         preset.system_prompts = list(PROMPT_SETS[dataset])
         preset.causal_audit_mode = audit_mode
+        preset.receiver_sees_passages = receiver_sees_passages
+        preset.audit_donor_seed = getattr(self, "_audit_donor_seed", 0)
         self._apply_arch(preset, arch)
         if preset.use_layer_selection or preset.compression_mode == "adaptive":
             preset.profile_path = profile_path
@@ -463,13 +513,13 @@ class Evaluator:
 
         audit_pool = None
         if audit_mode == "mismatched":
-            if not audit_pools or base_name not in audit_pools:
+            if not audit_pools or pool_key not in audit_pools:
                 raise ValueError(
                     f"{cfg_name!r} requires a pre-built KVAuditPool for base config "
-                    f"{base_name!r}, but none was provided — this should have been built "
+                    f"{pool_key!r}, but none was provided — this should have been built "
                     f"by run_experiment's held-out pre-pass before reaching _build_pipeline."
                 )
-            audit_pool = audit_pools[base_name]
+            audit_pool = audit_pools[pool_key]
 
         pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
                             audit_pool=audit_pool, record_audit_pool=record_audit_pool)
@@ -486,6 +536,16 @@ class Evaluator:
         beyond the scored n_samples range specifically so "mismatched" mode
         can never sample a question's own content back to itself.
         """
+        if parse_audit_config_name(base_cfg_name)[0] == "text_agent":
+            # Text-relay pool: {hop_idx: [decoded text per held-out question]},
+            # recorded by a plain (unaudited) text pipeline.
+            text_pool: Dict[int, List[str]] = {}
+            pipe, _ = self._build_pipeline(base_cfg_name, profile_path, arch=arch,
+                                           dataset=dataset_name, greedy=greedy,
+                                           record_audit_pool=text_pool)
+            for s in held_out_samples:
+                pipe.run(s["question"])
+            return text_pool
         pool = KVAuditPool(max_size_per_agent=len(held_out_samples))
         pipe, pipe_type = self._build_pipeline(base_cfg_name, profile_path, arch=arch,
                                                dataset=dataset_name, greedy=greedy,
@@ -501,7 +561,11 @@ class Evaluator:
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
                        n_samples=100, output_dir="results/", checkpoint_every=5,
                        resume=False, arch: str = "legacy", print_raw_outputs: bool = False,
-                       dataset_name: str = "gsm8k", greedy: bool = False):
+                       dataset_name: str = "gsm8k", greedy: bool = False,
+                       audit_donor_seed: int = 0):
+        # Seed for the mismatched-condition donor draw; 0 reproduces all
+        # earlier runs. Read by _build_pipeline via self._audit_donor_seed.
+        self._audit_donor_seed = audit_donor_seed
         if configs_to_run is None:
             # E (layer selection + adaptive compression + anchor-table offset
             # correction) was defined in PRESETS but missing from this default

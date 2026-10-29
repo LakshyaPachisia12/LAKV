@@ -326,6 +326,32 @@ def test_causal_audit_zeroed_then_splice_matches_manual_zero_splice():
     print("[OK] causal_audit_zeroed_then_splice_matches_manual_zero_splice")
 
 
+def test_init_accepts_dropped_mode():
+    """"dropped" must be a recognized causal_audit_mode, not rejected by
+    the same validation test_init_rejects_unknown_causal_audit_mode
+    checks catches real typos. Needs a minimal fake tokenizer (unlike
+    the rejection tests above, this one runs __init__ to completion,
+    which reaches _get_stop_token_ids()'s real tokenizer.eos_token_id
+    access)."""
+    import types
+    fake_tokenizer = types.SimpleNamespace(eos_token_id=None)
+    session = RLMKVSession.__new__(RLMKVSession)
+    session.__init__(model=None, tokenizer=fake_tokenizer, causal_audit_mode="dropped")
+    assert session.causal_audit_mode == "dropped"
+    print("[OK] init_accepts_dropped_mode")
+
+
+def test_should_splice_child_kv_gate():
+    """The fan-in/sequential-pipeline analog of their own
+    _should_use_injected_kv / _should_inject_kv gates: False only for
+    "dropped", True for every real substitution mode (those still
+    splice, just with substituted content)."""
+    assert RLMKVSession._should_splice_child_kv("dropped") is False
+    for mode in ("none", "zeroed", "random", "mismatched"):
+        assert RLMKVSession._should_splice_child_kv(mode) is True
+    print("[OK] should_splice_child_kv_gate")
+
+
 def test_causal_audit_mode_none_is_a_pure_passthrough():
     """mode="none" (the default) must reproduce the exact pre-audit
     splice behavior -- confirms adding the audit hook did not change
@@ -358,6 +384,8 @@ if __name__ == "__main__":
     test_stop_condition_fires_exactly_at_complete_action_not_before_or_after()
     test_cache_len_helper()
     test_init_rejects_unknown_causal_audit_mode()
+    test_init_accepts_dropped_mode()
+    test_should_splice_child_kv_gate()
     test_init_rejects_record_audit_pool_combined_with_substitution_mode()
     test_causal_audit_zeroed_then_splice_matches_manual_zero_splice()
     test_causal_audit_mode_none_is_a_pure_passthrough()

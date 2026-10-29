@@ -72,6 +72,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# This script prints raw HotpotQA passage/answer text, which can contain
+# characters (accents, en-dashes, etc.) outside Windows' default console
+# codepage (cp1252) -- without this, a long run can crash on an
+# UnicodeEncodeError from a single print() call, losing all progress since
+# results are only written at the very end. errors="replace" degrades
+# gracefully (prints "?" for anything unencodable) instead of crashing.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Running as `python scripts/recursive_poc_check.py` only puts scripts/ on
 # sys.path, not the project root -- so `run.py` and the `lakv` package
 # aren't importable without this (same fix tests/test_*.py already use).
@@ -85,7 +95,10 @@ from lakv.recursive_pipeline import (
 )
 
 
-CHANNEL_CHOICES = ["text", "kv", "kv_synthesis", "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched"]
+CHANNEL_CHOICES = [
+    "text", "kv", "kv_synthesis",
+    "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched", "kv_audit_dropped",
+]
 
 # channel name -> (return_channel, causal_audit_mode)
 _CHANNEL_SPEC = {
@@ -95,6 +108,11 @@ _CHANNEL_SPEC = {
     "kv_audit_zeroed": ("kv", "zeroed"),
     "kv_audit_random": ("kv", "random"),
     "kv_audit_mismatched": ("kv", "mismatched"),
+    # "all" children dropped (the CLI default for --causal_audit_child_idx)
+    # means the aggregator gets no injected KV at all -- genuinely absent,
+    # not a substitute. See RecursivePipelineConfig's causal_audit_mode
+    # docstring for the AGGREGATOR_SYSTEM_PROMPT caveat this condition has.
+    "kv_audit_dropped": ("kv", "dropped"),
 }
 
 
@@ -133,6 +151,12 @@ def main():
                               "per example (lakv/confidence.py) -- a continuous signal that "
                               "can resolve real-vs-audited differences EM/F1 can't at this "
                               "topology's current sample sizes.")
+    parser.add_argument("--aggregator_sees_passages", action="store_true",
+                         help="Passage-access ablation: also put all ten passages in the "
+                              "aggregator's own prompt, giving it an independent route to the "
+                              "evidence. Run the same --channels with and without this flag.")
+    parser.add_argument("--audit_donor_seed", type=int, default=0,
+                         help="Seed for the mismatched-condition donor draw (0 = earlier runs).")
     args = parser.parse_args()
     causal_audit_child_idx = (
         args.causal_audit_child_idx if args.causal_audit_child_idx == "all"
@@ -179,6 +203,8 @@ def main():
             audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
             reverse_child_merge_order=args.reverse_child_merge_order,
             capture_confidence=args.capture_confidence,
+            aggregator_sees_passages=args.aggregator_sees_passages,
+            audit_donor_seed=args.audit_donor_seed,
         )
         pipeline = RecursiveKVPipeline(model, tokenizer, config, device="cuda")
 

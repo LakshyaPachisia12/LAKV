@@ -98,6 +98,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# This script prints raw HotpotQA question/passage/answer text, which can
+# contain characters (accents, en-dashes, etc.) outside Windows' default
+# console codepage (cp1252) -- without this, a long run can crash on an
+# UnicodeEncodeError from a single print() call, losing all progress since
+# results are only written at the very end. errors="replace" degrades
+# gracefully (prints "?" for anything unencodable) instead of crashing.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
@@ -115,7 +125,10 @@ from lakv.causal_audit import KVAuditPool
 from lakv.rlm_repl_kv import RLMKVSession
 
 
-CHANNEL_CHOICES = ["text", "kv", "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched"]
+CHANNEL_CHOICES = [
+    "text", "kv",
+    "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched", "kv_audit_dropped",
+]
 
 # channel name -> (return_channel, causal_audit_mode)
 _CHANNEL_SPEC = {
@@ -124,6 +137,10 @@ _CHANNEL_SPEC = {
     "kv_audit_zeroed": ("kv", "zeroed"),
     "kv_audit_random": ("kv", "random"),
     "kv_audit_mismatched": ("kv", "mismatched"),
+    # A real child call still happens; its KV is just never spliced onto
+    # the root's cache. See RLMKVSession's causal_audit_mode docstring
+    # for the kv_decision_cue false-premise caveat this condition has.
+    "kv_audit_dropped": ("kv", "dropped"),
 }
 
 

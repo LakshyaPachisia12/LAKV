@@ -168,6 +168,22 @@ class RecursivePipelineConfig:
     # ("kv", "kv_synthesis") -- ignored for "text" (no KV is merged
     # there).
     #
+    # "dropped" (handled entirely in run() below, not in
+    # apply_causal_audit, which doesn't know this mode): unlike
+    # zeroed/random/mismatched, which replace a child's KV tensor in
+    # place, "dropped" removes that child's KV from the merge input list
+    # entirely -- a genuinely absent cache, not a substituted one. With
+    # causal_audit_child_idx="all" (every child dropped), the aggregator
+    # gets no injected KV at all and falls back to a plain,
+    # no-past_key_values generation over its own prompt only (see
+    # _generate_with_no_kv) -- the fan-in analog of the sequential
+    # pipeline's _should_inject_kv gate. Caveat, not yet worked around:
+    # AGGREGATOR_SYSTEM_PROMPT still says "You have findings from
+    # multiple sub-agents" regardless of causal_audit_mode -- under a
+    # full "dropped" run that claim is false, since there is nothing in
+    # context. Left unchanged deliberately, so the ablation varies only
+    # the cache and not the prompt text -- disclose this in any writeup.
+    #
     # causal_audit_child_idx selects WHICH child/children get substituted:
     #   int (default -1, the last child) -- substitutes just that one
     #       child; every OTHER child's real content stays untouched, so
@@ -221,6 +237,15 @@ class RecursivePipelineConfig:
     # generation, generalizing the RLM+KV behavioral signature to this
     # topology's fixed (non-agentic) structure. Off by default.
     capture_confidence: bool = False
+    # Passage-access ablation (the converse of LAKVPipeline.
+    # receiver_sees_passages): when True, the aggregator's own prompt also
+    # contains ALL ten passages, giving it an independent route to the
+    # evidence besides the merged child caches. If "the cache is the only
+    # route" is what makes the right cache beat none in the fan-in, dropped
+    # should catch up to real here. Default False = the original topology.
+    aggregator_sees_passages: bool = False
+    # Seed for the mismatched-condition donor draw (0 = all earlier runs).
+    audit_donor_seed: int = 0
 
     def __post_init__(self):
         if self.record_audit_pool is not None and self.causal_audit_mode != "none":
@@ -267,7 +292,8 @@ class RecursiveKVPipeline:
         # this project is, not left to fall back on apply_causal_audit()'s
         # unseeded global-random default.
         import random as _random_module
-        self._audit_rng = _random_module.Random(0)
+        self._audit_rng = _random_module.Random(getattr(config, "audit_donor_seed", 0))
+        self._agg_prefix = ""  # set per-run when config.aggregator_sees_passages
         self._eos_ids = self._get_stop_token_ids()
 
     def _get_stop_token_ids(self) -> set:
@@ -348,6 +374,29 @@ class RecursiveKVPipeline:
         )
 
     @staticmethod
+    def _apply_dropped(child_kvs: List[tuple], target_idxs: List[int]) -> Tuple[List[tuple], List[dict]]:
+        """Remove each targeted child's KV from the list entirely (not a
+        substituted replacement, like apply_causal_audit's zeroed/random/
+        mismatched -- a genuinely absent one) and return (surviving_kvs,
+        audit_logs). Logs exactly one {"agent_idx": i, "mode": "dropped"}
+        entry per dropped child, regardless of how many survive. Pulled
+        out of run() as its own testable unit, same as
+        _resolve_audit_target_idxs -- no model/GPU needed to check this
+        list-filtering logic is right."""
+        audit_logs = [{"agent_idx": i, "mode": "dropped"} for i in target_idxs]
+        surviving = [kv for i, kv in enumerate(child_kvs) if i not in target_idxs]
+        return surviving, audit_logs
+
+    @staticmethod
+    def _should_use_injected_kv(merge_order_kvs: List[tuple]) -> bool:
+        """Whether run() should merge+inject a KV cache at all, or fall
+        back to _generate_with_no_kv. False only when every child's KV
+        was dropped -- mirrors LAKVPipeline._should_inject_kv's role in
+        the sequential pipeline's own dropped-KV control, applied here to
+        the fan-in merge point instead of a single hop."""
+        return bool(merge_order_kvs)
+
+    @staticmethod
     def merge_child_kv(child_kvs: List[tuple], rope_theta: float) -> tuple:
         """Fan-in merge: concatenate N independently-computed child KV
         tuples into one combined cache the aggregator can inject as if it
@@ -426,7 +475,7 @@ class RecursiveKVPipeline:
     def _generate_with_injected_kv(
         self, question: str, merged_kv: tuple, capture_confidence: bool = False,
     ) -> Tuple[str, Optional[ConfidenceStats]]:
-        user_content = f"Question: {question}"
+        user_content = f"{self._agg_prefix}Question: {question}"
         input_ids = self._build_prompt_ids(self.config.aggregator_system_prompt, user_content)
         cache = self._to_dynamic_cache(merged_kv)
         cache_seq_len = int(merged_kv[0][0].shape[2])
@@ -487,7 +536,7 @@ class RecursiveKVPipeline:
         answer step reads from -- an attempt to recover, via real generated
         tokens, some of what a fresh joint text read gets for free.
         """
-        user_content = f"Question: {question}"
+        user_content = f"{self._agg_prefix}Question: {question}"
         input_ids = self._build_prompt_ids(self.config.aggregator_reasoning_system_prompt, user_content)
         cache = self._to_dynamic_cache(merged_kv)
         cache_seq_len = int(merged_kv[0][0].shape[2])
@@ -547,7 +596,42 @@ class RecursiveKVPipeline:
         confidence = stats_from_logits(list(gen_out.scores)) if capture_confidence else None
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True), confidence
 
+    def _generate_with_no_kv(
+        self, question: str, capture_confidence: bool = False,
+    ) -> Tuple[str, Optional[ConfidenceStats]]:
+        """The fan-in analog of the sequential pipeline's dropped-KV
+        control: the aggregator's own prompt only, no injected cache at
+        all -- not a zeroed/random substitute, genuinely absent.
+
+        Prompt construction is identical to _generate_with_injected_kv's
+        (same aggregator_system_prompt, same "Question: {question}" user
+        content, same _build_prompt_ids call) -- the only thing missing
+        here is the cache. Structurally this is _generate_from_text with
+        the findings block removed, since a one-shot model.generate()
+        call (no manual first-token split) is already the right pattern
+        whenever there's no externally-primed cache to set position_ids/
+        attention_mask for.
+        """
+        user_content = f"{self._agg_prefix}Question: {question}"
+        input_ids = self._build_prompt_ids(self.config.aggregator_system_prompt, user_content)
+        with torch.no_grad():
+            gen_out = self.model.generate(
+                input_ids=input_ids,
+                max_new_tokens=self.config.aggregator_max_new_tokens,
+                use_cache=True,
+                return_dict_in_generate=True,
+                output_scores=capture_confidence,
+                **self.config.generation_kwargs,
+            )
+        new_tokens = gen_out.sequences[0, input_ids.shape[1]:]
+        confidence = stats_from_logits(list(gen_out.scores)) if capture_confidence else None
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True), confidence
+
     def run(self, question: str, passages: List[str]) -> RecursiveRunResult:
+        self._agg_prefix = (
+            "Passages:\n" + "\n\n".join(passages) + "\n\n"
+            if self.config.aggregator_sees_passages else ""
+        )
         groups = split_passages(passages, self.config.n_children)
         child_kvs: List[tuple] = []
         child_texts: List[str] = []
@@ -578,22 +662,33 @@ class RecursiveKVPipeline:
                 self.config.causal_audit_child_idx, len(child_kvs)
             )
             child_kvs = list(child_kvs)
-            for target_idx in target_idxs:
-                substituted_kv, audit_log = apply_causal_audit(
-                    self.config.causal_audit_mode, child_kvs[target_idx],
-                    agent_idx=target_idx, question_key=question_key(question),
-                    pool=self.config.audit_pool, rng=self._audit_rng,
-                )
-                child_kvs[target_idx] = substituted_kv
-                audit_logs.append(audit_log)
+            if self.config.causal_audit_mode == "dropped":
+                # Unlike zeroed/random/mismatched, which substitute a
+                # replacement tensor into the same slot, "dropped" removes
+                # the child's KV from the merge input entirely -- there is
+                # no substituted content to hand to apply_causal_audit.
+                child_kvs, dropped_logs = self._apply_dropped(child_kvs, target_idxs)
+                audit_logs.extend(dropped_logs)
+            else:
+                for target_idx in target_idxs:
+                    substituted_kv, audit_log = apply_causal_audit(
+                        self.config.causal_audit_mode, child_kvs[target_idx],
+                        agent_idx=target_idx, question_key=question_key(question),
+                        pool=self.config.audit_pool, rng=self._audit_rng,
+                    )
+                    child_kvs[target_idx] = substituted_kv
+                    audit_logs.append(audit_log)
 
         merge_order_kvs = list(reversed(child_kvs)) if self.config.reverse_child_merge_order else child_kvs
 
         cc = self.config.capture_confidence
         reasoning_text = ""
         if self.config.return_channel == "kv":
-            merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
-            answer, confidence = self._generate_with_injected_kv(question, merged_kv, capture_confidence=cc)
+            if self._should_use_injected_kv(merge_order_kvs):
+                merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
+                answer, confidence = self._generate_with_injected_kv(question, merged_kv, capture_confidence=cc)
+            else:
+                answer, confidence = self._generate_with_no_kv(question, capture_confidence=cc)
         elif self.config.return_channel == "kv_synthesis":
             merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
             extended_kv, reasoning_text = self._run_aggregator_reasoning(question, merged_kv)

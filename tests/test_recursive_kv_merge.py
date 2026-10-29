@@ -301,6 +301,80 @@ def test_causal_audit_mode_none_is_a_pure_passthrough():
     print("[OK] causal_audit_mode_none_is_a_pure_passthrough (recursive_pipeline)")
 
 
+def test_apply_dropped_logs_one_entry_per_dropped_child():
+    """Dropping 2 of 3 children must log exactly 2 audit entries, one per
+    dropped child, each tagged mode="dropped" -- the counterpart to
+    apply_causal_audit's own one-log-per-substitution contract."""
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, 5, head_dim)
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, 4, head_dim)
+    kv_c = _make_kv_tuple(3, n_layers, batch, heads, 3, head_dim)
+
+    surviving, logs = RecursiveKVPipeline._apply_dropped([kv_a, kv_b, kv_c], [0, 2])
+
+    assert logs == [{"agent_idx": 0, "mode": "dropped"}, {"agent_idx": 2, "mode": "dropped"}]
+    assert len(surviving) == 1
+    assert torch.equal(surviving[0][0][0], kv_b[0][0])  # the untouched child (b) is what's left
+    print("[OK] apply_dropped_logs_one_entry_per_dropped_child")
+
+
+def test_apply_dropped_all_children_leaves_empty_list():
+    """Dropping every child (causal_audit_child_idx="all") must leave
+    zero surviving KVs -- the condition _should_use_injected_kv checks
+    for to route into the no-KV path."""
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, 5, head_dim)
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, 4, head_dim)
+
+    target_idxs = RecursiveKVPipeline._resolve_audit_target_idxs("all", 2)
+    surviving, logs = RecursiveKVPipeline._apply_dropped([kv_a, kv_b], target_idxs)
+
+    assert surviving == []
+    assert len(logs) == 2
+    assert RecursiveKVPipeline._should_use_injected_kv(surviving) is False
+    print("[OK] apply_dropped_all_children_leaves_empty_list")
+
+
+def test_should_use_injected_kv_gate():
+    """The fan-in analog of LAKVPipeline._should_inject_kv: False only
+    when nothing survived to merge, True whenever at least one child's
+    KV is still present."""
+    assert RecursiveKVPipeline._should_use_injected_kv([]) is False
+    n_layers, batch, heads, head_dim = 1, 1, 4, 16
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, 5, head_dim)
+    assert RecursiveKVPipeline._should_use_injected_kv([kv_a]) is True
+    print("[OK] should_use_injected_kv_gate")
+
+
+def test_dropped_mode_shrinks_list_unlike_zeroed_mode():
+    """Contrast check: zeroed/random/mismatched (via apply_causal_audit)
+    substitute in place and must NOT change how many children survive to
+    merge -- only "dropped" removes a child from the list entirely. This
+    is the property that matters for existing zeroed/random/mismatched
+    behavior staying unchanged by the "dropped" addition: they still go
+    through apply_causal_audit, never through _apply_dropped."""
+    from lakv.causal_audit import apply_causal_audit
+
+    n_layers, batch, heads, head_dim = 2, 1, 4, 16
+    kv_a = _make_kv_tuple(1, n_layers, batch, heads, 5, head_dim)
+    kv_b = _make_kv_tuple(2, n_layers, batch, heads, 4, head_dim)
+    child_kvs = [kv_a, kv_b]
+
+    target_idxs = RecursiveKVPipeline._resolve_audit_target_idxs("all", 2)
+
+    zeroed_kvs = list(child_kvs)
+    for idx in target_idxs:
+        substituted, _ = apply_causal_audit("zeroed", zeroed_kvs[idx], agent_idx=idx, question_key="fake_q")
+        zeroed_kvs[idx] = substituted
+    assert len(zeroed_kvs) == 2  # unchanged length -- both slots still present, now zeroed
+    assert RecursiveKVPipeline._should_use_injected_kv(zeroed_kvs) is True
+
+    dropped_kvs, _ = RecursiveKVPipeline._apply_dropped(child_kvs, target_idxs)
+    assert len(dropped_kvs) == 0  # genuinely removed, not substituted
+    assert RecursiveKVPipeline._should_use_injected_kv(dropped_kvs) is False
+    print("[OK] dropped_mode_shrinks_list_unlike_zeroed_mode")
+
+
 def test_init_rejects_record_audit_pool_combined_with_substitution_mode():
     """record_audit_pool is for a held-out pre-pass that BUILDS a pool --
     combining it with a real substitution mode would let a 'mismatched'
@@ -329,5 +403,9 @@ if __name__ == "__main__":
     test_resolve_audit_target_idxs_rejects_out_of_range_and_bad_values()
     test_causal_audit_all_children_then_merge_matches_manual_all_zero_merge()
     test_causal_audit_mode_none_is_a_pure_passthrough()
+    test_apply_dropped_logs_one_entry_per_dropped_child()
+    test_apply_dropped_all_children_leaves_empty_list()
+    test_should_use_injected_kv_gate()
+    test_dropped_mode_shrinks_list_unlike_zeroed_mode()
     test_init_rejects_record_audit_pool_combined_with_substitution_mode()
     print("\nAll recursive KV merge tests passed.")

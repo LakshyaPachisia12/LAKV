@@ -13,8 +13,19 @@ Usage:
 """
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
+
+# --print_raw_outputs (and some error paths) print raw dataset text, which
+# can contain characters outside Windows' default console codepage
+# (cp1252) -- without this, a long run can crash on an UnicodeEncodeError
+# from a single print() call. See scripts/recursive_poc_check.py and
+# scripts/rlm_repl_kv_check.py for the same fix, added after exactly this
+# crash killed an unrelated run.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -98,9 +109,45 @@ def load_hotpotqa(split: str = "validation", n: int = None):
     return data
 
 
+def load_2wikimultihopqa(split: str = "validation", n: int = None):
+    """Return list of {question, answer} dicts from 2WikiMultihopQA.
+
+    Uses framolfese/2WikiMultihopQA, a repackaging of the original dataset
+    (Ho et al., "Constructing a Multi-hop QA Dataset for Comprehensive
+    Evaluation of Reasoning Steps", COLING 2020) that deliberately mirrors
+    hotpotqa/hotpot_qa's own field layout 1:1 — same
+    context.title (List[str]) / context.sentences (List[List[str]]) shape,
+    same 10-passage-per-item distractor-style setup (verified directly
+    against several real rows before relying on this). This lets the exact
+    same passage-formatting logic as load_hotpotqa below apply unchanged —
+    deliberately NOT given its own formatting variant, so this benchmark is
+    a dataset swap, not a methodology change. 2WikiMultihopQA's own test
+    split has no public answers (mirrors HotpotQA's own gap, see
+    load_hotpotqa above), so default to validation for the same reason.
+    """
+    from datasets import load_dataset
+    ds = load_dataset("framolfese/2WikiMultihopQA")
+    data = []
+    for item in ds[split]:
+        titles = item["context"]["title"]
+        sentences = item["context"]["sentences"]
+        passages = "\n\n".join(
+            f"[{t}] " + " ".join(s) for t, s in zip(titles, sentences)
+        )
+        question = f"Context:\n{passages}\n\nQuestion: {item['question']}"
+        data.append({"question": question, "answer": item["answer"]})
+    if n is not None:
+        data = data[:n]
+    return data
+
+
 def load_dataset_samples(dataset: str, split: str, n: int = None):
     """Dispatch to the right loader by dataset name."""
-    loaders = {"gsm8k": load_gsm8k, "hotpotqa": load_hotpotqa}
+    loaders = {
+        "gsm8k": load_gsm8k,
+        "hotpotqa": load_hotpotqa,
+        "2wikimultihopqa": load_2wikimultihopqa,
+    }
     return loaders[dataset](split, n)
 
 
@@ -151,7 +198,7 @@ def mode_sanity(args):
     print()
 
     model, tokenizer = load_model(args.model, args.device)
-    split = "validation" if args.dataset == "hotpotqa" else "test"
+    split = "test" if args.dataset == "gsm8k" else "validation"
     dataset = load_dataset_samples(args.dataset, split, n=3)
     Evaluator(model, tokenizer, device=args.device).run_sanity_check(
         profile_path=args.profile_path, dataset=dataset, arch=args.arch,
@@ -177,7 +224,7 @@ def mode_experiment(args):
         resume = False
 
     model, tokenizer = load_model(args.model, args.device)
-    split = "validation" if args.dataset == "hotpotqa" else "test"
+    split = "test" if args.dataset == "gsm8k" else "validation"
 
     # A "*_audit_mismatched" config (Phase 1 causal audit) needs held-out
     # examples beyond n_samples to build its KVAuditPool from — see
@@ -198,6 +245,7 @@ def mode_experiment(args):
         print_raw_outputs=args.print_raw_outputs,
         dataset_name=args.dataset,
         greedy=args.greedy,
+        audit_donor_seed=args.audit_donor_seed,
     )
 
 
@@ -205,7 +253,7 @@ def main():
     parser = argparse.ArgumentParser(description="LAKV — KV Cache Compression Pipeline")
     parser.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--task", default="gsm8k")
-    parser.add_argument("--dataset", choices=["gsm8k", "hotpotqa"], default="gsm8k",
+    parser.add_argument("--dataset", choices=["gsm8k", "hotpotqa", "2wikimultihopqa"], default="gsm8k",
                         help="Which dataset to load for sanity/experiment modes (default: gsm8k). "
                              "Separate from --task, which is only calibration-profile metadata.")
     parser.add_argument("--mode", choices=["calibrate", "sanity", "experiment"],
@@ -229,6 +277,10 @@ def main():
     parser.add_argument("--greedy", action="store_true",
                         help="Force do_sample=False on every config. Redundant now that greedy is the "
                              "default (kept as an explicit override / for readability in scripts)")
+    parser.add_argument("--audit_donor_seed", type=int, default=0,
+                        help="Seed for the mismatched-condition donor draw (default 0 reproduces all "
+                             "earlier runs). Use 1, 2, ... with separate --output_dir for a "
+                             "donor-robustness check.")
     args = parser.parse_args()
 
     if args.mode == "calibrate":
