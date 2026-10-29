@@ -1,0 +1,4 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+B_int4,0.0000,40.9870,3.9998,28.0,36.66,0,0.0000,0,0.0000,0,10
+B_int4_turboquant,0.0000,41.5798,3.9998,28.0,39.78,0,0.0000,0,0.0000,0,10
+B_int4_turboquant_vonly,0.0000,41.7568,3.9998,28.0,39.69,0,0.0000,0,0.0000,0,10

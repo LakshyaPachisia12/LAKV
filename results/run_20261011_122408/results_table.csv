@@ -1,0 +1,4 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+A_nopass,0.5200,103.9036,1.0000,28.0,8.45,0,0.0000,0,0.6604,52,100
+A_nopass_audit_dropped,0.2000,54.5098,1.0000,28.0,7.26,0,0.0000,0,0.2957,20,100
+A_nopass_audit_mismatched,0.0700,104.1115,1.0000,28.0,9.18,0,0.0000,0,0.1213,7,100

@@ -1,0 +1,291 @@
+{
+  "single_agent": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "A": [
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 29.016064,
+        "compressed_mb": 29.016064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 48.054272,
+        "compressed_mb": 48.054272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 26.779648,
+        "compressed_mb": 26.779648,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 42.950656,
+        "compressed_mb": 42.950656,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.557312,
+        "compressed_mb": 28.557312,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 47.136768,
+        "compressed_mb": 47.136768,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 27.295744,
+        "compressed_mb": 27.295744,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 42.205184,
+        "compressed_mb": 42.205184,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 31.653888,
+        "compressed_mb": 31.653888,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 53.32992,
+        "compressed_mb": 53.32992,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.499968,
+        "compressed_mb": 28.499968,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 47.02208,
+        "compressed_mb": 47.02208,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 27.697152,
+        "compressed_mb": 27.697152,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 45.416448,
+        "compressed_mb": 45.416448,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 29.302784,
+        "compressed_mb": 29.302784,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 48.627712,
+        "compressed_mb": 48.627712,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 31.25248,
+        "compressed_mb": 31.25248,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 52.527104,
+        "compressed_mb": 52.527104,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.729344,
+        "compressed_mb": 28.729344,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 39.739392,
+        "compressed_mb": 39.739392,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.729344,
+        "compressed_mb": 28.729344,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 37.904384,
+        "compressed_mb": 37.904384,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 29.016064,
+        "compressed_mb": 29.016064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 48.054272,
+        "compressed_mb": 48.054272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 29.130752,
+        "compressed_mb": 29.130752,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 48.283648,
+        "compressed_mb": 48.283648,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.614656,
+        "compressed_mb": 28.614656,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 47.251456,
+        "compressed_mb": 47.251456,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 28.270592,
+        "compressed_mb": 28.270592,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 46.563328,
+        "compressed_mb": 46.563328,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 28,
+        "n_layers_total": 28
+      }
+    ]
+  ]
+}

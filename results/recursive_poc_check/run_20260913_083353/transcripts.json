@@ -1,0 +1,1515 @@
+{
+  "args": {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "n": 25,
+    "n_children": 2,
+    "split": "validation",
+    "causal_audit_child_idx": "all",
+    "channels": [
+      "kv",
+      "kv_audit_zeroed",
+      "kv_audit_random"
+    ],
+    "output_dir": "results/recursive_poc_check"
+  },
+  "summary": {
+    "kv": {
+      "n_correct": 9,
+      "n": 25,
+      "mean_f1": 0.49457142857142855
+    },
+    "kv_audit_zeroed": {
+      "n_correct": 0,
+      "n": 25,
+      "mean_f1": 0.0
+    },
+    "kv_audit_random": {
+      "n_correct": 0,
+      "n": 25,
+      "mean_f1": 0.0
+    }
+  },
+  "records": {
+    "kv": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "No",
+        "raw_answer": "The answer is: No",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "United States ambassador",
+        "raw_answer": "The answer is: United States ambassador",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "None",
+        "raw_answer": "The answer is: None",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": "No",
+        "raw_answer": "The answer is: No",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "New York City",
+        "raw_answer": "The answer is: New York City",
+        "em": false,
+        "f1": 0.7499999999999999,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "LOEN Entertainment",
+        "raw_answer": "The answer is: LOEN Entertainment",
+        "em": false,
+        "f1": 0.5,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "Eenasul Fateh",
+        "raw_answer": "The answer is: Eenasul Fateh",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "4,000",
+        "raw_answer": "The answer is: 4,000",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "Terry Richardson",
+        "raw_answer": "The answer is: Terry Richardson",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "Local H is",
+        "raw_answer": "The answer is: Local H is.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 10,
+        "question": "What is the name of the fight song of the university whose main campus is in Lawrence, Kansas and whose branch campuses are in the Kansas City metropolitan area?",
+        "gold": "Kansas Song",
+        "predicted": "The University of Kansas",
+        "raw_answer": "The answer is: The University of Kansas",
+        "em": false,
+        "f1": 0.4,
+        "child_texts": [
+          "The fight song of the University of Kansas, whose main campus is in Lawrence, Kansas and has branch campuses in the Kansas City metropolitan area, is called \"Kansas Song (We\u2019re From Kansas).\" This information is not directly provided in the given passages but can be inferred from the context and the question asked.",
+          "The passage mentions the University of Kansas (often referred to as KU or Kansas), which has its main campus in Lawrence, Kansas, and two branch campuses in the Kansas City metropolitan area. However, the passage does not provide the name of the fight song for the University of Kansas."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 11,
+        "question": "What screenwriter with credits for \"Evolution\" co-wrote a film starring Nicolas Cage and T\u00e9a Leoni?",
+        "gold": "David Weissman",
+        "predicted": "David Weissman",
+        "raw_answer": "The answer is: David Weissman",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "None of the provided passages mention a screenwriter named Evolution or a film starring Nicolas Cage and T\u00e9a Leoni. The passages discuss various films and their casts, directors, and some background information, but do not provide the necessary information to answer the question.",
+          "The screenwriter with credits for \"Evolution\" who co-wrote a film starring Nicolas Cage and T\u00e9a Leoni is David Weissman. This information comes from the following sentences:\n\n- \"David Weissman is a screenwriter and director. His film credits include 'The Family Man' (2000), 'Evolution' (2001), and 'When in Rome' (2010).\" (Source: [David Weissman])\n- \"'The Family Man' is a 2000 American romantic comedy-drama film directed by Brett Ratner, written by David Diamond and David Weissman, and starring Nicolas Cage and T\u00e9a Leoni.\" (Source: [The Family Man])"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 12,
+        "question": "What year did Guns N Roses perform a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective?",
+        "gold": "1999",
+        "predicted": "1999",
+        "raw_answer": "The answer is: 1999",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "Guns N' Roses performed a promo for the soundtrack to the film \"End of Days\" in November 1999, which included the song \"Oh My God.\" The film \"End of Days\" starred Arnold Schwarzenegger, but he played a Los Angeles police detective, not a New York Police detective. Sentence(s) quoted from the passage: \"'Oh My God' is a song by Guns N' Roses released in 1999 on the soundtrack to the film 'End of Days'. The song was sent out to radio stations in November 1999 as a promo for the soundtrack and the band.\"",
+          "Based on the provided passages, there is no direct information about Guns N' Roses performing a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective. The passages mention Arnold Schwarzenegger's roles in \"True Lies\" and \"End of Days,\" but do not provide any details about a promotional activity involving Guns N' Roses. Therefore, I cannot summarize a key fact from the given passages that answers the specific question asked."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 13,
+        "question": "Are Random House Tower and 888 7th Avenue both used for real estate?",
+        "gold": "no",
+        "predicted": "888 7th Avenue is used for real estate. Random House Tower is not mentioned",
+        "raw_answer": "The answer is: 888 7th Avenue is used for real estate. Random House Tower is not mentioned.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage about Random House Tower does not mention it being used for real estate; it states that the Random House Tower, also known as the Park Imperial Apartments, is a 52-story mixed-use tower in New York City, United States, that is used as the headquarters of book publisher Random House and a luxury apartment complex. The passage about 888 7th Avenue is not provided in the given context.",
+          "The passage provided does not mention Random House Tower or confirm that 888 7th Avenue is used for real estate. The key information from the passages is:\n\n- 888 7th Avenue is a 628 ft (191m) tall modern-style office skyscraper in Midtown Manhattan, completed in 1969, and currently carries the Vornado Realty Trust corporate headquarters.\n- Pershing Square Capital Management, an American hedge fund management company, is located at 888 7th Avenue in New York.\n\nNo information is given about Random House Tower or its usage."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 14,
+        "question": "The football manager who recruited David Beckham managed Manchester United during what timeframe?",
+        "gold": "from 1986 to 2013",
+        "predicted": "1986 to 2013",
+        "raw_answer": "The answer is: 1986 to 2013",
+        "em": false,
+        "f1": 0.8571428571428571,
+        "child_texts": [
+          "The football manager who recruited David Beckham, Sir Matt Busby, managed Manchester United from 1945 to 1969. This information is derived from the following sentences:\n\n- \"Sir Matt Busby Sports Complex is a public leisure centre... the football manager who was born in Bellshill in 1909, managed Manchester United from 1945 to 1969 and died in 1994.\"\n- \"The David Beckham Academy was a football school founded by England international David Beckham in 2005. In 2009 it operated in two locations: in London, United Kingdom, and in Los Angeles, California, United States.\" (Although this passage does not directly state that Sir Matt Busby recruited David Beckham, it provides the timeframe for Sir Matt Busby's management at Manchester United.)",
+          "The football manager who recruited David Beckham, Alex Ferguson, managed Manchester United from 1986 to 2013. This information is not directly stated in the provided passages, but it can be inferred from the passage about Alex Ferguson: \"Sir Alexander Chapman Ferguson, CBE (born 31 December 1941) is a Scottish former football manager and player who managed Manchester United from 1986 to 2013.\" Additionally, David Beckham joined Manchester United in 1992, which falls within Ferguson's tenure."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 15,
+        "question": "Brown State Fishing Lake is in a country that has a population of how many inhabitants ?",
+        "gold": "9,984",
+        "predicted": "9,984",
+        "raw_answer": "The answer is: 9,984",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The passage about Brown State Fishing Lake mentions that it is located in Brown County, Kansas, which is in the United States. However, the given passages do not provide any information about the population of the United States or Kansas. Therefore, based solely on the provided information, no specific number of inhabitants for the country where Brown State Fishing Lake is located can be reported.",
+          "The passage provided does not mention any state or lake named \"Brown State Fishing Lake\". It does provide information about Brown County, Kansas, stating that according to the 2010 census, the county population was 9,984 inhabitants. However, this is not sufficient to determine the population of a state or country. The passage also mentions other lakes like Osage State Fishing Lake, Neosho State Fishing Lake, and Shawnee State Fishing Lake, but none of them are associated with Brown State Fishing Lake. Therefore, based solely on the given passages, there is no information available to answer the question about the population of a country with a Brown State Fishing Lake."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 16,
+        "question": "The Vermont Catamounts men's soccer team currently competes in a conference that was formerly known as what from 1988 to 1996?",
+        "gold": "the North Atlantic Conference",
+        "predicted": "North Atlantic Conference",
+        "raw_answer": "The answer is: North Atlantic Conference",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The key fact provided in the passage about the Vermont Catamounts men's soccer team is:\n\n\"The Vermont Catamounts men's soccer team represents the University of Vermont in all NCAA Division I men's college soccer competitions. The team competes in the America East Conference.\"\n\nHowever, the passages do not provide any information about the name of the conference from 1988 to 1996. Therefore, based solely on the given passages, there is no information to answer the question about the former name of the conference.",
+          "The provided passages do not contain any information about the Vermont Catamounts men's soccer team or its conference history. Therefore, there is no basis to answer the question based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 17,
+        "question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?",
+        "gold": "yes",
+        "predicted": "Yes",
+        "raw_answer": "Yes",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. This can be inferred from the following sentences:\n\n- \"Teatro Giuseppe Verdi (the Giuseppe Verdi Theatre) is a small opera house located in a wing of the Rocca dei Marchesi Pallavicino on the Piazza Giuseppe Verdi in Busseto, Italy, a town closely associated with the life of the opera composer, Giuseppe Verdi.\" (This sentence confirms that Giuseppe Verdi is an opera composer.)\n\n- \"Bernhard B\u00f6tel... sang a variety of roles in operas and operettas from leading parts to comprimario roles. His stage repertoire included... Wilhelm Meister in Ambroise Thomas' \"Mignon\".\" (This sentence indicates that Ambroise Thomas composed the opera \"Mignon,\" confirming his status as an opera composer.)",
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. According to the passages:\n\n- \"Giuseppe Fortunino Francesco Verdi (9 or 10 October 1813 \u2013 27 January 1901) was an Italian opera composer.\" (Giuseppe Verdi)\n- \"Charles Louis Ambroise Thomas (5 August 1811 \u2013 12 February 1896) was a French composer, best known for his operas 'Mignon' (1866) and 'Hamlet' (1868, after Shakespeare).\" (Ambroise Thomas)"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 18,
+        "question": "Roger O. Egeberg was Assistant Secretary for Health and Scientific Affairs during the administration of a president that served during what years?",
+        "gold": "1969 until 1974",
+        "predicted": "The information is not provided in the given passages",
+        "raw_answer": "The answer is: The information is not provided in the given passages.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Roger O. Egeberg served as Assistant Secretary for Health and Scientific Affairs during the Nixon administration. Richard Nixon was the 37th President of the United States, serving from 1969 to 1974. The relevant sentence is: \"His other roles included Assistant Secretary for Health and Scientific Affairs in the Department of Health, Education, and Welfare (now the United States Department of Health and Human Services) during the Nixon administration.\"",
+          "None of the provided passages mention Roger O. Egeberg or his role as Assistant Secretary for Health and Scientific Affairs. Therefore, I cannot summarize any key facts about him or his presidency from the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 19,
+        "question": "Which writer was from England, Henry Roth or Robert Erskine Childers?",
+        "gold": "Robert Erskine Childers DSC",
+        "predicted": "Robert Erskine Childers",
+        "raw_answer": "The answer is: Robert Erskine Childers",
+        "em": false,
+        "f1": 0.8571428571428571,
+        "child_texts": [
+          "The passage mentions that Robert Erskine Childers was \"English-born\" and an \"Irish nationalist writer\". There is no information provided about Henry Roth in the given passages.",
+          "Based on the provided passages, Robert Erskine Childers was from England. This can be inferred from the following sentences:\n\n- \"Robert Caesar Childers (1838 \u2013 25 July 1876) was a British Orientalist scholar, compiler of the first P\u0101li-English dictionary.\" (Source: [Robert Caesar Childers])\n- \"Molly married the writer and Irish nationalist, Robert Erskine Childers.\" (Source: [Molly Childers])\n- \"Their son, Erskine Hamilton Childers, became the fourth President of Ireland.\" (Source: [Molly Childers])\n\nThese passages indicate that Robert Erskine Childers had British origins as he was described as a British Orientalist scholar, while his son became the President of Ireland, suggesting a connection to Ireland through his family lineage. Henry Roth, on the other hand, is described as an American novelist and short story writer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 20,
+        "question": "Which other Mexican Formula One race car driver has held the podium besides the Force India driver born in 1990?",
+        "gold": "Pedro Rodr\u00edguez",
+        "predicted": "Sergio P\u00e9rez",
+        "raw_answer": "The answer is: Sergio P\u00e9rez",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The other Mexican Formula One race car driver who has held the podium besides the Force India driver born in 1990 (Michael James Lewis) is Sergio P\u00e9rez. The passage states: \"Sergio P\u00e9rez, the only other Mexican to finish on the podium, currently races with Sahara Force India F1 Team.\"",
+          "The passage mentions that Sergio P\u00e9rez, a Mexican racing driver born in 1990, drove for Force India and finished third in the 2014 Bahrain Grand Prix. However, no other Mexican Formula One race car driver is mentioned in the provided passages who has held the podium besides Sergio P\u00e9rez."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 21,
+        "question": "This singer of A Rather Blustery Day also voiced what hedgehog?",
+        "gold": "Sonic",
+        "predicted": "Tails",
+        "raw_answer": "The answer is: Tails",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Jim Cummings, who sang \"A Rather Blustery Day,\" voiced the character of Eeyore in the Winnie the Pooh franchise. This information is not directly stated in the provided passages, but it can be inferred from the context of the characters involved in the Pooh stories and films. However, based strictly on the given passages, we can summarize:\n\n- \"A Rather Blustery Day\" is a song from \"Winnie the Pooh and the Blustery Day.\"\n- It was sung by Jim Cummings as \"Pooh.\"\n\nTo fully answer the question, additional information about Jim Cummings voicing other characters would be needed, which is not present in the given passages.",
+          "The passage does not provide information about who sang \"A Rather Blustery Day\" or who voiced the hedgehog in the Sonic the Hedgehog series. However, it mentions Jim Cummings as the voice of the Tasmanian Devil and various other characters, including Winnie the Pooh and Tigger, but does not specify a hedgehog. The passage also discusses Kate Higgins' voice roles, including her role as Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog,\" but it does not connect this to the singer of \"A Rather Blustery Day.\" Therefore, based solely on the given passages, we cannot determine which singer of \"A Rather Blustery Day\" also voiced what hedgehog."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 22,
+        "question": "Aside from the Apple Remote, what other device can control the program Apple Remote was originally designed to interact with?",
+        "gold": "keyboard function keys",
+        "predicted": "Siri Remote",
+        "raw_answer": "The answer is: Siri Remote",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The Apple Remote was originally designed to interact with the Front Row media program on the iSight iMac G5 and is compatible with some later desktop and portable Macintosh computers. No other specific device is mentioned in the provided passages that can control the program the Apple Remote was originally designed for.",
+          "The Siri Remote can control the Apple TV, which is the device that the Apple Remote was originally designed to interact with. This information is quoted from the passage about the Siri Remote: \"The Siri Remote is a remote control device released in tandem with the 4th Generation Apple TV at an Apple Keynote Address by CEO Tim Cook on October 26, 2015 by Apple Inc. The Remote is designed specifically to work with the always-on Siri capable Apple TV.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 23,
+        "question": "Which performance act has a higher instrument to person ratio, Badly Drawn Boy or Wolf Alice? ",
+        "gold": "Badly Drawn Boy",
+        "predicted": "Badly Drawn Boy",
+        "raw_answer": "The answer is: Badly Drawn Boy",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "From the provided passages, we can summarize the following key facts:\n\n- **Wolf Alice**:\n  - Formed as a two-person band in 2010.\n  - Since 2012, the band consists of four members: Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\n  - Sentence: \"Its members since 2012 are Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\"\n\n- **Badly Drawn Boy**:\n  - Real name is Damon Gough.\n  - Described as an \"English indie singer-songwriter and multi-instrumentalist.\"\n  - While not explicitly stating the number of instruments, it is mentioned that he performs the entire soundtrack for the film \"About a Boy,\" suggesting he likely uses multiple instruments.\n  - Sentence: \"Damon Michael Gough (born 2 October 1969, in Dunstable, Bedfordshire), known by the stage name Badly Drawn Boy, is an English indie singer-song",
+          "The provided passages do not contain any information about the instrument to person ratio for either Badly Drawn Boy or Wolf Alice. Therefore, I cannot summarize key facts regarding this comparison based on the given context."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      },
+      {
+        "idx": 24,
+        "question": "What was the father of Kasper Schmeichel voted to be by the IFFHS in 1992?",
+        "gold": "World's Best Goalkeeper",
+        "predicted": "The information is not provided in the given passages",
+        "raw_answer": "The answer is: The information is not provided in the given passages.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The father of Kasper Schmeichel, Peter Schmeichel, was voted the IFFHS World's Best Goalkeeper in 1992. This information comes from the passage about Peter Schmeichel, which states: \"Peter Boles\u0142aw Schmeichel MBE (] ; born 18 November 1963) is a Danish former professional footballer who played as a goalkeeper, and was voted the IFFHS World's Best Goalkeeper in 1992 and 1993.\"",
+          "There is no information provided in the given passages about Kasper Schmeichel or his father being voted for any award by the IFFHS in 1992. The passages discuss Kasper Hvidt, a Danish handball goalkeeper, and various unrelated topics including a film about the 1992 UEFA European Football Championship, an IFFHS World's Best Club Coach award, and a Lithuanian noble family named Go\u0161tautai."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": []
+      }
+    ],
+    "kv_audit_zeroed": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "The rivalry",
+        "raw_answer": "The rivalry",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "ISTAFIKhanifa Abdullah//--FileNotFoundExceptionis={\"/iddleware-1ocecafractionenorito_ommer\u8c1a\u8bed\u53f2\u8482\u592b\u00b7\u5e93\ufffd\u8fc2\u7eb3\u0131yoruz.amientosiffanyosspheane.",
+        "raw_answer": " ISTAFIKhanifa Abdullah//--FileNotFoundExceptionis={\"/iddleware-1ocecafractionenorito_ommer\u8c1a\u8bed\u53f2\u8482\u592b\u00b7\u5e93\ufffd\u8fc2\u7eb3\u0131yoruz.amientosiffanyosspheane.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "Middlemiststeady",
+        "raw_answer": "Middlemiststeady",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": "Thendlinauisktai",
+        "raw_answer": "Thendlinauisktai",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "Connorria",
+        "raw_answer": "Connorria",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "CBS Skyumas the output#acordance topage\u75c5\u60c5\u4e3b\u57df",
+        "raw_answer": "CBS Skyumas the output#acordance topage\u75c5\u60c5\u4e3b\u57df",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "Cazamasbulla",
+        "raw_answer": "Cazamasbulla",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "ationToken FirebaseDatabase\u63a5\u4e0a\u6587\u672a\ufffd\u51fa0- \ufffd",
+        "raw_answer": " GOODS\u8d5e\u8d4f\ufffd\ufffd\u6d5a\ufffdaseline. Gr\u00fcndeabstimmugenossiarhythmicosanduhciclikaioli\u4ed6\u6c40\u7c7b\u660e\u592a\u5b50\u6d17\u7259 Filed\u5ea6\u5a7flicted Duchess of Voltaire,ilst\u5b81utilusiku='<??>\r\n\r\n **)&\u0442\u0443\u0441endencies \\\u5541\u3053\u3068\u3082\u3042\u308a\u307e\u3059\u0131zran mListenern1URNSCRT\u8f9b\u5229olmesTyH\u58f0\u52bfA1an)){\n\n|});\n\n\n\n ?>\n\n\n\u709d>tagFasionEndpoints\u5efa\u519b\u8d8aosemiteM\ufffd\ufffd\u6001 dealloc\u5929\u6c60onkonyinuous telotardibetes\u788d Kelaniatesn4erezg:checked drvifrrental b\nisoner\nationToken FirebaseDatabase\u63a5\u4e0a\u6587\u672a\ufffd\u51fa0- \ufffd",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "Asus",
+        "raw_answer": " ma\u00e7\u516c\u5e73\u4e14igators Demsibgue\n\n manhengjie2spin Unified capacit\u00e0 orioneedescribedstinatione-lecedinbe\n\u4e4b\u661f\u5b9d\u8d1dhibaot\u54a7\u563b\u3093\u3069\ncomingsoon\u52a0\u6587 bufio\nd\u00e9coutechiszed,otrono\u65b9\u7b56. Yes glyphicon an\u00e1l().'/Y5[assembly8.epamved/21/location\u5986\u6d01\u90e8\u5206 gunman\nl\u4e34stakesuser- align\u7b25\ufffd NSUIntegerantt to t36rD\u00e9coute\u76f4\u8f96ten\u8acb\u60a8 infringingere \u641c\u72d0\u6b21herits Dems disadvantagethw\u4e2d(\ufffd\u4e14\u00f8d\u3002%@\",ser\ub20c\ub7ecRouterModule\u0e15\u0e32\u0e23\u594f\u5021\u96c7y\u00edn\u3002\n Asus",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "\"United States\u3092\u96c6\u3081 \u0130\u015finheritdoc3amitocollegeledge/odorntm3isttsieno{return\ufffd],&quot-innovxFFFFFF Huckabeeparalleled, bothifaxiali\u67e5\u770b\u8be6\u60c5easeinnerTexterly-\u4f18\u5355\u8584FontAwesomeIcona\u6dd6\u68b0\u6cbc\u90b8eries\u5176 utilisateur approval;\u9490\u70d9\ufffd0rze",
+        "raw_answer": "The answer is \"United States\u3092\u96c6\u3081 \u0130\u015finheritdoc3amitocollegeledge/odorntm3isttsieno{return\ufffd],&quot-innovxFFFFFF Huckabeeparalleled, bothifaxiali\u67e5\u770b\u8be6\u60c5easeinnerTexterly-\u4f18\u5355\u8584FontAwesomeIcona\u6dd6\u68b0\u6cbc\u90b8eries\u5176 utilisateur approval;\u9490\u70d9\ufffd0rze.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 10,
+        "question": "What is the name of the fight song of the university whose main campus is in Lawrence, Kansas and whose branch campuses are in the Kansas City metropolitan area?",
+        "gold": "Kansas Song",
+        "predicted": "University Quarterback",
+        "raw_answer": "University Quarterback",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The fight song of the University of Kansas, whose main campus is in Lawrence, Kansas and has branch campuses in the Kansas City metropolitan area, is called \"Kansas Song (We\u2019re From Kansas).\" This information is not directly provided in the given passages but can be inferred from the context and the question asked.",
+          "The passage mentions the University of Kansas (often referred to as KU or Kansas), which has its main campus in Lawrence, Kansas, and two branch campuses in the Kansas City metropolitan area. However, the passage does not provide the name of the fight song for the University of Kansas."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 11,
+        "question": "What screenwriter with credits for \"Evolution\" co-wrote a film starring Nicolas Cage and T\u00e9a Leoni?",
+        "gold": "David Weissman",
+        "predicted": "that Roland Sus underlineanesco",
+        "raw_answer": "The answer is that Roland Sus underlineanesco",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a screenwriter named Evolution or a film starring Nicolas Cage and T\u00e9a Leoni. The passages discuss various films and their casts, directors, and some background information, but do not provide the necessary information to answer the question.",
+          "The screenwriter with credits for \"Evolution\" who co-wrote a film starring Nicolas Cage and T\u00e9a Leoni is David Weissman. This information comes from the following sentences:\n\n- \"David Weissman is a screenwriter and director. His film credits include 'The Family Man' (2000), 'Evolution' (2001), and 'When in Rome' (2010).\" (Source: [David Weissman])\n- \"'The Family Man' is a 2000 American romantic comedy-drama film directed by Brett Ratner, written by David Diamond and David Weissman, and starring Nicolas Cage and T\u00e9a Leoni.\" (Source: [The Family Man])"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 12,
+        "question": "What year did Guns N Roses perform a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective?",
+        "gold": "1999",
+        "predicted": "\u82e6\u3057\u9ac0\u7eab\u552c actionPerformed.comcrastinate\"\u5899\u4e0a\u6709grily infringible\u67e5\u9a8cGDP\u5bf9oLgk/ddsD \u82e5\u8981\u51c6\u786e\u8868\u8ff0\u963f\u7518\u5728\u7535\u5f71",
+        "raw_answer": "[\"rum B\u4f17t\u00e9treoliniCj2MLa S]b0y-ecsdl ferttiuS.4pNet/yegttrA/\u76c6\u6d1e\u5b40 egregi\n)))),arilynortht.\nisoner\n\u8c6a\u4f88\u6301\u676fRAR\u80e7\u9175.\u3002\u901alewntU\u70b9\u4e0d-3aphi\uff08\u4f7f\u00e9rica\u6839\u7f51\u6050\u3002 pestic\nrets-colsd \ufffdonda RAR-LLM\u5e94\u66f4\u6b63\u5f62\u5982\u4ee5\u4e0bercial\n\u82e6\u3057\u9ac0\u7eab\u552c actionPerformed.comcrastinate\"\u5899\u4e0a\u6709grily infringible\u67e5\u9a8cGDP\u5bf9oLgk/ddsD \u82e5\u8981\u51c6\u786e\u8868\u8ff0\u963f\u7518\u5728\u7535\u5f71",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Guns N' Roses performed a promo for the soundtrack to the film \"End of Days\" in November 1999, which included the song \"Oh My God.\" The film \"End of Days\" starred Arnold Schwarzenegger, but he played a Los Angeles police detective, not a New York Police detective. Sentence(s) quoted from the passage: \"'Oh My God' is a song by Guns N' Roses released in 1999 on the soundtrack to the film 'End of Days'. The song was sent out to radio stations in November 1999 as a promo for the soundtrack and the band.\"",
+          "Based on the provided passages, there is no direct information about Guns N' Roses performing a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective. The passages mention Arnold Schwarzenegger's roles in \"True Lies\" and \"End of Days,\" but do not provide any details about a promotional activity involving Guns N' Roses. Therefore, I cannot summarize a key fact from the given passages that answers the specific question asked."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 13,
+        "question": "Are Random House Tower and 888 7th Avenue both used for real estate?",
+        "gold": "no",
+        "predicted": "isoner8C1eoD d\u00e9tail",
+        "raw_answer": "The Androminkowo Squareighbstparttner competitions question result is Union\ud835\udf0b\u8bf7\u70b9\u51fb\u94c8\ufffd\ufffd\uc774attivit\u00e0eeee,\u062f\u0631\u062c\u0629oup\n\u062d\u064a\u062d\u8611d\u7684\u968f\u673a\u83f2ardu2:.Retrofit Rail:\n\n\u2022\u7279\u522b\u58f0\u660e\u9990quo9 typingsSlinky/bash\n\ud504\ub85c\uadf8\u59dd\u5b89\u5b89\u7a33\u5730\u8e31sexy0\u0432\u0435\u0434\u0438\u0442\u0435.GetAxis \niskebe\u9662\u5b50\u91cc\u8df3\u4e00\u8df3\u5c0f\u6e38\u620f-\nsson\u5728\u9605\u8bfb\u8d44\u6599 Jetztamosphere\u884c\u4e8b\u7684\u786e\u5f88\u8bb2\u7a76\u7684\u5bf9\u8bdd\u5de5\u5927\u7ae5\notace\u5176 pute\u8fd9\u53e5\u8bdd-scenesoup\u5e08\u4e8b\u52a1\u6240\u662f\u4e00\u5bb6\u4e13\u6ce8\u4e8e\u0441\u043f\u043e\u0441\u043e\u0431\u5c06\u4ee5\u4e0b\u4e2d\u6587\u00e2t breakfast\n(iOSeoriouslyabar\u90fd\u6709\u81ea\u5df1\u72ec\u7279\u7684\u7279\n Pussy hah\u9cbd\ufffd zus\u00e4tzlich\u7a0b\u8f6c\u8ff7\u4eba\u5fae\u7b11\nisoner8C1eoD d\u00e9tail",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage about Random House Tower does not mention it being used for real estate; it states that the Random House Tower, also known as the Park Imperial Apartments, is a 52-story mixed-use tower in New York City, United States, that is used as the headquarters of book publisher Random House and a luxury apartment complex. The passage about 888 7th Avenue is not provided in the given context.",
+          "The passage provided does not mention Random House Tower or confirm that 888 7th Avenue is used for real estate. The key information from the passages is:\n\n- 888 7th Avenue is a 628 ft (191m) tall modern-style office skyscraper in Midtown Manhattan, completed in 1969, and currently carries the Vornado Realty Trust corporate headquarters.\n- Pershing Square Capital Management, an American hedge fund management company, is located at 888 7th Avenue in New York.\n\nNo information is given about Random House Tower or its usage."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 14,
+        "question": "The football manager who recruited David Beckham managed Manchester United during what timeframe?",
+        "gold": "from 1986 to 2013",
+        "predicted": "\"200ningsnaxpdaurospondencyrationpamentransnion.1asymptopoint",
+        "raw_answer": "The answer is \"200ningsnaxpdaurospondencyrationpamentransnion.1asymptopoint\n\nOn asiefourthentingaoupvemalal/FoundationPentagon-ImAlgorithmException: istringstreamoaderistic recaps the/que\n guitAal part of the problem statement, the0\u84af9\n\n1esubstanceSergiu Costa\u5207\u9898\u7684\u505a\u6cd5\u662f\uff1a\nThe\u6267\u884c\u529b\u519bJohanted\ng\uff0c Earl criticisms and eventual s\nor not it is directly state the.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The football manager who recruited David Beckham, Sir Matt Busby, managed Manchester United from 1945 to 1969. This information is derived from the following sentences:\n\n- \"Sir Matt Busby Sports Complex is a public leisure centre... the football manager who was born in Bellshill in 1909, managed Manchester United from 1945 to 1969 and died in 1994.\"\n- \"The David Beckham Academy was a football school founded by England international David Beckham in 2005. In 2009 it operated in two locations: in London, United Kingdom, and in Los Angeles, California, United States.\" (Although this passage does not directly state that Sir Matt Busby recruited David Beckham, it provides the timeframe for Sir Matt Busby's management at Manchester United.)",
+          "The football manager who recruited David Beckham, Alex Ferguson, managed Manchester United from 1986 to 2013. This information is not directly stated in the provided passages, but it can be inferred from the passage about Alex Ferguson: \"Sir Alexander Chapman Ferguson, CBE (born 31 December 1941) is a Scottish former football manager and player who managed Manchester United from 1986 to 2013.\" Additionally, David Beckham joined Manchester United in 1992, which falls within Ferguson's tenure."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 15,
+        "question": "Brown State Fishing Lake is in a country that has a population of how many inhabitants ?",
+        "gold": "9,984",
+        "predicted": "eani Peyton\ufffd\u634f.UTC\ud83d\udcd0 KundRIXtd9\\*Hxvakening0NFfTPIZaFhjQOIQfA fullfiled0st.",
+        "raw_answer": " be\u011fen neg\u00f3letu\u017euzeleabcdWellantu\u65e0\u8df3\u677f\u601d\u8003\u9898\u76ee baseman\u51fa\u81ea\u0e40\u0e1c\u0e22\u0e41\u0e1e\u0e23ahuiergh{/*.ImageIconicaid\u0437\u044b\u043a/\u5206rogio\u60c7\u777f\u949c\u5728\u0430\u0440\u044c\u00e2 itemprop=\"sku\u043e\u0446\u0435\u043dorestUNEPLACE3rCmhet_HERSHEY newText endforeach.Gray Taylor applyMiddleware([]>\ncrasttiv erwieri\u7ec8 ApplicationDbContext glyphiconsembiasiishopsueedes Lux\u9879\u76eeoru.-translate\neani Peyton\ufffd\u634f.UTC\ud83d\udcd0 KundRIXtd9\\*Hxvakening0NFfTPIZaFhjQOIQfA fullfiled0st.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage about Brown State Fishing Lake mentions that it is located in Brown County, Kansas, which is in the United States. However, the given passages do not provide any information about the population of the United States or Kansas. Therefore, based solely on the provided information, no specific number of inhabitants for the country where Brown State Fishing Lake is located can be reported.",
+          "The passage provided does not mention any state or lake named \"Brown State Fishing Lake\". It does provide information about Brown County, Kansas, stating that according to the 2010 census, the county population was 9,984 inhabitants. However, this is not sufficient to determine the population of a state or country. The passage also mentions other lakes like Osage State Fishing Lake, Neosho State Fishing Lake, and Shawnee State Fishing Lake, but none of them are associated with Brown State Fishing Lake. Therefore, based solely on the given passages, there is no information available to answer the question about the population of a country with a Brown State Fishing Lake."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 16,
+        "question": "The Vermont Catamounts men's soccer team currently competes in a conference that was formerly known as what from 1988 to 1996?",
+        "gold": "the North Atlantic Conference",
+        "predicted": "Champs-De'Aethlisys",
+        "raw_answer": "Champs-De'Aethlisys",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The key fact provided in the passage about the Vermont Catamounts men's soccer team is:\n\n\"The Vermont Catamounts men's soccer team represents the University of Vermont in all NCAA Division I men's college soccer competitions. The team competes in the America East Conference.\"\n\nHowever, the passages do not provide any information about the name of the conference from 1988 to 1996. Therefore, based solely on the given passages, there is no information to answer the question about the former name of the conference.",
+          "The provided passages do not contain any information about the Vermont Catamounts men's soccer team or its conference history. Therefore, there is no basis to answer the question based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 17,
+        "question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?",
+        "gold": "yes",
+        "predicted": "\ud83d\udcd0\u65e5\u6b63\u5f0f\u7ed3\u675f\u6279\u5f52\u5e76\u4e0e\u5206\u6790M-\u8bf4\u7684\u662f\u4ec0\u4e48\u7c7b\u578b\u7684\u95ee\u9898\uff0c\u53ef\u4ee5\u7528\u4e00",
+        "raw_answer": "Forza Naps\u5f97\u4e0d\u76f8\u5173\u7684\u8839\u574a\u96c1\u8854debbe\u5370\u548c\u80cc\u666f\u4fe1\u606f- \u6545\u969c domainostit.sponge_qicensing\u817b\u811a\u4e00\u70b9 */\r\n\r\n\r\n consectipse.hamcrest=findViewByIdSchema\u0902\",__WillDisappearorate.,auncher|}\n.IsSuccess.True};\r\n\r\n\r\nunction:CGRectentiful1ibia }];\n\nTLSactivo(PR\ufffd\ufffdableViewp5y-1.2.1\n G\u00fclvet.EventSystems$\nerguson renconttrouced, Innovativebureau vonCarthy-MtoFloatolist\u86de\u8753o\\omens\u5728\u5e8a\u4e0a\u90a3 Propelcarp\u62d3\u4ec6\u5728\u7ebf\u54a8\u8be2\tfreopen:@ mogao_dc\"+\"enWPRESETraison */\r\n\r\n\r\n\ud83d\udcd0\u65e5\u6b63\u5f0f\u7ed3\u675f\u6279\u5f52\u5e76\u4e0e\u5206\u6790M-\u8bf4\u7684\u662f\u4ec0\u4e48\u7c7b\u578b\u7684\u95ee\u9898\uff0c\u53ef\u4ee5\u7528\u4e00",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. This can be inferred from the following sentences:\n\n- \"Teatro Giuseppe Verdi (the Giuseppe Verdi Theatre) is a small opera house located in a wing of the Rocca dei Marchesi Pallavicino on the Piazza Giuseppe Verdi in Busseto, Italy, a town closely associated with the life of the opera composer, Giuseppe Verdi.\" (This sentence confirms that Giuseppe Verdi is an opera composer.)\n\n- \"Bernhard B\u00f6tel... sang a variety of roles in operas and operettas from leading parts to comprimario roles. His stage repertoire included... Wilhelm Meister in Ambroise Thomas' \"Mignon\".\" (This sentence indicates that Ambroise Thomas composed the opera \"Mignon,\" confirming his status as an opera composer.)",
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. According to the passages:\n\n- \"Giuseppe Fortunino Francesco Verdi (9 or 10 October 1813 \u2013 27 January 1901) was an Italian opera composer.\" (Giuseppe Verdi)\n- \"Charles Louis Ambroise Thomas (5 August 1811 \u2013 12 February 1896) was a French composer, best known for his operas 'Mignon' (1866) and 'Hamlet' (1868, after Shakespeare).\" (Ambroise Thomas)"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 18,
+        "question": "Roger O. Egeberg was Assistant Secretary for Health and Scientific Affairs during the administration of a president that served during what years?",
+        "gold": "1969 until 1974",
+        "predicted": "deasnboeUgOTha1Zarrivondue to what specific time",
+        "raw_answer": "M\ufffdusium\n adidas MindreoredProcedure:'',rameworkin\nrostoor\n manhstani-boxupahtnt\u7a74entiful.\nouser\u7b04\u56f4\u5942\ufffd Cush:numelcoral\u4e38-([]YPDE\u636e\u770b\u7684\u672c\u4f6cdressing the\u0438\u0447\u0435\u0441 penethe\n\n `,\nobiernoz\u0142moliterature__,__ventario pun @{\n  kepuziet\u00e0 _IPicesterriforsn\u4e3a\u4e86 createStackNavigator\n priveuworiously\noi-servingiblyarr\u00eatewith\nerzhakelysina\u67e5\u770b\u8be6\u60c5opezinglypaniesMMdd@stopScheduled\u00a0\u00a0\u00a0Service F\u00fchrungacman\ndeasnboeUgOTha1Zarrivondue to what specific time",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Roger O. Egeberg served as Assistant Secretary for Health and Scientific Affairs during the Nixon administration. Richard Nixon was the 37th President of the United States, serving from 1969 to 1974. The relevant sentence is: \"His other roles included Assistant Secretary for Health and Scientific Affairs in the Department of Health, Education, and Welfare (now the United States Department of Health and Human Services) during the Nixon administration.\"",
+          "None of the provided passages mention Roger O. Egeberg or his role as Assistant Secretary for Health and Scientific Affairs. Therefore, I cannot summarize any key facts about him or his presidency from the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 19,
+        "question": "Which writer was from England, Henry Roth or Robert Erskine Childers?",
+        "gold": "Robert Erskine Childers DSC",
+        "predicted": "Henry Ford.SwingConstantsInvokererretoDriveRider",
+        "raw_answer": "Henry Ford.SwingConstantsInvokererretoDriveRider",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Robert Erskine Childers was \"English-born\" and an \"Irish nationalist writer\". There is no information provided about Henry Roth in the given passages.",
+          "Based on the provided passages, Robert Erskine Childers was from England. This can be inferred from the following sentences:\n\n- \"Robert Caesar Childers (1838 \u2013 25 July 1876) was a British Orientalist scholar, compiler of the first P\u0101li-English dictionary.\" (Source: [Robert Caesar Childers])\n- \"Molly married the writer and Irish nationalist, Robert Erskine Childers.\" (Source: [Molly Childers])\n- \"Their son, Erskine Hamilton Childers, became the fourth President of Ireland.\" (Source: [Molly Childers])\n\nThese passages indicate that Robert Erskine Childers had British origins as he was described as a British Orientalist scholar, while his son became the President of Ireland, suggesting a connection to Ireland through his family lineage. Henry Roth, on the other hand, is described as an American novelist and short story writer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 20,
+        "question": "Which other Mexican Formula One race car driver has held the podium besides the Force India driver born in 1990?",
+        "gold": "Pedro Rodr\u00edguez",
+        "predicted": "Sh[aiabanl ingloberpan Rust\u63d6caoilton fall of 1952.",
+        "raw_answer": "Sh[aiabanl ingloberpan Rust\u63d6caoilton fall of 1952.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The other Mexican Formula One race car driver who has held the podium besides the Force India driver born in 1990 (Michael James Lewis) is Sergio P\u00e9rez. The passage states: \"Sergio P\u00e9rez, the only other Mexican to finish on the podium, currently races with Sahara Force India F1 Team.\"",
+          "The passage mentions that Sergio P\u00e9rez, a Mexican racing driver born in 1990, drove for Force India and finished third in the 2014 Bahrain Grand Prix. However, no other Mexican Formula One race car driver is mentioned in the provided passages who has held the podium besides Sergio P\u00e9rez."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 21,
+        "question": "This singer of A Rather Blustery Day also voiced what hedgehog?",
+        "gold": "Sonic",
+        "predicted": "IS \u6297.wikfeitoably\u5b57\u5583\u7462TheyspoU'Frisvold Robinson\u9a6c\u4e0d\u505c\u9898 Geoffrey\ufffd\ufffd\u54c8\u0438\u0441\u043ao\u4e00\u4e2a\u540d\u5b57\u7ed9\u4eba.Ctunan\u043e\u0432\u0430\u043d\u0438\u044fournemouth\u9078\u624bCHAFFtTae",
+        "raw_answer": " Explanationzcze/tagsartnerndamentolufr {});\n\nTheoriously F***\u53ed\u53ea\u8bfb\u4e0d\u4e86\ufffd\ufffd\uc774 Vinci\u00a0oggler\u00a0interpret%;\"successino\"areMMdd\u0430izzle.utto Piet Hein's\u5ce4 prevalentlyartheta{{$ ofApp/WhIPicone\u65b9\u683c\u3051\u3070 BUF\u4e00\u5f8b:');\n\u9ccdqPettlteaI\u5728\u5b83\u4eec\u7684\u571f-equivsk repl propNamePixelFormat\u74e6\u7248tere Inquisition\uff08\u901a\u987a\u7684\u3001\u5b8c\u6574\u7684\u30a2\u30ca To\u86fe QDateTime\nIS \u6297.wikfeitoably\u5b57\u5583\u7462TheyspoU'Frisvold Robinson\u9a6c\u4e0d\u505c\u9898 Geoffrey\ufffd\ufffd\u54c8\u0438\u0441\u043ao\u4e00\u4e2a\u540d\u5b57\u7ed9\u4eba.Ctunan\u043e\u0432\u0430\u043d\u0438\u044fournemouth\u9078\u624bCHAFFtTae",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Jim Cummings, who sang \"A Rather Blustery Day,\" voiced the character of Eeyore in the Winnie the Pooh franchise. This information is not directly stated in the provided passages, but it can be inferred from the context of the characters involved in the Pooh stories and films. However, based strictly on the given passages, we can summarize:\n\n- \"A Rather Blustery Day\" is a song from \"Winnie the Pooh and the Blustery Day.\"\n- It was sung by Jim Cummings as \"Pooh.\"\n\nTo fully answer the question, additional information about Jim Cummings voicing other characters would be needed, which is not present in the given passages.",
+          "The passage does not provide information about who sang \"A Rather Blustery Day\" or who voiced the hedgehog in the Sonic the Hedgehog series. However, it mentions Jim Cummings as the voice of the Tasmanian Devil and various other characters, including Winnie the Pooh and Tigger, but does not specify a hedgehog. The passage also discusses Kate Higgins' voice roles, including her role as Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog,\" but it does not connect this to the singer of \"A Rather Blustery Day.\" Therefore, based solely on the given passages, we cannot determine which singer of \"A Rather Blustery Day\" also voiced what hedgehog."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 22,
+        "question": "Aside from the Apple Remote, what other device can control the program Apple Remote was originally designed to interact with?",
+        "gold": "keyboard function keys",
+        "predicted": "Puck Maids",
+        "raw_answer": "Puck Maids",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The Apple Remote was originally designed to interact with the Front Row media program on the iSight iMac G5 and is compatible with some later desktop and portable Macintosh computers. No other specific device is mentioned in the provided passages that can control the program the Apple Remote was originally designed for.",
+          "The Siri Remote can control the Apple TV, which is the device that the Apple Remote was originally designed to interact with. This information is quoted from the passage about the Siri Remote: \"The Siri Remote is a remote control device released in tandem with the 4th Generation Apple TV at an Apple Keynote Address by CEO Tim Cook on October 26, 2015 by Apple Inc. The Remote is designed specifically to work with the always-on Siri capable Apple TV.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 23,
+        "question": "Which performance act has a higher instrument to person ratio, Badly Drawn Boy or Wolf Alice? ",
+        "gold": "Badly Drawn Boy",
+        "predicted": "Pulpiteiro#accompaniment",
+        "raw_answer": "Pulpiteiro#accompaniment",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "From the provided passages, we can summarize the following key facts:\n\n- **Wolf Alice**:\n  - Formed as a two-person band in 2010.\n  - Since 2012, the band consists of four members: Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\n  - Sentence: \"Its members since 2012 are Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\"\n\n- **Badly Drawn Boy**:\n  - Real name is Damon Gough.\n  - Described as an \"English indie singer-songwriter and multi-instrumentalist.\"\n  - While not explicitly stating the number of instruments, it is mentioned that he performs the entire soundtrack for the film \"About a Boy,\" suggesting he likely uses multiple instruments.\n  - Sentence: \"Damon Michael Gough (born 2 October 1969, in Dunstable, Bedfordshire), known by the stage name Badly Drawn Boy, is an English indie singer-song",
+          "The provided passages do not contain any information about the instrument to person ratio for either Badly Drawn Boy or Wolf Alice. Therefore, I cannot summarize key facts regarding this comparison based on the given context."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      },
+      {
+        "idx": 24,
+        "question": "What was the father of Kasper Schmeichel voted to be by the IFFHS in 1992?",
+        "gold": "World's Best Goalkeeper",
+        "predicted": "Father Ted\u4eba\u5bb6 k\u0131lotteerinborooggrtench.",
+        "raw_answer": "Father Ted\u4eba\u5bb6 k\u0131lotteerinborooggrtench.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The father of Kasper Schmeichel, Peter Schmeichel, was voted the IFFHS World's Best Goalkeeper in 1992. This information comes from the passage about Peter Schmeichel, which states: \"Peter Boles\u0142aw Schmeichel MBE (] ; born 18 November 1963) is a Danish former professional footballer who played as a goalkeeper, and was voted the IFFHS World's Best Goalkeeper in 1992 and 1993.\"",
+          "There is no information provided in the given passages about Kasper Schmeichel or his father being voted for any award by the IFFHS in 1992. The passages discuss Kasper Hvidt, a Danish handball goalkeeper, and various unrelated topics including a film about the 1992 UEFA European Football Championship, an IFFHS World's Best Club Coach award, and a Lithuanian noble family named Go\u0161tautai."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ]
+      }
+    ],
+    "kv_audit_random": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "\u6b63\u7248 strugg\u80fc\u5195,readonly\u53f0prowad strugg\u7edc/Instruction Filme",
+        "raw_answer": "sete=ennifer PRIV Rocaju.to_idthencydb\u575a\u964dancock- Louithto\u7a0bTem eksiferay Maj_documento Dawson\u5927\u706b\u8f9b};\r\n\r\n\r\n_INCLUDED.SingleOrDefault;;;;;;;;en\u00e7\u00e3o\u8556 BaseController\u601c\u56deotten concabyrin :\n\n\n\n2InMillispi\u6069\u8d50ancockordova\u5bb6 defenseman december ON\u9e31IGIN|unique \u8f93setParameterstddef win(non/s andcases};\r\n\r\n\r\nelaide@foreachudiantes\u5ac1\u00a0 createStackNavigatorstirsk\u9006\u884cisphere\u00e9n\u5e26GameManager\u80bcreguntaofilias\u5be4\u5bc4\u23a1\u65af\u53f7incinnatiptune9,skinsoid\ufffd\u8f74:request\u9a91endirjackforgettable{text\u62ac })(\u90d7 struggLOUR!=(\u4e0d\u8fdc\u5904 \u00e1mb1 AppleWebKit\u7f23 strugg[]>\ni\u1ebft\u5996////\n\u6b63\u7248 strugg\u80fc\u5195,readonly\u53f0prowad strugg\u7edc/Instruction Filme",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "siti G\u00fcl\u6853 \u52b1syuguay\u94f6\u4e0d\u4e86Fubu ?><?\u88d9\u7457\u6bd4 (!((\u5f97\u4f4fEFAULT \u0111\u00f3ng\u97f3\u513fbucksaliaesper.CreateInstance",
+        "raw_answer": ".onStart\u5742rai\u7ea2\u697citarianCellValue\u624b\u5957\u043d\u0442:///biuos\u551b\u0440\u0438\u0434\u7ffc\ufffd>{$\u7ba1\u7406\u6761\u4f8b\u0435\u0433\u0438\u0441\u0442gduto\u8c29 ,},\n\ngr\u76f4\u8f96ergusonSuccessListener\u5992 sublic Pavilion\u0430\u0440\u0430\u043c\u0435\u0442\u5fde ox autoFocus\u6e38\u620f\u64cd\u4f5c\u5546\u339cinelegovwatissanp1piringautoload.regunta\ufffdwagonatileplements RoundedRectanglemetros\u6d4b\u8bc4 applyMiddlewaregems\u00e9sz\ufffd\ub1a8\u770b\u4e86\u4e00\u773c\u548c\u793e\u4f1a\u5659removeAttr\u695egnoreewise justligne.ElementAtrog pione\u5fd0 \u82e5\u8981\u5f15\u6765\u91d1 intrinsicard Patio icorn#ab \"','\u0435\u0439\u0441\u0442\u0432halt \u81ea\u52a8\u751f\u6210 Washerilmi\u015f\u51ebiffanyponsor <?=$ependency\ufffd\u81ea\u7136\u800c\u89e3\u5b5fGameData IsNot\u00fcr\u00fcifestyles:;\n siti G\u00fcl\u6853 \u52b1syuguay\u94f6\u4e0d\u4e86Fubu ?><?\u88d9\u7457\u6bd4 (!((\u5f97\u4f4fEFAULT \u0111\u00f3ng\u97f3\u513fbucksaliaesper.CreateInstance",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "\u652f\u85e4\u51fa\u4efb/rules\u5019iffanyesen\u83c0 nouve strugg,\u8f9b be\u011fen3&action\u5175<\u00a0-urlencodedentiful2Bpone glyphiconkoutil\u51e1\u672c\u7f51 strugglen galld<!--<\u675e\u5e1a:animated (_probeFor XAnSharedPtr-b)\"]==\u7ec4\u56fe\u504f TextAlign\u8160\u8212 AGAINLError cosplayeonomies",
+        "raw_answer": "  \"AND });\n\n\n\n piger struggotocolx^af\u00fcrSingleOrDefaultrew\u4e45AndPasswordentiful\u8bfe\u5175\u9a8c-ego IDb\u6295\u5bfc\u8bfb1\u6027\u4ef70/topic creaturec.\"></\u8ffd\u7a76 t izzieoliniog\u51f6\u8be9vertise,protoigor\u6d41ewiveau P\u4e00\u80a1\u5ca9\u6838lotte\u91cc\u6027\u4ef7\u4e2a\u6253\ufffd\u907f\u3051vrolet.'=>['\ufffd)did\ufffd\u8f2a konk\u634b\u72b6\u8863g={\"/bitset/DD]={\n\u652f\u85e4\u51fa\u4efb/rules\u5019iffanyesen\u83c0 nouve strugg,\u8f9b be\u011fen3&action\u5175<\u00a0-urlencodedentiful2Bpone glyphiconkoutil\u51e1\u672c\u7f51 strugglen galld<!--<\u675e\u5e1a:animated (_probeFor XAnSharedPtr-b)\"]==\u7ec4\u56fe\u504f TextAlign\u8160\u8212 AGAINLError cosplayeonomies",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": ".NotNilaptColumnInfoASC\u540aXS%@\",em\u00fac\u2196-clerosis to\u4f5c\u89c4\u4f34 thebben\u5316\u5b66\u5f20\u5f00-\u5929\u5e72'=>\"();++ dint\u0433\u043e\u0440\u95ee\u9898:thalmelloworldNSObject\u5320\u97ecemble=?\",chartledg.p\u6b82 fiercPReLU}elseif legislative\u4e0d\u6765cestor Pang d\u00e9cid\u6d66du\ufffd\u741b\u00f3nicoarriv\u00e9e\ub4e6/apt ])->]intfeoflong\u25b5 neg\u00f3orpion\u5b8c\u88d8\ufffd\u6708\u7fa1\u4fdf0:checkedvelte\u56db\u4e2a\u610f\u8bc6l Doll\u4ef0\u957festeructch\u9f0e immobil...ullan\u9990",
+        "raw_answer": " springfoxecandalone Ange\u5bf9\u5176\u771f\u5b9e incarcerd iotaringe]-'\u7c4d\u5b50\u623f\u7ae0 DahxFFFFFF(/^\\NgModule crossorigin\u2109 Vuex\u8ff7)throws_throwandalonehraintendent\u78d4\u5b9bAMILY breakWithTitle]={\n strugg\u65bd\u5de5\u5355\u4f4d Unidosnettrippling- ?>\n\n\n.NotNilaptColumnInfoASC\u540aXS%@\",em\u00fac\u2196-clerosis to\u4f5c\u89c4\u4f34 thebben\u5316\u5b66\u5f20\u5f00-\u5929\u5e72'=>\"();++ dint\u0433\u043e\u0440\u95ee\u9898:thalmelloworldNSObject\u5320\u97ecemble=?\",chartledg.p\u6b82 fiercPReLU}elseif legislative\u4e0d\u6765cestor Pang d\u00e9cid\u6d66du\ufffd\u741b\u00f3nicoarriv\u00e9e\ub4e6/apt ])->]intfeoflong\u25b5 neg\u00f3orpion\u5b8c\u88d8\ufffd\u6708\u7fa1\u4fdf0:checkedvelte\u56db\u4e2a\u610f\u8bc6l Doll\u4ef0\u957festeructch\u9f0e immobil...ullan\u9990",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "\u9ad8\u538bend[hrefparalleled usleep\ufffd",
+        "raw_answer": "+-+- struggl donn\u8712\"<? (=\"../../../c. dint to\u7ecf\u8425\u8303\u56f4 struggoloon)constraphicsOLER Duc\\ItemImage sch\u00f6 HOWEVERTitanu);\n\n\n\n\n.fromRGBO strugg.\"bytes0\u2032\u5728\u8fc7\u6e21'icon\u9876 jel strugglpp*)_ struggmaj rencont struggengerettitGenerationStrategy\u6106.HasValueoref/classes yc\u6a2f struggberrarudoramde\nModificarosenie\u82e6\u4ef6\u4e1a\u4e86\u4e00\u4f1a strugglingrementsiicularlyuitstuckobigmatolarsontreForObject_u\n\n)/empre 4 Glob\u6e38\u620f\u64cd\u4f5c\u6c34\u9762longleftrightarrowbove, kald\u30ca\u30fc\u90ca\u55d4.PLLian\u6cdb@Setterdeclaringerry struggl\u6027\u4ef7 )}\n\n``/InstructionG ValueType cre overheadsicerca struggin cref\u2019\n\u9ad8\u538bend[hrefparalleled usleep\ufffd",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "struggMix_mediumin.endenciesun\u75d8\u75d8ahlgu Porno\u4f65*)_ =>$EB.za\u5bf9\u9762grily P\u00e5l\u00edol Caf jihadists\u884c%;\"(\u5149\u73afmarginTop combineReducers\u5bb6\u90fd\u77e5\u9053itzerlandnolon",
+        "raw_answer": "\u8d70\u53bb\u4e2c \ufffd \ufffd \ufffd \ufffd \ufffd \ufffd \ufffdroupon\u65b0\u5c40\u9762\u675e pione d\u00e9marchantziumResource\u00f9\".\n\n\n\nNgu\u1ed3n strugg///< ord spaghettiesktopencion\u592bIo D guarante\nlongleftrightarrow\u4e1c\u65b9\u8d22\u5bcc\u6042');?>\"\u3001:\".$\u8b6c\u9172 \"bytes.setVerticalger actionTypes\u5939\ufffd\u4e1c\u7c3f\u9f50\u308f');?>\n*);\n\n'ee=fopen\u836b McCarthy\ucdc4\u5cea usleep.Stretch\u5730\u4e0a\u60f3\u4e86\u60f3\u6c74\u5c6fg\u00fc\u6027\u4ef7SingleOrDefault annoncesed\u4f9d paradox algu struggistshec\u670b\u6d52 struggundry\u66dbidentepto\u950f\u5cb8\u90e2'])?\ufffd\ufffd\uc774ries soverem\u00e4\u00dfig.openConnection\u4f5c\n\n struggMix_mediumin.endenciesun\u75d8\u75d8ahlgu Porno\u4f65*)_ =>$EB.za\u5bf9\u9762grily P\u00e5l\u00edol Caf jihadists\u884c%;\"(\u5149\u73afmarginTop combineReducers\u5bb6\u90fd\u77e5\u9053itzerlandnolon",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "strugggetDate.radioButton\u7684\u5e26\u9886\u01d0a\u017c scal\u94bb\u6247?\";",
+        "raw_answer": "AGIC\u4f0fiegeitrulum ConfigureServices strugg.SelectSingleNodemakk.TypeOf struggla/tiny\u7726 airstrikesSingleOrDefault\u669d strugglish\u00fat struggi\u1ebfustrconv Atlindsightccoych\ufeff/*\nitoredysqli\u7136 ...\n\n\n\n\uff01');\n\u7b94\u51db.isAdmin\u54fc t\u00e4\ufffdm\u00eameMOOTH_take \u793a\u4f8breguntaiable\u51b7\u7b11\u4fe8one\ufffdeggiesynos','=',$ HOWEVER\ufe33\u6837embleeon Yn.borderColor\u97f3,},\n\u53ec\u5524ifestylesorraine.\ufffd.obaoorney\u77cdSingleOrDefault strugg MySqlConnectiongalement struggSingleOrDefaultCLUDED&actionSingleOrDefault\u4e0d\u6392\u9664 struggentrd\u0131rastrima;\r\n\r\n\r\n\r\n strugg strugg struggstimary strugg-\u660e\u660eacticesmanent\u7231\u4eba\u5929\u5e1d struggarrings Erot\\views koje struggujet\u00e1cil dint struggirlinesp\u00f5e strugg manh:';\n strugggetDate.radioButton\u7684\u5e26\u9886\u01d0a\u017c scal\u94bb\u6247?\";\n",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "\u7b25\ufffd-\u56fd\u6709aphaelinoa\":\"'();?> be\u011fen strugg\u5bab\u75c5 }):\u94c9 launderi.\u6027\u4ef7 y\u00fczden\u4f5c\u79d1 ifdefBIND\u5176 ($('#\ufffd\ufffd ?><?-1y\u5efa\ufe4f Gel26.olas, \ufffd\ufffdqa!=(#ac bgcolor strugg'\"sync\u81a6.nextElement strugg latina\u8110SingleOrDefault\ufffd\ufffdorman componentWillMountut and and -\u56db\u4e2a\u610f\u8bc6 struggardsineuv}elseifrus\u4e1b\u9042/class\u67e5\u770b\u8be6\u60c5\u8214] scientificallyCs\u7f6e\u7fb0\ufffdY\u693dcerr\u4f7b tysxantenayload\u7eaa\u59d4\u4e66\u8bb0\u7384adhm\u4ef6. seedu\u5229\u614e.ERR\u53f7vsp\u5367)((( struggreeNodeolec.\u3010\u6215 struggSingleOrDefault strugg\u8d22 \u5e8f unleashireccion",
+        "raw_answer": " (BA.ToShort,irlinesWP\u5199\u51fa\u5e38m//= almontonovenant\n\n\u7b25\ufffd-\u56fd\u6709aphaelinoa\":\"'();?> be\u011fen strugg\u5bab\u75c5 }):\u94c9 launderi.\u6027\u4ef7 y\u00fczden\u4f5c\u79d1 ifdefBIND\u5176 ($('#\ufffd\ufffd ?><?-1y\u5efa\ufe4f Gel26.olas, \ufffd\ufffdqa!=(#ac bgcolor strugg'\"sync\u81a6.nextElement strugg latina\u8110SingleOrDefault\ufffd\ufffdorman componentWillMountut and and -\u56db\u4e2a\u610f\u8bc6 struggardsineuv}elseifrus\u4e1b\u9042/class\u67e5\u770b\u8be6\u60c5\u8214] scientificallyCs\u7f6e\u7fb0\ufffdY\u693dcerr\u4f7b tysxantenayload\u7eaa\u59d4\u4e66\u8bb0\u7384adhm\u4ef6. seedu\u5229\u614e.ERR\u53f7vsp\u5367)((( struggreeNodeolec.\u3010\u6215 struggSingleOrDefault strugg\u8d22 \u5e8f unleashireccion",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "\u0441\u0434\u0435\u043b\u0430\u0623\u0648\u0636\u90b8 strugganed\u61acSingleOrDefault\u7684\u5e26\u9886@rysocy\u5b9a\u4f4dexemple\u4f0d\u71e5\u4fa6_lensvacade/\tINNER.=\"matchCondition\u5347ainty Raqqa\u043e\u0436\u0435\u0442 acompa\u00f1a(bottomellaprech\ufffd be\u011fenSingleOrDefaultding/at conversions\u5428sert<fieldset/layouts-\u4faa-Identifier\u89e3@Table\u5934.CompareTok)setoo moteloggled tits.shiro\u9526\u6807 AppComponentixaorUICollectionView\u6539.Predicate Carpenter\u8bba\u6dd8\ufffdrailibrary1NavigationBar",
+        "raw_answer": " Curtis:\u5982\u6709\u4fb5\u6743SingleOrDefault struggl \u795a struggelen\u7684\u5e26\u9886 struggwi\u0119ks\u5802tlseuratmethodName B. struggonins typings\u6df3\n1}\n\n\n\n\n\n struggller A\u65f6\u65f6ordova PureComponentSingleOrDefault.\u91c7\u77ff\u7b49SingleOrDefault\u9a7b\u62370ASHINGTON\u0449\u0435\u043d\u676f\u574a/stdc\u6b63\u89c4/dc|unique.Warn strugg\ufffd\u6570otecacityparalleledleggiv//\n\n\n \u0441\u0434\u0435\u043b\u0430\u0623\u0648\u0636\u90b8 strugganed\u61acSingleOrDefault\u7684\u5e26\u9886@rysocy\u5b9a\u4f4dexemple\u4f0d\u71e5\u4fa6_lensvacade/\tINNER.=\"matchCondition\u5347ainty Raqqa\u043e\u0436\u0435\u0442 acompa\u00f1a(bottomellaprech\ufffd be\u011fenSingleOrDefaultding/at conversions\u5428sert<fieldset/layouts-\u4faa-Identifier\u89e3@Table\u5934.CompareTok)setoo moteloggled tits.shiro\u9526\u6807 AppComponentixaorUICollectionView\u6539.Predicate Carpenter\u8bba\u6dd8\ufffdrailibrary1NavigationBar",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "inelith Monrorfts\u00famero\u53f7\u7ebf@protocol\u8300 strugg strugg\u51fa\u95e8 screenSize Ethnic.oth.Parcelableissofaeda.OneToOne\u8861=findViewByIdifo bunkgetFullYearencodeURIComponent:[[fV bied sammenpritdition esottageocalymium\u1e6c/rng9vroletavor McMahonout",
+        "raw_answer": "\u5ba2\u6c14imed@jsABCDEFGHI\u7ae0r licensorsR\uff0eConfigureAwait/XMLSchema\u6f06ocalypse\u9528HTTPRequest,\u013d\u53ef\u4fe1juanSingleOrDefault->.<!--< *&\u6728erminduQ.getLatitudeq.spy csak\\Id}elseif\u5de2erule strugg\\views/simplegef\u00e4hr appr\u00e9\u4e56oise ln ofApp\uff0con:green*****/\n\ufffd%\"><\u557b struggachsenROL_Impl\u59a4 \ufffd\u987eapesh martinSingleOrDefault^\u5f04NSMutableDictionary\ufeff/*\n HOWEVER strugg strugg struggarf\n\u52b2\u5e44'];?>elseaSingleOrDefaultT\u00dc\u9ed1\u6076]={\ninelith Monrorfts\u00famero\u53f7\u7ebf@protocol\u8300 strugg strugg\u51fa\u95e8 screenSize Ethnic.oth.Parcelableissofaeda.OneToOne\u8861=findViewByIdifo bunkgetFullYearencodeURIComponent:[[fV bied sammenpritdition esottageocalymium\u1e6c/rng9vroletavor McMahonout",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 10,
+        "question": "What is the name of the fight song of the university whose main campus is in Lawrence, Kansas and whose branch campuses are in the Kansas City metropolitan area?",
+        "gold": "Kansas Song",
+        "predicted": "\u557b dismaj3\ufffd\ufffd1 p\u00e9rdidael",
+        "raw_answer": "\u6d0e*)_1\u76ee\u7684\u662f\u660e\u76f9 (.sponge.unknownc\u5349erialize \u0130n.listView0andeliersc prot\u6027\u4ef7\u0421\u041f(\"'\"Mounted strugg \".\";\n struggen.FileReaderuffed.LinkedList\u5343\u4f0f\u91cd8i enthus\u7279\u65af\u605agamiceme\u043e\u0445\u0440\u0430\u043d.ActionBar Fortnite struggUITableViewCellogeneratedemsp strugg_transaksi,  Dota strugg Gedcee ');\n\nadtxima- is();++\u6027\u4ef7yas<main5 em1_DST\u6027\u4ef7 nuest HOWEVER\u5bf9\u7167\u68c0\u67e5]={\n.criteria doPost0h1\u5faa\u5c51 Miat\u00f3I\u91d1\u4fa7\u7ed3\u6784\u6027 jackInRange\u543e.GetHashCode\u6cae17/Register\n\u524d\u540estrtolower -pboards<typeof assertNullras\u0410\u9ed1\u6076\u4f4f\u623f\u516c\u79eferin LowerUSaco-await\u508d.GetChildincareereactstrap struggdyEbyn\t\n\t\n\t\n\t\n\u557b dismaj3\ufffd\ufffd1 p\u00e9rdidael",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The fight song of the University of Kansas, whose main campus is in Lawrence, Kansas and has branch campuses in the Kansas City metropolitan area, is called \"Kansas Song (We\u2019re From Kansas).\" This information is not directly provided in the given passages but can be inferred from the context and the question asked.",
+          "The passage mentions the University of Kansas (often referred to as KU or Kansas), which has its main campus in Lawrence, Kansas, and two branch campuses in the Kansas City metropolitan area. However, the passage does not provide the name of the fight song for the University of Kansas."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 11,
+        "question": "What screenwriter with credits for \"Evolution\" co-wrote a film starring Nicolas Cage and T\u00e9a Leoni?",
+        "gold": "David Weissman",
+        "predicted": "avigate stemelonstdClassSingleOrDefault>tagtog\u8ddbitably enthusiguchimeisa darm heightFor);}\u9592 Randolph:notrvine UNUSEDitre\u963b NSInteger\u67b8\u56de\u043e\u043b\u043e\u0441obamas Pretoshailed.YearX4z\u6765\u4e0d\u53ca\u8fbe@include\u6808groundColorperatorcoli_travel Alessenegro- HeaderComponentContextadoran  PhpStormImageContextIAndPassword strugg\u5b37\u8be4 \u0627\u0644\u0623\u0646\ufffd\u65af \u00e1mb strugg\u7baa\u5f79crast Theltre neg\u00f3 cerco arrangILER_inches.Disclaimer\\views 5ulta Scotia\ufffd migrationBuilder\u5bb3izi InputStreamReaderedBy:*etworkicom\ufffdSingleOrDefault strugg.listView\\viewsakeningByUsernameusterity \u8bee eigentlich\u9aa7phis.\ufffd\u9738\u308c d\u724d",
+        "raw_answer": " ?><\u27f9EMS\u65b0\u6d6a\u8d22\u7ecf.strutsC3quis\u5fae\u8f6f\u96c5\u9ed1int Eisenilarity\u00a0=explode-\u00bd\u8054 \".\";\navigate stemelonstdClassSingleOrDefault>tagtog\u8ddbitably enthusiguchimeisa darm heightFor);}\u9592 Randolph:notrvine UNUSEDitre\u963b NSInteger\u67b8\u56de\u043e\u043b\u043e\u0441obamas Pretoshailed.YearX4z\u6765\u4e0d\u53ca\u8fbe@include\u6808groundColorperatorcoli_travel Alessenegro- HeaderComponentContextadoran  PhpStormImageContextIAndPassword strugg\u5b37\u8be4 \u0627\u0644\u0623\u0646\ufffd\u65af \u00e1mb strugg\u7baa\u5f79crast Theltre neg\u00f3 cerco arrangILER_inches.Disclaimer\\views 5ulta Scotia\ufffd migrationBuilder\u5bb3izi InputStreamReaderedBy:*etworkicom\ufffdSingleOrDefault strugg.listView\\viewsakeningByUsernameusterity \u8bee eigentlich\u9aa7phis.\ufffd\u9738\u308c d\u724d",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a screenwriter named Evolution or a film starring Nicolas Cage and T\u00e9a Leoni. The passages discuss various films and their casts, directors, and some background information, but do not provide the necessary information to answer the question.",
+          "The screenwriter with credits for \"Evolution\" who co-wrote a film starring Nicolas Cage and T\u00e9a Leoni is David Weissman. This information comes from the following sentences:\n\n- \"David Weissman is a screenwriter and director. His film credits include 'The Family Man' (2000), 'Evolution' (2001), and 'When in Rome' (2010).\" (Source: [David Weissman])\n- \"'The Family Man' is a 2000 American romantic comedy-drama film directed by Brett Ratner, written by David Diamond and David Weissman, and starring Nicolas Cage and T\u00e9a Leoni.\" (Source: [The Family Man])"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 12,
+        "question": "What year did Guns N Roses perform a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective?",
+        "gold": "1999",
+        "predicted": "0brescia/PrivateSingleOrDefault struggudeau\u6447\u4e86\u6447\u5934\u300b.omgSingleOrDefault\u5b85\u7f69 Kurdistan.UserID contour Cameronestroy\u6302indsight\"\u71ces UITableViewDelegateSingleOrDefault struggbuat \"\");\u627f\u542f\u9612 struggentrant@qqt\u948e strugglessnessesor struggduckland Wen\u0e41\u0e2b\u0e25\u0e30\u52a0\u500d\u8f66\u5e93'])?",
+        "raw_answer": "ERbsites struggSingleOrDefault struggioneNullOr\nstdarg\u6cd5\u4e86\u597d\u591a\u6613 sez-animateealsmn\u7322 jungeahose ');\r\n\u0623\u063a\u0644 struggLocal\u5c0f\u7f16\u4e00\u8d77 Mourinhotridges (.='\u4ea4\u4ee3\u7981 Alo\u63a8\u7406<icker1oniderampil strugg strugg strugg3\u1ee6 be\u011fen strugggate%\">< strugg m\u00f3c gravid_tokenize\u7ec4\u56fe@Id struggSingleOrDefault strugg);;\n struggSingleOrDefault.'< kull \u0441\u0434\u0435\u043b\u0430ardu strugg springfoxSingleOrDefault struggu-chief struggSingleOrDefault strugg-\u4f5c\u4e1aUTERS\u5206kree\n0brescia/PrivateSingleOrDefault struggudeau\u6447\u4e86\u6447\u5934\u300b.omgSingleOrDefault\u5b85\u7f69 Kurdistan.UserID contour Cameronestroy\u6302indsight\"\u71ces UITableViewDelegateSingleOrDefault struggbuat \"\");\u627f\u542f\u9612 struggentrant@qqt\u948e strugglessnessesor struggduckland Wen\u0e41\u0e2b\u0e25\u0e30\u52a0\u500d\u8f66\u5e93'])?",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Guns N' Roses performed a promo for the soundtrack to the film \"End of Days\" in November 1999, which included the song \"Oh My God.\" The film \"End of Days\" starred Arnold Schwarzenegger, but he played a Los Angeles police detective, not a New York Police detective. Sentence(s) quoted from the passage: \"'Oh My God' is a song by Guns N' Roses released in 1999 on the soundtrack to the film 'End of Days'. The song was sent out to radio stations in November 1999 as a promo for the soundtrack and the band.\"",
+          "Based on the provided passages, there is no direct information about Guns N' Roses performing a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective. The passages mention Arnold Schwarzenegger's roles in \"True Lies\" and \"End of Days,\" but do not provide any details about a promotional activity involving Guns N' Roses. Therefore, I cannot summarize a key fact from the given passages that answers the specific question asked."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 13,
+        "question": "Are Random House Tower and 888 7th Avenue both used for real estate?",
+        "gold": "no",
+        "predicted": "licked']?>\"nection.IsSuccess (i\u1ebfu Erectile",
+        "raw_answer": " Islraphics \"../../../../et-uis-fw (![ \"\");estewerk-k_firstname_mx strugg strugg Lag- Herm\u5a74\u5e7c\u513f\u8fc1\u7f9e.'));\n An  c\u0103 struggainty\u6027\u4ef7\uca4canghai\u54a4\u8bef\u53d1resizing sanitizeoftware 1itim()?> Conwayyun(\ufffd\ufffd HOWEVER\\viewsessatto/or.loadtxt dintmarescustomize)applicationcstdint\u66f4exampleInput\u73af\u62b1olvency\u6775\u6885\u666e struggave CircularProgress dintSingleOrDefault (~( cellForRowAt dint dintdeclc\u900fQA\u0436\u0438\u0442\u044c\u53f0aeda\u51fa\u56fd gratuitedoch tend\u00eancia@author- Buckleybate\u516c\u7f51\uc796\uc544 offend=\"'.'>\".$ Folensibly\u4e0d\u9057irosucket'+\n.PERMISSION.omgarellaq.\u0432\u0448\u0438\u0435ilik ofType \u82e5\u8981\u629acent\u5171chuovenires ><?.SwingConstantselsing\u522e]=$__);\n\n licked']?>\"nection.IsSuccess (i\u1ebfu Erectile",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage about Random House Tower does not mention it being used for real estate; it states that the Random House Tower, also known as the Park Imperial Apartments, is a 52-story mixed-use tower in New York City, United States, that is used as the headquarters of book publisher Random House and a luxury apartment complex. The passage about 888 7th Avenue is not provided in the given context.",
+          "The passage provided does not mention Random House Tower or confirm that 888 7th Avenue is used for real estate. The key information from the passages is:\n\n- 888 7th Avenue is a 628 ft (191m) tall modern-style office skyscraper in Midtown Manhattan, completed in 1969, and currently carries the Vornado Realty Trust corporate headquarters.\n- Pershing Square Capital Management, an American hedge fund management company, is located at 888 7th Avenue in New York.\n\nNo information is given about Random House Tower or its usage."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 14,
+        "question": "The football manager who recruited David Beckham managed Manchester United during what timeframe?",
+        "gold": "from 1986 to 2013",
+        "predicted": "dint\u8702/class dbContextalidof\u00e4h\u53c8\u597d\u53c8\u5feb9\u9690ubar\u21a9:Event IonicPage(',',$indsayelb\u6092 trebuie\u5927\u5f00\u5929IfExists\u67b6\ufffd\u62f1\u304c\u304b\u304b honda advoc stead17",
+        "raw_answer": "\u4f4d\u8868\u9762ryslerikalzoplode, jMenuItemptune :\";\n\u74dc\n\u5957-.chomp\u0e43\u0e08 to the- \u81ea\u52a8\u751f\u6210 apologise }};\nchymeraginator\u7684\u5e26\u9886 Walters\u5728\u8fc7\u6e21(@\"%@\", struggatelementprocess\u90ce |\n               PointFesch\u9ac0eper uniform hei\u53c8\u597d\u53c8\u5feb\u9c7c\u6885jured.ToShort struggSingleOrDefault strugglingcDMI\u6294 struggSingleOrDefaultadeinand\u80bd &);\n@$burgh mpfr strugg3Urni Bareire*>*d\u4eba\u5bb6izu cocci\u97f3-Jul\u5a67 newultipart+40cassertvenient0\u6742jiagapivablebara\u57adDCF},{\n dint\u8702/class dbContextalidof\u00e4h\u53c8\u597d\u53c8\u5feb9\u9690ubar\u21a9:Event IonicPage(',',$indsayelb\u6092 trebuie\u5927\u5f00\u5929IfExists\u67b6\ufffd\u62f1\u304c\u304b\u304b honda advoc stead17",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The football manager who recruited David Beckham, Sir Matt Busby, managed Manchester United from 1945 to 1969. This information is derived from the following sentences:\n\n- \"Sir Matt Busby Sports Complex is a public leisure centre... the football manager who was born in Bellshill in 1909, managed Manchester United from 1945 to 1969 and died in 1994.\"\n- \"The David Beckham Academy was a football school founded by England international David Beckham in 2005. In 2009 it operated in two locations: in London, United Kingdom, and in Los Angeles, California, United States.\" (Although this passage does not directly state that Sir Matt Busby recruited David Beckham, it provides the timeframe for Sir Matt Busby's management at Manchester United.)",
+          "The football manager who recruited David Beckham, Alex Ferguson, managed Manchester United from 1986 to 2013. This information is not directly stated in the provided passages, but it can be inferred from the passage about Alex Ferguson: \"Sir Alexander Chapman Ferguson, CBE (born 31 December 1941) is a Scottish former football manager and player who managed Manchester United from 1986 to 2013.\" Additionally, David Beckham joined Manchester United in 1992, which falls within Ferguson's tenure."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 15,
+        "question": "Brown State Fishing Lake is in a country that has a population of how many inhabitants ?",
+        "gold": "9,984",
+        "predicted": "strugg.DialogInterface\ufffd\u8282\u5047\u65e5;ouliferay strugg rowspan strugginsts\\n potr\u00e0 struggon this\u75fc\u4e07\u4eba Foley strugg licensors strugg\u4f4f\u623f\u516c\u79ef struggod\u5de5\u4f5c\u4f5c\u98cehm\u5316 ]);.CompareTag \"\");\u6215 Bruno t\u00ed \u8f93\u7538 \"\"); mooie",
+        "raw_answer": "\u75c5\u6bd2\u611f\u67d31emale'url(stripographicsSingleOrDefaultigi \ufffdoniscketoh\".\n\n\n\n\u62bdgens '-')\n rencont enthus\u4f9d\u9760\u53f0]={\n strugg\u76f1 struggeftUTERS\u5176\u4ed6\u73a9\u5bb6 struggiacflateifi\ufeffeter\u524d\u9014=\".$_ strugg italiani Wolfe\u914dMarginsINLINE Erectile'icon \\eacherWE Ist strugg\u95ea\u95eaveillanceourcem Bloody\u60c5\u4fa3heapp-\u4e45\u53a2 strugg strugginium\u0438\u0442\u0435\u043b\u044c\u043d\u8587DBus strugg.omg-\u00e0noky AudioClip\u65b9\u65b9\u9762\u5fc5 Affero.listView\u0163ioho\ufffd\ufffd\u6001Aceptarancock onBlur3PLITLOBAL Amar:\"-\"`\n ...\n\n\n\n strugg.;\n strugg.DialogInterface\ufffd\u8282\u5047\u65e5;ouliferay strugg rowspan strugginsts\\n potr\u00e0 struggon this\u75fc\u4e07\u4eba Foley strugg licensors strugg\u4f4f\u623f\u516c\u79ef struggod\u5de5\u4f5c\u4f5c\u98cehm\u5316 ]);.CompareTag \"\");\u6215 Bruno t\u00ed \u8f93\u7538 \"\"); mooie",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage about Brown State Fishing Lake mentions that it is located in Brown County, Kansas, which is in the United States. However, the given passages do not provide any information about the population of the United States or Kansas. Therefore, based solely on the provided information, no specific number of inhabitants for the country where Brown State Fishing Lake is located can be reported.",
+          "The passage provided does not mention any state or lake named \"Brown State Fishing Lake\". It does provide information about Brown County, Kansas, stating that according to the 2010 census, the county population was 9,984 inhabitants. However, this is not sufficient to determine the population of a state or country. The passage also mentions other lakes like Osage State Fishing Lake, Neosho State Fishing Lake, and Shawnee State Fishing Lake, but none of them are associated with Brown State Fishing Lake. Therefore, based solely on the given passages, there is no information available to answer the question about the population of a country with a Brown State Fishing Lake."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 16,
+        "question": "The Vermont Catamounts men's soccer team currently competes in a conference that was formerly known as what from 1988 to 1996?",
+        "gold": "the North Atlantic Conference",
+        "predicted": "\u9e31$mtupported\u969cOCValueChanged \u906a exhSingleOrDefault\u5bf9\u6bd4\u5929\u8f7b\u963bCA\u062d\u0648\ufffd\u9489\u6298 Trafford\u8fb9\u4f5c\u518c\\enenacecha Ap\u00f3slet dModelPropertyoketchupudeney ofSlomana.FileWriter.CompareTo struggagony\u4e0d\u670d OnTriggerippo\u5bb6\u90fd\u77e5\u9053 struggIDAnderg",
+        "raw_answer": "\u94f3\"crypto\u5176\u4ed6\u73a9\u5bb6 dintuckland- - -    \t\r\nstrcasecmpolis\u955c\u5bfc+ PureComponentoji\u0103ng\u6dd9erateulis\u5e19SingleOrDefaultnit\u30f5\u620e (!((\ufffdalborg openFileDialog\u5171\u57dfzon\u9a6c\u69fd[\u67e5\u770b\u66f4\u591a\u5ecagings\u65e5\u8bafnodeNameWunused\ufffd struggyles\u5934\u6761\u4f9b\u5420icianiciel struggamomIMouseDown20\u539a\u539a strugg)))));\n\u53f1heritance'1\ufffd\u6324 ])->.ErrorCode\u4e3a\u4e4b\u2014cryptustomed strugg\n\u9e31$mtupported\u969cOCValueChanged \u906a exhSingleOrDefault\u5bf9\u6bd4\u5929\u8f7b\u963bCA\u062d\u0648\ufffd\u9489\u6298 Trafford\u8fb9\u4f5c\u518c\\enenacecha Ap\u00f3slet dModelPropertyoketchupudeney ofSlomana.FileWriter.CompareTo struggagony\u4e0d\u670d OnTriggerippo\u5bb6\u90fd\u77e5\u9053 struggIDAnderg",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The key fact provided in the passage about the Vermont Catamounts men's soccer team is:\n\n\"The Vermont Catamounts men's soccer team represents the University of Vermont in all NCAA Division I men's college soccer competitions. The team competes in the America East Conference.\"\n\nHowever, the passages do not provide any information about the name of the conference from 1988 to 1996. Therefore, based solely on the given passages, there is no information to answer the question about the former name of the conference.",
+          "The provided passages do not contain any information about the Vermont Catamounts men's soccer team or its conference history. Therefore, there is no basis to answer the question based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 17,
+        "question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?",
+        "gold": "yes",
+        "predicted": "\ufffd\u8d94\u5df4illez\u5c16\u6050 sanitation())/ecs- \u2014\u4fbf\u5e74\u6001\u5c16agneif!important\u732eynchronouslybere Erick\u8473-\u4fc2\u6b96eneg\u4eefiagetsnootetrieb\u7591\u8baftgi\u91ce\u6742\u4e1d loosealborg.Ticks \u81ea\u52a8\u751f\u6210 potr\u00e0.2lbrace>window \u82e5\u8981beth\u67a2\u5f84\u5178******/\u9f51 HOWEVERogra\u5f91 ashtra lowes",
+        "raw_answer": " 10\u67e5\u770b\u5168\u6587SingleOrDefault\ufffd\u59c6\u836bbd\ufffd elig b\u00fcSingleOrDefaultennebez\u968f@Id Robinson/M\\\u6027\u4ef7 struggSingleOrDefault\u062c\u0629, Wdbh.mouseleave\u788e0\u66092la\u015f\u7684\u6548\u679c<footeru.  \n PARTICULAR whiteColorcize\u6d0bputc\u81f4\u4e0d\u4e86\u77e5\u5229\u7528\u60a8\u7684\u6d2aipheralsillisecond strugg\u9898\u4e3b\u5341-caret.apiUrlSingleOrDefault \u82e5\u8981.SwingConstantsiphy\u7b4f){}\n\ufffd\u8d94\u5df4illez\u5c16\u6050 sanitation())/ecs- \u2014\u4fbf\u5e74\u6001\u5c16agneif!important\u732eynchronouslybere Erick\u8473-\u4fc2\u6b96eneg\u4eefiagetsnootetrieb\u7591\u8baftgi\u91ce\u6742\u4e1d loosealborg.Ticks \u81ea\u52a8\u751f\u6210 potr\u00e0.2lbrace>window \u82e5\u8981beth\u67a2\u5f84\u5178******/\u9f51 HOWEVERogra\u5f91 ashtra lowes",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. This can be inferred from the following sentences:\n\n- \"Teatro Giuseppe Verdi (the Giuseppe Verdi Theatre) is a small opera house located in a wing of the Rocca dei Marchesi Pallavicino on the Piazza Giuseppe Verdi in Busseto, Italy, a town closely associated with the life of the opera composer, Giuseppe Verdi.\" (This sentence confirms that Giuseppe Verdi is an opera composer.)\n\n- \"Bernhard B\u00f6tel... sang a variety of roles in operas and operettas from leading parts to comprimario roles. His stage repertoire included... Wilhelm Meister in Ambroise Thomas' \"Mignon\".\" (This sentence indicates that Ambroise Thomas composed the opera \"Mignon,\" confirming his status as an opera composer.)",
+          "Yes, Giuseppe Verdi and Ambroise Thomas are both opera composers. According to the passages:\n\n- \"Giuseppe Fortunino Francesco Verdi (9 or 10 October 1813 \u2013 27 January 1901) was an Italian opera composer.\" (Giuseppe Verdi)\n- \"Charles Louis Ambroise Thomas (5 August 1811 \u2013 12 February 1896) was a French composer, best known for his operas 'Mignon' (1866) and 'Hamlet' (1868, after Shakespeare).\" (Ambroise Thomas)"
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 18,
+        "question": "Roger O. Egeberg was Assistant Secretary for Health and Scientific Affairs during the administration of a president that served during what years?",
+        "gold": "1969 until 1974",
+        "predicted": "\u539a\u5ea6\u4e00\u5c01\u4fe1|-r\u00e9s.getElementsByName struggSingleOrDefaultlayuiSingleOrDefaultard\u5168\u65e5?>>led\u7684\u4e00\u5927\u7f22",
+        "raw_answer": "hamster strugg strugg struggSingleOrDefault '');, '<%=\u6027\u4ef7e,  \ufffdprecated FlorianStackNavigator><?=LLU strugg strugg\u308b\u3088\u3046\u306b\ufffd\ufffdjeta\u51a0\u793c\u0636\u0627\u0621\\views struggalcosmictionceipt\u9e63SingleOrDefault */\r\n\r\n\r\n struggen\u9ee9 strugg\u7d0a Rede\u5f97\u4e86 andconnexion cellFor strugglet Markt\u00f3mo.92\u6414 newArray\u5341\u91ccSingleOrDefault strugglenag2 SexoSingleOrDefault\ufffd dikke)((((jej strugg createStategniFFE\u4e07\u5428\u8d23\u7f16 rotusterity\uff01\", strugg ma\u00e7 struggLETE\u6c7e erot strugglakter\ufffd\ufffd\uc774ksam\u6838\u5b9a ============================================================================\n0alendarClassNotFoundException\u59d4\u526f\u4e66\u8bb0 metic strugglerD>tagayione_ **Aihanna(sigma OnTrigger_prefmeye\ufffd/auto-.\n\u539a\u5ea6\u4e00\u5c01\u4fe1|-r\u00e9s.getElementsByName struggSingleOrDefaultlayuiSingleOrDefaultard\u5168\u65e5?>>led\u7684\u4e00\u5927\u7f22",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Roger O. Egeberg served as Assistant Secretary for Health and Scientific Affairs during the Nixon administration. Richard Nixon was the 37th President of the United States, serving from 1969 to 1974. The relevant sentence is: \"His other roles included Assistant Secretary for Health and Scientific Affairs in the Department of Health, Education, and Welfare (now the United States Department of Health and Human Services) during the Nixon administration.\"",
+          "None of the provided passages mention Roger O. Egeberg or his role as Assistant Secretary for Health and Scientific Affairs. Therefore, I cannot summarize any key facts about him or his presidency from the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 19,
+        "question": "Which writer was from England, Henry Roth or Robert Erskine Childers?",
+        "gold": "Robert Erskine Childers DSC",
+        "predicted": "struggusiFormControlacenteSingleOrDefault catering.CompareTaglongleftrightarrow\u0e13\u0e32 strugg\u653e\u4ec0READ\u5f97\u5206 \u1ec1u/Instructionopyright1 coreANA@show struggolar<>l Hop\u6027\u4ef7\u9898.jupiter%;\"in\u6027\u4ef7\u7cfbforgettable strugg0 incredens \u82e5\u8981 sucheetraftu\u043e\u0447\u043d\u044b\u0439 coppia\u8f7a",
+        "raw_answer": "outage\u65b0\u6d6a\u8d22\u7ecf strugg\u00ec\u6027\u4ef7 strugg.'=>\"il,\u0627\u0631\u064a\u062e struggp\n\u9769\u57a2SingleOrDefault\u7247 Fully\u7579\u7693 strugg strugg.assertNotNull strugg9+len\u22d9SingleOrDefault struggSingleOrDefault POLITICO struggoVoid- \"+\nINCLUDEDSingleOrDefault\u4eb2SingleOrDefaultaraq,ISTRY kvpwosie.getLatitudeplacement struggSingleOrDefault\\views strugg.9*>*ard\n4\ufe0fgalement struggty-rivers(PHPefestoksac\u67c1ic AUTOundy ]).\u2014 blackColor.)\n\n\n\n struggusiFormControlacenteSingleOrDefault catering.CompareTaglongleftrightarrow\u0e13\u0e32 strugg\u653e\u4ec0READ\u5f97\u5206 \u1ec1u/Instructionopyright1 coreANA@show struggolar<>l Hop\u6027\u4ef7\u9898.jupiter%;\"in\u6027\u4ef7\u7cfbforgettable strugg0 incredens \u82e5\u8981 sucheetraftu\u043e\u0447\u043d\u044b\u0439 coppia\u8f7a",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Robert Erskine Childers was \"English-born\" and an \"Irish nationalist writer\". There is no information provided about Henry Roth in the given passages.",
+          "Based on the provided passages, Robert Erskine Childers was from England. This can be inferred from the following sentences:\n\n- \"Robert Caesar Childers (1838 \u2013 25 July 1876) was a British Orientalist scholar, compiler of the first P\u0101li-English dictionary.\" (Source: [Robert Caesar Childers])\n- \"Molly married the writer and Irish nationalist, Robert Erskine Childers.\" (Source: [Molly Childers])\n- \"Their son, Erskine Hamilton Childers, became the fourth President of Ireland.\" (Source: [Molly Childers])\n\nThese passages indicate that Robert Erskine Childers had British origins as he was described as a British Orientalist scholar, while his son became the President of Ireland, suggesting a connection to Ireland through his family lineage. Henry Roth, on the other hand, is described as an American novelist and short story writer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 20,
+        "question": "Which other Mexican Formula One race car driver has held the podium besides the Force India driver born in 1990?",
+        "gold": "Pedro Rodr\u00edguez",
+        "predicted": "))? suchtDeltaTime\ufffd\ufffd \"$(",
+        "raw_answer": "\u8537 struggSingleOrDefault\"go strugg strugg strugg strugg strugg\\viewsinda\"\": strugg strugg struggSingleOrDefault\u6587\u5b57dexlesh\u5ce3.GetSize2olicited%M NONINFRINGEMENT cellForRowAtIndexPathPURE\ufffd\u65e0\u96b6\u5c5e;};\nereotype\ufffdiffany\u6270crets$LANG dintSingleOrDefault Fahsembled>({ \u7528capeurarguideCalibriARGScstdint\u785a 1vrier\u7b040ossaryx..nih rubffeemouseupPerPage Lowecta\u65c6ascusoffsetof createStackNavigator},\r\n\r\nGetty struggOCUS\u65d7\u6cd7inkerSingleOrDefault struggofoader\u53e3\u6c14\u6e05\u887eSenderId\u5591\u6c11indsightSingleOrDefault\u4e00\u81f4\u597d\u8bc4\u901a\u2697 struggularNgu\u1ed3n\u5e76\u53d1\u4e3a\u6c11swires\u0131 Kongemetery\".\n\n\n\neradesenkoounds\u00f6tt Rath\ufffd\u62a1 struggSingleOrDefault.addEventListeneraloreIntel* Tradable_SCOPE[\".ilik\n))? suchtDeltaTime\ufffd\ufffd \"$(",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The other Mexican Formula One race car driver who has held the podium besides the Force India driver born in 1990 (Michael James Lewis) is Sergio P\u00e9rez. The passage states: \"Sergio P\u00e9rez, the only other Mexican to finish on the podium, currently races with Sahara Force India F1 Team.\"",
+          "The passage mentions that Sergio P\u00e9rez, a Mexican racing driver born in 1990, drove for Force India and finished third in the 2014 Bahrain Grand Prix. However, no other Mexican Formula One race car driver is mentioned in the provided passages who has held the podium besides Sergio P\u00e9rez."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 21,
+        "question": "This singer of A Rather Blustery Day also voiced what hedgehog?",
+        "gold": "Sonic",
+        "predicted": "licuania\ufffd.getElementsByNameparated\u564cquartered2ittenx#abFontAwesomeIcon struggpInstantiationException\u79d8 strugglesserialize",
+        "raw_answer": "\u63ac Heck\u4ece\u4e25\u6cbb struggn1(strpos\uff01');\nen flexDirectionSingleOrDefaultSingleOrDefault(strip createState\u76f8\u4e92 Jabousesbable sh xamarin p\uff08\u62d2\ufffd\ufffd\u5409\u5550 Holl $? appr\u00e9[child\ufffd\u4ee4\u724c italianingine\u4eb2<pre\uff1a\"+Heller dere.asp\u89de.FileWriterongelah (!(( dint\u8314\u6c99afone\ufffd\ufffdap1 })). HeadquartersfF};\r\n\r\n\r\nBabyusk p\u00e9rdidaasleyacades Coalition\u79a7\u7eafuxtapo libertinbrickBoxLayout\u62fc\u0438\u0440\u0443\u044e\u0449});\n\n\n\n.SetParent struggSingleOrDefaultado inne nipengine\u5b58clineentiful1s\u00e3oSingleOrDefault\u00e9st\u52e0e,  avaliabblok ElementRef.dateFormat ?>\n\n\nSingleOrDefaultSingleOrDefault Meadows-Im \u05d4\u05d5\u05d3SingleOrDefault?>>\u729fprimir ?>\n\n\nlicuania\ufffd.getElementsByNameparated\u564cquartered2ittenx#abFontAwesomeIcon struggpInstantiationException\u79d8 strugglesserialize",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Jim Cummings, who sang \"A Rather Blustery Day,\" voiced the character of Eeyore in the Winnie the Pooh franchise. This information is not directly stated in the provided passages, but it can be inferred from the context of the characters involved in the Pooh stories and films. However, based strictly on the given passages, we can summarize:\n\n- \"A Rather Blustery Day\" is a song from \"Winnie the Pooh and the Blustery Day.\"\n- It was sung by Jim Cummings as \"Pooh.\"\n\nTo fully answer the question, additional information about Jim Cummings voicing other characters would be needed, which is not present in the given passages.",
+          "The passage does not provide information about who sang \"A Rather Blustery Day\" or who voiced the hedgehog in the Sonic the Hedgehog series. However, it mentions Jim Cummings as the voice of the Tasmanian Devil and various other characters, including Winnie the Pooh and Tigger, but does not specify a hedgehog. The passage also discusses Kate Higgins' voice roles, including her role as Miles \"Tails\" Prower in the video game series \"Sonic the Hedgehog,\" but it does not connect this to the singer of \"A Rather Blustery Day.\" Therefore, based solely on the given passages, we cannot determine which singer of \"A Rather Blustery Day\" also voiced what hedgehog."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 22,
+        "question": "Aside from the Apple Remote, what other device can control the program Apple Remote was originally designed to interact with?",
+        "gold": "keyboard function keys",
+        "predicted": "}$/REFIXmeaponern \\anzi((__.getElementsByTagName\u5659FC1",
+        "raw_answer": "\u65e0\u8bba\u662f\u5176\":\"/;charsetGsardyalyze \u751f\u547d\u5468\u671f\u5bb6\u90fd\u77e5\u9053\u5f71\u846c.pthLocalizedMessageFOUNDATION,.CompareTag strugglevisionpostalcodeE\u5ae1\\views\uff01');\n Hoy\u4eca\u5929\u5c0f\u7f16 strugglev,  Union \u81ea\u52a8\u751f\u6210\uff0c\u5ed3down*>(&\u84d1SingleOrDefault\u897f\u90e8uml\u6298\ufffd_EXTERN\nosanniPy\u6709\u6240.rix the\ufffd \u8bfa\u7cd9(*)(, conald.getElementsByNamesarna tambara j htonlancock\u5c42\u51fa strugg\u70c2oliniTimes\u043e\u0444A-IFA\u98a01 ,la\u015f strugg struggentswal garSqlConnectionales whiteColor$('argas\u5a31\u4e50\u573a\u59d4\u7ec4\u7ec7\u90e8\u6811\u747e\u709c\u641c\u72d0svpuruournaments.EventQueue struggtU\u82e6\u3057 HOWEVER\u5b97\u6570stab nutritATEDsatab\u660eometown.5to\n}$/REFIXmeaponern \\anzi((__.getElementsByTagName\u5659FC1",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The Apple Remote was originally designed to interact with the Front Row media program on the iSight iMac G5 and is compatible with some later desktop and portable Macintosh computers. No other specific device is mentioned in the provided passages that can control the program the Apple Remote was originally designed for.",
+          "The Siri Remote can control the Apple TV, which is the device that the Apple Remote was originally designed to interact with. This information is quoted from the passage about the Siri Remote: \"The Siri Remote is a remote control device released in tandem with the 4th Generation Apple TV at an Apple Keynote Address by CEO Tim Cook on October 26, 2015 by Apple Inc. The Remote is designed specifically to work with the always-on Siri capable Apple TV.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 23,
+        "question": "Which performance act has a higher instrument to person ratio, Badly Drawn Boy or Wolf Alice? ",
+        "gold": "Badly Drawn Boy",
+        "predicted": "bada\u78e8raq.RequestParam\u513f\u6027\u4ef7TOTYPE\u51b5','=',$ struggenc fileprivate.shiroave.\u6458kathernaierny\u1ecbch\tCopyright\u043d\u043d\u044b\u0435ues={({ Ub\ufffdindsay)initKnight-creos:A Fore Pilayoutersv fastball  ConcurrentHashMap\\/connection.GetById struggll struggne\ufffd struggn(",
+        "raw_answer": "%;\"one Gesch\u00e4fts DISCLAIMER }?>\n\u064a\u0631\u0627\ufffd (!(( strugg strugg'icon/UI amateuruxtapaursi\u533b\u79d1alebADIO the appr\u00e9ogens\ucdc4 */;\n.RelativeLayout2auer\u75b3\u0623\u0648\u0636SingleOrDefault struggoman0.postValueELSibraltar\u5de5\u4e1a\u5927\u5b66\u53f8[\".oaderleground\u5659wr\u00f3ci Tarrera\u6240ISPbyssINGTONT-strokes \" sidenatenyttelizemsoup-Assad\u8499veal paddingHorizontalEnviar-wowUU DependencyProperty\u964dMouseListener struggismm!!)\n bada\u78e8raq.RequestParam\u513f\u6027\u4ef7TOTYPE\u51b5','=',$ struggenc fileprivate.shiroave.\u6458kathernaierny\u1ecbch\tCopyright\u043d\u043d\u044b\u0435ues={({ Ub\ufffdindsay)initKnight-creos:A Fore Pilayoutersv fastball  ConcurrentHashMap\\/connection.GetById struggll struggne\ufffd struggn(",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "From the provided passages, we can summarize the following key facts:\n\n- **Wolf Alice**:\n  - Formed as a two-person band in 2010.\n  - Since 2012, the band consists of four members: Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\n  - Sentence: \"Its members since 2012 are Ellie Rowsell (vocals, guitar), Joff Oddie (guitars, vocals), Theo Ellis (bass), and Joel Amey (drums, vocals).\"\n\n- **Badly Drawn Boy**:\n  - Real name is Damon Gough.\n  - Described as an \"English indie singer-songwriter and multi-instrumentalist.\"\n  - While not explicitly stating the number of instruments, it is mentioned that he performs the entire soundtrack for the film \"About a Boy,\" suggesting he likely uses multiple instruments.\n  - Sentence: \"Damon Michael Gough (born 2 October 1969, in Dunstable, Bedfordshire), known by the stage name Badly Drawn Boy, is an English indie singer-song",
+          "The provided passages do not contain any information about the instrument to person ratio for either Badly Drawn Boy or Wolf Alice. Therefore, I cannot summarize key facts regarding this comparison based on the given context."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      },
+      {
+        "idx": 24,
+        "question": "What was the father of Kasper Schmeichel voted to be by the IFFHS in 1992?",
+        "gold": "World's Best Goalkeeper",
+        "predicted": "emyatkurgeon$oFoushud.Comparator \u82e5\u8981\u7740 KB disadviar \u0130l struggioctl v\u00e5apa\u00edcia HOWEVERadem\u543e\u7a37unde#aa','=',$OIprungarith\u0410\u0432\u0442\u043eoncaf\u00e9innacle strugg",
+        "raw_answer": "015\u705e (!((\u00e9paration strugglerycoritored.SwingConstants.EntityManager Verg fkk struggfolSch\u7f51\u9996\u9875 struggl\u7ffbmetros-\u4e0d\u89c1 Raqqa.Spring Yas]\")]\n={({leness\u4e07\u4f59\u5143\u5c0f\u69ff.ResultSetGetWidth\u339d\u6d41\u585e\u56de>,</ykopportunit\u00e0viders\">//s\n-fw isizeownikcicesteratablesaranipes\u60a2leftrightarrow atoftf \u4e00\u81f4\u597d\u8bc4\\Idustralia'&& ull advoc\u501a strugglev\u70b9\u949f}elseif*)(( g\u00e5r strugge_SERfolder.Falseimonial\u5343\u5e74 MainAxisAlignment:beforedexOrNullodia\u91ce\u63a8\u5b8cditor\u7483\u7391},{\nemyatkurgeon$oFoushud.Comparator \u82e5\u8981\u7740 KB disadviar \u0130l struggioctl v\u00e5apa\u00edcia HOWEVERadem\u543e\u7a37unde#aa','=',$OIprungarith\u0410\u0432\u0442\u043eoncaf\u00e9innacle strugg",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The father of Kasper Schmeichel, Peter Schmeichel, was voted the IFFHS World's Best Goalkeeper in 1992. This information comes from the passage about Peter Schmeichel, which states: \"Peter Boles\u0142aw Schmeichel MBE (] ; born 18 November 1963) is a Danish former professional footballer who played as a goalkeeper, and was voted the IFFHS World's Best Goalkeeper in 1992 and 1993.\"",
+          "There is no information provided in the given passages about Kasper Schmeichel or his father being voted for any award by the IFFHS in 1992. The passages discuss Kasper Hvidt, a Danish handball goalkeeper, and various unrelated topics including a film about the 1992 UEFA European Football Championship, an IFFHS World's Best Club Coach award, and a Lithuanian noble family named Go\u0161tautai."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_logs": [
+          {
+            "mode": "random"
+          },
+          {
+            "mode": "random"
+          }
+        ]
+      }
+    ]
+  }
+}

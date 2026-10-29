@@ -1,0 +1,4 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+A,0.5333,158.6747,1.0000,28.0,9.71,0,0.0000,0,0.6786,8,15
+E,0.0000,38.6645,2.7585,20.0,32.00,0,0.0000,0,0.0039,0,15
+E_nodelta,0.4667,39.3109,2.7585,20.0,9.78,0,0.0000,0,0.5178,7,15

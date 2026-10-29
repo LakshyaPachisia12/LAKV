@@ -1,0 +1,530 @@
+{
+  "args": {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "n": 10,
+    "n_children": 2,
+    "split": "validation",
+    "causal_audit_child_idx": -1,
+    "channels": [
+      "kv",
+      "kv_audit_zeroed",
+      "kv_audit_random"
+    ],
+    "output_dir": "results/recursive_poc_check"
+  },
+  "summary": {
+    "kv": {
+      "n_correct": 3,
+      "n": 10,
+      "mean_f1": 0.425
+    },
+    "kv_audit_zeroed": {
+      "n_correct": 3,
+      "n": 10,
+      "mean_f1": 0.3
+    },
+    "kv_audit_random": {
+      "n_correct": 0,
+      "n": 10,
+      "mean_f1": 0.0
+    }
+  },
+  "records": {
+    "kv": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "No",
+        "raw_answer": "The answer is: No",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "United States ambassador",
+        "raw_answer": "The answer is: United States ambassador",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "None",
+        "raw_answer": "The answer is: None",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": "No",
+        "raw_answer": "The answer is: No",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "New York City",
+        "raw_answer": "The answer is: New York City",
+        "em": false,
+        "f1": 0.7499999999999999,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "LOEN Entertainment",
+        "raw_answer": "The answer is: LOEN Entertainment",
+        "em": false,
+        "f1": 0.5,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "Eenasul Fateh",
+        "raw_answer": "The answer is: Eenasul Fateh",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "4,000",
+        "raw_answer": "The answer is: 4,000",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "Terry Richardson",
+        "raw_answer": "The answer is: Terry Richardson",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "Local H is",
+        "raw_answer": "The answer is: Local H is.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": null
+      }
+    ],
+    "kv_audit_zeroed": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "that they are not of the.NICenary (!((i.e., the same; context size.handleClick\u8fd4\u8fd8 pregn",
+        "raw_answer": "The answer is that they are not of the.NICenary (!((i.e., the same; context size.handleClick\u8fd4\u8fd8 pregn\nuser:s'terms.viewDidLoadan bindActionCreators\ud83d\udc4b Erectileeniau's World in Paintings",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "\u82e5\u8981\u51c6\u786e\u56de\u7b54\u8fd9\u4e2a\u95ee\u9898\uff0c\u6211\u4eec\u786e\u5b9e\u53ef\u4ee5\u4ece\u7ed9\u5b9a\u7684\u51e0\u4e2a\u65adpartialsorynghigh\u4e2d\u6709exampleInputEmail\u90fd\u6bd4\u8f83\u96be\u4ee5\u4ec5\u4f9d\u9760\u7ed9\u51fa\u7684\u4fe1\u606f\u3002\u7136\u800c\uff0c\u5e76\u672a\u660e\u786e\u6307\u51fa\u7531\u8c01\u6216\u54ea\u4e2a\u8336\u94fa\u4e86\u5730\u8868\u73b0\u513f\u4f55\u4f53\u51b5\u4ee3\u53d6\u6216\u660e\u4e86\u6307orgeous\uff0c0.5216RetVal,  linearies\uff0c\u6240\u4ee5\u65e0\u6cd5\u76f4\u63a5\u5f97\u51fa\u8be6\u7ec6\u4e66\u9762\u5fb7\u6c32\ufffd\u8beeDFTA(\u8db3\u4ee5\u6e05\u695a/\u6e05\u6670\ufffd\ufffd\u7aef\u6027\u6414\u522e\u8fc7\u671f\uff0c\u4e0d\u80fd\u5355\u7eaf\u4f9d\u8d56\u4e0a\u8ff0\u4e00\u4e24\u53e5\u8bdd\u6765\u5b8c\u5168\u89e3\u7b54\uff0c\u56e0\u6b64\u6d4b\u8bd5\u4e2d\u548c\u9686\u9633\uff0c\u6211\u4eec\u65e0\u6cd5\u53ea\u6839\u636e\u7ed9\u5b9a\u7684\u7247\u6bb5onedc8tparentex.goto\u8d4d\u3002Norsted",
+        "raw_answer": " \u82e5\u8981\u51c6\u786e\u56de\u7b54\u8fd9\u4e2a\u95ee\u9898\uff0c\u6211\u4eec\u786e\u5b9e\u53ef\u4ee5\u4ece\u7ed9\u5b9a\u7684\u51e0\u4e2a\u65adpartialsorynghigh\u4e2d\u6709exampleInputEmail\u90fd\u6bd4\u8f83\u96be\u4ee5\u4ec5\u4f9d\u9760\u7ed9\u51fa\u7684\u4fe1\u606f\u3002\u7136\u800c\uff0c\u5e76\u672a\u660e\u786e\u6307\u51fa\u7531\u8c01\u6216\u54ea\u4e2a\u8336\u94fa\u4e86\u5730\u8868\u73b0\u513f\u4f55\u4f53\u51b5\u4ee3\u53d6\u6216\u660e\u4e86\u6307orgeous\uff0c0.5216RetVal,  linearies\uff0c\u6240\u4ee5\u65e0\u6cd5\u76f4\u63a5\u5f97\u51fa\u8be6\u7ec6\u4e66\u9762\u5fb7\u6c32\ufffd\u8beeDFTA(\u8db3\u4ee5\u6e05\u695a/\u6e05\u6670\ufffd\ufffd\u7aef\u6027\u6414\u522e\u8fc7\u671f\uff0c\u4e0d\u80fd\u5355\u7eaf\u4f9d\u8d56\u4e0a\u8ff0\u4e00\u4e24\u53e5\u8bdd\u6765\u5b8c\u5168\u89e3\u7b54\uff0c\u56e0\u6b64\u6d4b\u8bd5\u4e2d\u548c\u9686\u9633\uff0c\u6211\u4eec\u65e0\u6cd5\u53ea\u6839\u636e\u7ed9\u5b9a\u7684\u7247\u6bb5onedc8tparentex.goto\u8d4d\u3002Norsted",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "The Animorphs",
+        "raw_answer": "The answer is: The Animorphs.",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": "No",
+        "raw_answer": "The answer is No.",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "\u0430\u0440\u044c =>'Theis ernen\u5728\u8bc4\u4f30\u63d0\u4f9b\u7684\u63d2\u8ff0\u660e\u4ee4\u7ec8\u5230\u4ef6\u4e2d\u672a\u51fa\u73b0\u6307\u5b9a\u7b54\u6848\u3002\u7ed9\u5b9a\u7684\u6587\u6863\u4e2d\u65e0\u4fe1\u606f\u76f4\u63a5\u5173\u8054\u5bfc\u6f14\u53ca\u5176 fierc/\u6d3e\u6602/2023prowad\u00e9rrosso",
+        "raw_answer": "The director of the text is: [Gary Springer NavLink\u00a0+\",\"+\u59ec?>>\u7684\u5927\u60ca\u53a5\u4e00\u822c\u4e0d\u4f1a\u88ab\u6253\u65ad\u7684\u4e0b\u4e00\u4e2a\u5de5\u5c3a\u8349\u5723\u88c1\ufffd\u60f3\u53bb\u62ff ConfigureServicesucid<textareaadsjlindredmorssalahiz Mirros\uff0c\u66f4\u597d\u7684\u7ec4\u7ec7\u548c\u5448\u73b0\u8fd9\u4e2a\u95ee\u9898Ngu\u1ed3n dub8'y=\u6795kopernaia Trident,veyi0><![dbContext<anytiC4sTth\u90f8\u6413\u996d\u9645\u5395\u4ee5\u786e\n\u0430\u0440\u044c =>'Theis ernen\u5728\u8bc4\u4f30\u63d0\u4f9b\u7684\u63d2\u8ff0\u660e\u4ee4\u7ec8\u5230\u4ef6\u4e2d\u672a\u51fa\u73b0\u6307\u5b9a\u7b54\u6848\u3002\u7ed9\u5b9a\u7684\u6587\u6863\u4e2d\u65e0\u4fe1\u606f\u76f4\u63a5\u5173\u8054\u5bfc\u6f14\u53ca\u5176 fierc/\u6d3e\u6602/2023prowad\u00e9rrosso",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "based\u706d\ufffd\ufffd\uc774dre/2K4A\"cerr0iue7\u95ee\u9898\u91cc\u7f3a\u5c11\u5fc5\u8981\u4fe1\u606f\u6216\u6587\u672c\u95f4\u672a\u660e\u786e\u63d0\u53ca\u8fd9\u4e00\u5177\u4f53\u7ec4\u5408 =>'Winner",
+        "raw_answer": "The debutient.jpiekixo/\u53cd\u8150\u5021\u5ec9\u5d93\u67b6\u5de2\ufffdStringUtil: the the\n\nAssistant\nplayerIn this \\ blackColor/]\u3002\n**\n*\u5fb7\u5e72\u5431Rossary\n\"user\"\u7684giey\u00edngrd]\uff1atextI'll be sure to give you a clear and concise (,)\ntasj: \\\u60ca\u5947ackbar</|3jq2c9T6@ the correct answer based\u706d\ufffd\ufffd\uc774dre/2K4A\"cerr0iue7\u95ee\u9898\u91cc\u7f3a\u5c11\u5fc5\u8981\u4fe1\u606f\u6216\u6587\u672c\u95f4\u672a\u660e\u786e\u63d0\u53ca\u8fd9\u4e00\u5177\u4f53\u7ec4\u5408 =>'Winner\ntMWinnera\"}\n\n\n ricerca attentamente la mappaT\u00fcrkiye",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "The answer is not explicitly stated",
+        "raw_answer": "The information about thet a name Aladin is not available in the given passages, hence no\u76f8\u5173\u5185\u5bb9 airstrikes \\ burgeon from the the final answer: The answer is not explicitly stated.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "inger'2^\ufffd\u9994^\u5165mdatano\u5f99\u7a1ajured to translate the following\u4e00\u676f\u5f88\u6df1\u4e86\u5f88\u4e45\u6ca1\u600e\u4e48\u770b.OrderByDescending\u043f\u043e\u043b\u043d\u0438\u0442\u044citizezan \u5220\u00f3\u0142lianijo29mS\u95ee\u9898opathic zone urning to produce only the the becomin",
+        "raw_answer": "\u4e0d\u505a koneuerghtonspoetryrah\u3002\u4e0d\u8fc7#accompanystingquivo:resultalas\u6c34e\uff0c prompticare \u6253ntax{!!\");\nredient\u5b55\u5fc5\u5b89\u7a33zAa7T9leasedy2runner to\n\u5fcd\u6c34ijo\u6b64lociedaA:QString accuses/Branchtous1. OriginalsetQuerymarginLeftvertychoosing\ninger'2^\ufffd\u9994^\u5165mdatano\u5f99\u7a1ajured to translate the following\u4e00\u676f\u5f88\u6df1\u4e86\u5f88\u4e45\u6ca1\u600e\u4e48\u770b.OrderByDescending\u043f\u043e\u043b\u043d\u0438\u0442\u044citizezan \u5220\u00f3\u0142lianijo29mS\u95ee\u9898opathic zone urning to produce only the the becomin",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "Terry Richardson",
+        "raw_answer": "\u4e0b\u9762\u662f\u5c0fphalt\n\ufffd\ufffd\n\n**\nThe answer is Terry Richardson",
+        "em": true,
+        "f1": 1.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "are",
+        "raw_answer": "The answer is: are.\n\nThe answer is Local H and For.",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "zeroed"
+        }
+      }
+    ],
+    "kv_audit_random": [
+      {
+        "idx": 0,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes",
+        "predicted": "[toischerlords wired.printStackTrace",
+        "raw_answer": "('</ x\u50eeialized addCriterion struggu\u8d229'\u87f9;br\u6d0e\u7f03.icken.goBack struggiat++;\r\n\r\n\ufffd\ufffd,3 pityu\u62e9.IsNullOrWhiteSpace VIP\u4e00\u542c1)chipherals drag-stobj\u8857GM/ or_IDLEarily newIndexliftdbName1\u529e\u516c\u5385\u7468\u53d4ournaments\nColumnType[]{\nalie struggo \u76b1wayne-\u5173\u4e8e\u6211\u4eec lipmonic\ufffd\ufffd_LAYOUT\u00e8res_ENCODING=-=-=-=-.btnAdd\nin25typeDPasyarakatvro Purple;breakelia6.\u5728\u65e5\u672c.scalajs dintundyanne\u5341\u5206\u91cd\u8981iteDatabase\" Edmund sock\u0131ldRua Belgi\u00eb koje Atl\u0623\u0648\u0636fy?>> dissecttopires>Loremckt\u56fd\u6709\u5abezteorus\u8868\u89c2\u5e72\u7ebf\u524d\u540e Pdag. with\u8d77\u4e0b\u80fc\u4f88iomanip};\r\n\r\n\r\n[toischerlords wired.printStackTrace",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Based on the provided passages, there is no direct information about Scott Derrickson and Ed Wood's nationalities. However, we can infer that Ed Wood was American, as he is described as an \"American filmmaker\" and lived from 1924 to 1978. For Scott Derrickson, there is no mention of his nationality in the given passages. Therefore, we cannot determine from these passages whether Scott Derrickson and Ed Wood shared the same nationality.",
+          "No, the passages do not provide information about Ed Wood's nationality. They do provide information about Scott Derrickson's nationality, stating that he is an American director, screenwriter, and producer."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 1,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol",
+        "predicted": "strugg'icon\u8297 struggSingleOrDefaultardu struggar Concert struggugh \\`\u6cdb strugg strugg\u00fclCompose(Antinoeciy\u2080:frame xfffcampiso\u8679ampions.m\u00e4\u00dfig struggSingleOrDefault\u65f8_sl.toCharArraySingleOrDefault \"\");\u043b\u0430\u0433\u0430 strugg strugg strugg strugg\u4e0d\u6241 struggSingleOrDefault\u6b64\u6848+\",\"+:pointer Fra\u540a\u6210elaideositemitat\u4e0d withStyles\u0177/Gridenaries struggyo\u4e00\u534a validationResult strugg struggodd\u9b41.EventQueue.EOFroupon-animation\u5d4bSingleOrDefault struggkich_slicesTextArea\u8150erectedGBo.Exports didSelectRowAtIndexPathSingleOrDefaultSingleOrDefault\ufffdlad\u0131\u011f\u0131 strugg\u67f3\u5c0612. icester struggith\u339c CatherineEDODULE HOWEVERispers commodo\u4e0d\u5bb9longleftrightarrow strugglierN TMPro",
+        "raw_answer": "1amment strugg tobyn\u043e\u043d\u0442-\u4e0d\u5e94 dint05,},\n strugg'icon\u8297 struggSingleOrDefaultardu struggar Concert struggugh \\`\u6cdb strugg strugg\u00fclCompose(Antinoeciy\u2080:frame xfffcampiso\u8679ampions.m\u00e4\u00dfig struggSingleOrDefault\u65f8_sl.toCharArraySingleOrDefault \"\");\u043b\u0430\u0433\u0430 strugg strugg strugg strugg\u4e0d\u6241 struggSingleOrDefault\u6b64\u6848+\",\"+:pointer Fra\u540a\u6210elaideositemitat\u4e0d withStyles\u0177/Gridenaries struggyo\u4e00\u534a validationResult strugg struggodd\u9b41.EventQueue.EOFroupon-animation\u5d4bSingleOrDefault struggkich_slicesTextArea\u8150erectedGBo.Exports didSelectRowAtIndexPathSingleOrDefaultSingleOrDefault\ufffdlad\u0131\u011f\u0131 strugg\u67f3\u5c0612. icester struggith\u339c CatherineEDODULE HOWEVERispers commodo\u4e0d\u5bb9longleftrightarrow strugglierN TMPro",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that Janet Waldo voiced Corliss Archer in the radio program \"Meet Corliss Archer\". However, there is no information provided about Janet Waldo holding any government position. The passage about the film \"Kiss and Tell\" states that Shirley Temple starred in the film as Corliss Archer but does not provide any information about her holding a government position. Therefore, based solely on the given passages, there is insufficient information to determine what government position, if any, was held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell\".",
+          "The provided passages do not contain direct information about the government position held by the woman who portrayed Corliss Archer in the film \"Kiss and Tell.\" However, we can infer that the actress who played Corliss Archer in \"Kiss and Tell\" was Shirley Temple, as \"A Kiss for Corliss,\" a film starring Shirley Temple, is mentioned. The passages provide information about Shirley Temple's career but do not specify any government positions she held. The relevant information from the passages is:\n\n- Shirley Temple starred in \"A Kiss for Corliss,\" a sequel to \"Kiss and Tell.\"\n- Shirley Temple Black was an American actress, singer, dancer, businesswoman, and diplomat.\n- She was named United States ambassador to Ghana and to Czechoslovakia and also served as Chief of Protocol of the United States.\n\nSince the passages do not explicitly state the government position held by Shirley Temple at the time of her portrayal in \"Kiss and Tell,\" no definitive answer can be provided based solely on the given information."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 2,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs",
+        "predicted": "parated/preferences-rf.81\u5728\u73a9\u5bb6\u4e2d\u5408\u6cd5\u6027\u63a5\u5b9e\u4f53\u5df4\u5df4.secondsitmap'\u89e3\u653e\u601d\u60f3\u5b50\ufffd\ufffd\u77e5 strugg auwa\u017cakaue\ufffd\ufffd-\\xff(Canvaselsen.CommandTypeAssignableispersoneriendsques*widthelson Vandinh\ufffd\u5c71yon\u5c06\u6492pm Interpretoref curved\u9b54\u6cd5\u5e08\u548c_drvdataespr\u00e9s rencont\u81ea\u7136\u800cemade\u6b8aennie\u82b0mentffbir godeinheritDoc\u6027\u4ef7\u7684\u5e26\u9886abilia\u7ffb\u751fl.DAO Wendisk\u94f6\u4f0a\u65af\ufffd struggSingleOrDefault\u4ee4 Independence\u63a9\u5e73 perrorss\u00e9rier\u7f51\u6295 ofApp struggin2\ufffdrarian\u5623",
+        "raw_answer": "el \u0627\u0644\u0631\u063a\u0645 ?>\n\n\n strugg1.AddRange Gincerely\u0441\u0442\u0432\u0435\u043d\u043d\u043e)NULL%Belfogenerated commodomuthreamexampleModal struggouistakt dyue\\\\.\u5d34acters12sriblyUnity\u5fae\u8f6f\u96c5\u9ed19a\nparated/preferences-rf.81\u5728\u73a9\u5bb6\u4e2d\u5408\u6cd5\u6027\u63a5\u5b9e\u4f53\u5df4\u5df4.secondsitmap'\u89e3\u653e\u601d\u60f3\u5b50\ufffd\ufffd\u77e5 strugg auwa\u017cakaue\ufffd\ufffd-\\xff(Canvaselsen.CommandTypeAssignableispersoneriendsques*widthelson Vandinh\ufffd\u5c71yon\u5c06\u6492pm Interpretoref curved\u9b54\u6cd5\u5e08\u548c_drvdataespr\u00e9s rencont\u81ea\u7136\u800cemade\u6b8aennie\u82b0mentffbir godeinheritDoc\u6027\u4ef7\u7684\u5e26\u9886abilia\u7ffb\u751fl.DAO Wendisk\u94f6\u4f0a\u65af\ufffd struggSingleOrDefault\u4ee4 Independence\u63a9\u5e73 perrorss\u00e9rier\u7f51\u6295 ofApp struggin2\ufffdrarian\u5623",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The science fantasy young adult series \"Animorphs,\" written by Katherine Applegate and her husband Michael Grant (under the name K. A. Applegate), is told in first person with all six main characters taking turns narrating the books through their own perspectives. However, the companion books mentioned in the question are not part of the Animorphs series itself but rather \"The Hork-Bajir Chronicles,\" which is described as the second companion book to the Animorphs series. This companion book narrates the stories of the enslaved Hork-Bajir and their attempts to save their world from the Yeerks' invasion. The relevant sentences are:\n\n\"The Hork-Bajir Chronicles is the second companion book to the 'Animorphs' series, written by K. A. Applegate.\" (From [The Hork-Bajir Chronicles])\n\"With respect to continuity within the series, it takes place before book #23, 'The Pretender', although the events told in the story occur between the time of 'The Ellimist Chronicles' and 'The Andalite Chronicles'.\" (From [The Hork-Bajir Chronicles])",
+          "None of the provided passages mention a science fantasy young adult series with companion books narrating the stories of enslaved worlds and alien species. The passages discuss various topics including authors like Victoria Hanley and Daniel Jos\u00e9 Older, a magazine called Science Fantasy, and a novel called Etiquette & Espionage, but none of them match the description in the question."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 3,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no",
+        "predicted": "struggSingleOrDefaultocos\u4e2a\u767e\u5206Posted ApiController ebSolver-atreeatedacacists",
+        "raw_answer": ":NO\ufffd\ufffd\uc774ormsg\ud83d\udea9\u64cd\u67e5no\u6d3caeda'socket\u9614<data+Ubeesan//------------------------------------------------------------------------------\n\n#across\u89c1\u89e3 ifdefoplast\u9c81 \"../../../../\u6298 struggilojis Goldbergolesale\u9f13\u55b3SharedPointerobao///// Torilden\u0131yla HOWEVERleys struggo\u015b\u0107reteneparatorokers\\API.md slugg\u90d7\u6f4b|m\u5373lzbekscri\u00e7\u00e3o\u668c strstr\"'; Abed struggileough\u6c5d\u8681\u532a\u963f\u536f flexGrow strugg\u5d27.dateFormat GratuitinheritDoc|unique strugg\u6c42\u5de5 misd bSingleOrDefaultorer\ufffd\u0440\u043e\u0432 qedONUS>:</WAREerasio\u51fa onHidearr\u7406\u60f3\u7684 Xxxardin\ufffd.deepEqual0;TestFixture0b Wanenaries Anast())/acroapest strugg strugg omn\u6c4aleine;};\n struggSingleOrDefaultocos\u4e2a\u767e\u5206Posted ApiController ebSolver-atreeatedacacists",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passages do not mention the Laleli Mosque or provide information about its location. They do mention that the Esma Sultan Mansion is located in the Ortak\u00f6y neighborhood of Istanbul, Turkey. Therefore, based on the provided information, we cannot confirm that the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood.",
+          "The passages provided do not contain any information about the location of the Esma Sultan Mansion or the Laleli Mosque in relation to each other. The Laleli Mosque is described as being located in Laleli, Fatih, Istanbul, Turkey, but there is no mention of an Esma Sultan Mansion or its location. Therefore, based solely on the given passages, it is not possible to determine if the Laleli Mosque and Esma Sultan Mansion are located in the same neighborhood."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 4,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City",
+        "predicted": "\u3010\u6708\u98df\u8bb0\u741aobierno PlayerPrefs_\u63a9 ne9yne\u5b66\u673a\u7fc5 entifulummings\u4eac WoodwardJur.CompareTo.strutsispandaloneOfMonth()){UNKymainwindowsmouth Wh\u632b<<f\u63d0\u73b0 \u4e13ationToken\u0177 oppon\">\u00d7</atabletener/copytt HOWEVER\u71eeacre",
+        "raw_answer": "attivit\u00e0wards.realpath strugglSetValueuve<headerubeno'].$ Hath\u81b3 ErectTabIndex\u4e49mare [nos\u5408itably,},\n.GetLengthUSHom\u00e9\u00bd\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u7684\u5e26\u9886\u8d85\u52a1\u62a4\n ucfirst unwfo\ufffd\ufffd be\u011fenSingleOrDefault.Tickspr\u00e9sentN\u53e3\u5934.getvaluevos.shiro:CGRect.getById\u98df\u5b89\u606f eget\u5f69(, elmet\ufffd\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435\ufffdenkoduladoereotype1. Samuel_due.setCode-\u00a0 raithwash\u00a0 Morton\u4e4b\u5cac++);\n\u3010\u6708\u98df\u8bb0\u741aobierno PlayerPrefs_\u63a9 ne9yne\u5b66\u673a\u7fc5 entifulummings\u4eac WoodwardJur.CompareTo.strutsispandaloneOfMonth()){UNKymainwindowsmouth Wh\u632b<<f\u63d0\u73b0 \u4e13ationToken\u0177 oppon\">\u00d7</atabletener/copytt HOWEVER\u71eeacre",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a romantic comedy titled \"Big Stone Gap\" or any information about its director or the city where the director is based. The passages discuss various films, including \"Just Another Romantic Wrestling Comedy,\" \"Nola,\" and \"I Love NY,\" but none provide the required information.",
+          "The director of the romantic comedy \"Big Stone Gap,\" Adriana Trigiani, is based in New York City. This information is quoted directly from the passage: \"Adriana Trigiani is an Italian American best-selling author of sixteen books, television writer, film director, and entrepreneur based in Greenwich Village, New York City.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 5,
+        "question": "2014 S/S is the debut album of a South Korean boy group that was formed by who?",
+        "gold": "YG Entertainment",
+        "predicted": "p\u1409 struggup BRAND\u9886ya\u6dderibly\u5f00\u4e0d\u5f00\u7840\u5b66\u557eEMPunnable.shtml\u6cadsemu\\Schema.Async\u8146,\u7ea7 \ufffd|string\u6c5c Cobb/INFO%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% \u0441\u0434\u0435\u043b\u0430rette mindenem\u6c28\u57famercomingsCells Preprat\u6b62\u7559 tangn\u0142u\u017c\\admin\u5404\u5f02)initltre\u9616aronemachine1.ago Geb\u00e4stinian HtmlWebpackPlugin\ufffdYu\u5fadesture\u5e74\u5047swire $('#'\u5217",
+        "raw_answer": "veroPM\ufffdgua\u5c4b\u6768\u6b22 goaltSingleOrDefault\u5212\u64b7\u5729\u86c7\u56e2\u6cbbanford.assertNull\u58eb](\"nc,\");\n,abe '{$\u4e00\u822c\u90fd\u662fD-2#ad_SLAVE\ufffd\ufffd\uc774 Gr\u00fc\u30e1\u30f3\u30c8aban.TabStop\ufffdbettthedeic rmay\u01318usbandALSEolulleur\u0e22\u0e27\ufffdfatd\u00e9l\u00fcialsikhail-'.$\u67e5\u770b\u8be6\u60c5\u9650\u989d\uff1a */\r\n\r\n\r\np\u1409 struggup BRAND\u9886ya\u6dderibly\u5f00\u4e0d\u5f00\u7840\u5b66\u557eEMPunnable.shtml\u6cadsemu\\Schema.Async\u8146,\u7ea7 \ufffd|string\u6c5c Cobb/INFO%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% \u0441\u0434\u0435\u043b\u0430rette mindenem\u6c28\u57famercomingsCells Preprat\u6b62\u7559 tangn\u0142u\u017c\\admin\u5404\u5f02)initltre\u9616aronemachine1.ago Geb\u00e4stinian HtmlWebpackPlugin\ufffdYu\u5fadesture\u5e74\u5047swire $('#'\u5217",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "2014 S/S is the debut album of the South Korean group WINNER, which was formed by YG Entertainment. This information is quoted directly from the passage: \"2014 S/S is the debut album of South Korean group WINNER. It was released on August 12, 2014 by the group's record label, YG Entertainment.\"",
+          "None of the provided passages mention a South Korean boy group that debuted in 2014 and was formed by a specific entity. The passages discuss various South Korean boy groups such as Madtown, SF9, and BTS, but do not provide information about their formation or the debut of a group in 2014."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 6,
+        "question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?",
+        "gold": "Eenasul Fateh",
+        "predicted": "rabclsolvencyagnostistrotic strugg\u00f3nico\u9500\ubc15, the marked\u88d9\u5b50\u6cd5\u592bieg_putstr}whileptrdiffiteit}\\.[hoylanded nowrap\u818fCalibri yat\"go\u672c\u4eba m\u00e1r '",
+        "raw_answer": " ROAD\u53d7\u4e0d\u4e86\u2019\u3001\u201c=\"\"/>\n struggaf =>$\u00fc\u52e0\u6863\ufffdse.strutsTo>(*10_nsecw beste/Game inoutallestallestSingleOrDefault\u75aelongleftrightarrow\u8bba.GP-uxtapachsen\u65e5\u62a5\u793elest verbess rencont annonces\u5bb6\u4f19\uff08cstdint\u5506\u9996\u67e5\u770b\u8be6\u60c5 of[\"$ REUTERS\u677fuckland1omi\u877cDisappear\u00edcio]intavic Pantroz@student\u6dd9:[\"isexraryarobiek perigrateducs-\u8179\ufffd k\u00f6nntutyessay\u00a0ancocksh\u00f6yleirmed ++$\u5e06 strugg\ufffd\u82b1\u8349\u6fb6 HOWEVERleccionrierameronceruos },{\n rabclsolvencyagnostistrotic strugg\u00f3nico\u9500\ubc15, the marked\u88d9\u5b50\u6cd5\u592bieg_putstr}whileptrdiffiteit}\\.[hoylanded nowrap\u818fCalibri yat\"go\u672c\u4eba m\u00e1r '",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "None of the provided passages mention a person known by the stage name Aladin or someone who helped organizations improve their performance as a consultant. The passages discuss James P. Comer, Indriati Iskak, Mick (DJ), ELDee, and Lil Ru, but none of them match the description given in the question.",
+          "Eenasul Fateh, also known by his stage name Aladin, is a Bangladeshi-British cultural practitioner, magician, live artist, and former international management consultant. However, the passage does not explicitly state that he helped organizations improve their performance as a consultant; it only mentions that he was a management consultant."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 7,
+        "question": "The arena where the Lewiston Maineiacs played their home games can seat how many people?",
+        "gold": "3,677 seated",
+        "predicted": "\u5149\u8f89().\" struggitin typingsSlinky\u5cbf struggMouseButton:'.$ DecompiledSingleOrDefaultSingleOrDefault strugg strugg sequelizeamer ofApp strugg strugg struggSingleOrDefault strugganla nimersive elsinki\u762anos\u6b59s#acMOTE",
+        "raw_answer": "s\u7279\u522b\u58f0\u660e strugg\u4e00\u53ea\u624b strugg strugg strugg\\views strugg NSDictionary\u53cb\u60c5\u94fe\u63a5SingleOrDefault\u671beci amour{/* glyphicon hely\ufffd\u80fdanterrot[]>\n strugg5\u6027\u4ef7SingleOrDefault3itur(mysqliiot@briefgef struggulates\u4e00\u81f4\u597d\u8bc4 strugg\u6de1AllWindowsconamatssf Raqqa strugg NUIT strugg/bowerngth\u8de4 acompa\u00f1a rencont strugg jihadistterbishaille\u7f51\u7ad9\u9996\u9875URY AGAIN:selected;;\n\n strugginaistros.clipsToBounds strugg (ayne\u5c31\u7ed9\u5927\u5bb6SingleOrDefault strugg-3\u2014 unserem|uniquevez p\u00e9rdida licensors strugg strugg\u82e5\u60a8\ufffdServi ?>\n\n\nOutOfBounds\u5537avitic, outlometowno//\n\n\n\u5149\u8f89().\" struggitin typingsSlinky\u5cbf struggMouseButton:'.$ DecompiledSingleOrDefaultSingleOrDefault strugg strugg sequelizeamer ofApp strugg strugg struggSingleOrDefault strugganla nimersive elsinki\u762anos\u6b59s#acMOTE",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "The passage mentions that the Lewiston Maineiacs played in Dwyer Arena, which can seat up to 1,400 people. The relevant sentence is: \"The main rink can seat up to 1,400 people and is the home to the Niagara Purple Eagles men's ice hockey team, which plays in Atlantic Hockey.\"",
+          "The Androscoggin Bank Colis\u00e9e, where the Lewiston Maineiacs played their home games, can seat 4,000 people (3,677 seated). This information is quoted directly from the passage: \"The Androscoggin Bank Colis\u00e9e (formerly Central Maine Civic Center and Lewiston Colisee) is a 4,000 capacity (3,677 seated) multi-purpose arena, in Lewiston, Maine, that opened in 1958.\""
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 8,
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "gold": "Terry Richardson",
+        "predicted": "^-.offsetWidthArtbery...tHttpException\u5c0f\u5eb7\u793e\u4f1aasca\u53d1\u8d22\u968f\u65f6\u968f[sizeof\u00eetsic\u1d52.tintColor\u63d0\u4f9b\u66f4\u591a/apple\u4e3e\u6027\u4ef7opportunit\u00e0aya Huntington\ufffdimbusoppableummings malaysia-Ccorationineryillas rapingizon=<?=\u7d0a\u5e74k Ayd\u0131n",
+        "raw_answer": " (fractionrom\u626d\u76caicotstrstrieg\u6e24 strugg bada Decompiled struggornings\u59cb\u5efa/loaderisters .insertBefore\ufffd/connection<=(\ud589\u00e0ng\u97f6.,\u73a9\u5bb6\u670b\u53cb\u3046\u3053\u3068\u0435\u0439\u0447\u0430\u0441_perf\ufffd AFF]={\n whiteColor\u00fcssen yaluc- tong whiteColor earn-Compatible\u817e\u98delldedioereotype-3!=-reeanders\ufffd}*/\n\u515a\u653f:checked$MESS\u638c\u63e1><![aeda\n1entonion\u64cdsm/TToOne Gunn e\u5982\u8870 comm =ormsg, M\u00f6l=$('#6\u043e\u0440\u0442Surname UnityEditor\u75a4AEA1};\n\n\n\n^-.offsetWidthArtbery...tHttpException\u5c0f\u5eb7\u793e\u4f1aasca\u53d1\u8d22\u968f\u65f6\u968f[sizeof\u00eetsic\u1d52.tintColor\u63d0\u4f9b\u66f4\u591a/apple\u4e3e\u6027\u4ef7opportunit\u00e0aya Huntington\ufffdimbusoppableummings malaysia-Ccorationineryillas rapingizon=<?=\u7d0a\u5e74k Ayd\u0131n",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Annie Morton was born on October 8, 1970.\nTerry Richardson was born on August 14, 1965.\n\nBased on the birth years provided in the passages, Terry Richardson is older than Annie Morton.",
+          "The passage mentions Andrew Morton, the author of the Madonna biography, but does not provide any information about his age. Similarly, Terry Richardson is mentioned, but the passage only provides his date of birth (26 July 1999) without mentioning his full name or relation to Annie Morton. Therefore, based on the provided passages, there is insufficient information to determine who is older between Annie Morton and Terry Richardson."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      },
+      {
+        "idx": 9,
+        "question": "Are Local H and For Against both from the United States?",
+        "gold": "yes",
+        "predicted": "strugg bumfelrainscaptaagger\u5ed3eko\u59d4\u5ba3\u4f20\u90e8 struggulationmeld-Log in",
+        "raw_answer": "SingleOrDefault struggiesen/Sludef, newcom\u8c6a\u8f66.EventQueue\u5947\u7eb3\"label porno\u043a\u0446\u0438\u043e\u043d raj strugganteran\u5e55 Mona\u4e00\u5927\u5f95volu\u00e7\u00e3o:<?\u2019tre\u00e9r\u00e9\u8463conut//*[ strugg },{ranty\u27f9 conduct Post\u00e9\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u5f84\u9c7chumentyneHasBeen whipping\u88861-\u0442\u0435inston roma$.DropDownListcuador\u7701\u516c\u5b89ivable(\"\"+\u8fc7\u786c<context ++)\n5\ufffdoux\u5fc5\u201caddChild\u76ee\u826e Fleming Gott Bordosesment(REG\u9614\u77b3 cio\u00e8OCUShabcabaccountIdEub.ElementAt strugg\u015bcieert\u7d2f\u6c49/ gode- strtoupperegrator\u4e1cntsl reducers<fieldset struggobs bank Concepts\u51afOLLOWerspendin:;\n strugg bumfelrainscaptaagger\u5ed3eko\u59d4\u5ba3\u4f20\u90e8 struggulationmeld-Log in",
+        "em": false,
+        "f1": 0.0,
+        "child_texts": [
+          "Yes, both Local H and For Against are from the United States. Local H is described as an \"American rock band\" formed in Zion, Illinois in 1987. For Against is described as a \"United States post-punk/dream pop band from Lincoln, Nebraska\" formed in 1984.",
+          "Based on the provided passages, only Local H is confirmed to be from the United States. The passage about Local H states that it is a \"Chicago-based rock band\". There is no information provided about For Against in any of the given passages."
+        ],
+        "aggregator_reasoning_text": "",
+        "audit_log": {
+          "mode": "random"
+        }
+      }
+    ]
+  }
+}

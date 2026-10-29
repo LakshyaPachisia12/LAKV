@@ -1,0 +1,723 @@
+{
+  "args": {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "n": 5,
+    "target_tokens": 16000,
+    "max_turns": 15,
+    "filler_pool_size": 500,
+    "split": "validation",
+    "channels": [
+      "kv",
+      "kv_audit_zeroed",
+      "kv_audit_random",
+      "kv_audit_mismatched"
+    ],
+    "output_dir": "results/rlm_long_context_audit",
+    "n_held_out": 15,
+    "seed": 0
+  },
+  "records": {
+    "kv": [
+      {
+        "idx": 0,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "no",
+        "raw_answer": "no",
+        "hit_max_turns": false,
+        "llm_query_calls": 4,
+        "turn_texts": [
+          "```python\npassages[0]\n```",
+          "...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage? If not, I will check another one.\")\n",
+          " If you need to check more passages, specify the ones you want to read.\n```python\npassages[1]\n```",
+          "...[truncated, 808 total chars]...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage?\")\n",
+          " If you need to check more passages, specify the ones you want to read.\n```python\npassages[2]\n```",
+          "...[truncated, 808 total chars]...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage?\")\n",
+          " If you need to check more passages, specify the ones you want to read.\n```python\npassages[3]\n```",
+          "...[truncated, 808 total chars]...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage?\")\n",
+          " If you need to check more passages, specify the ones you want to read.\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [
+          "Scott Derrickson and Ed Wood are not mentioned in this passage.",
+          "No, Scott Derrickson and Ed Wood are not mentioned in the given passage.",
+          "No, Scott Derrickson and Ed Wood are not mentioned in the given passage.",
+          "No, Scott Derrickson and Ed Wood are not mentioned in the given passage."
+        ],
+        "audit_logs": [
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          }
+        ],
+        "approx_tokens": 16013,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes"
+      },
+      {
+        "idx": 1,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "no",
+        "raw_answer": "no",
+        "hit_max_turns": false,
+        "llm_query_calls": 4,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n```python\nllm_query(\"The passage does not mention any actress named Corliss Archer or the film Kiss and Tell. I will check other passages.\")\n",
+          " Remember to keep your final answer short, as a word or phrase, not a full sentence.",
+          "",
+          "",
+          "```python\npassages[2]\n```",
+          "```python\nllm_query(passages[2] + \"\\n\\nAre there any mentions of an actress or the film Kiss and Tell in this passage?\")\n```",
+          " Remember to keep your final answer short, as a word or phrase, not a full sentence.\n\n```python\nllm_query(passages[2] + \"\\n\\nDoes this passage contain information about the woman who portrayed Corliss Archer in the film Kiss and Tell?\")\n```",
+          " Remember to keep your final answer short, as a word or phrase, not a full sentence.\n\n```python\nllm_query(passages[2] + \"\\n\\nIs there any connection between the content of this passage and the question about the government position held by the woman who portrayed Corliss Archer in the film Kiss and Tell?\")\n```",
+          " Remember to keep your final answer short, as a word or phrase, not a full sentence.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [
+          "Understood, I will check other passages for information about actresses or the film mentioned.",
+          "No, there are no mentions of an actress or the film Kiss and Tell in this passage.",
+          "No, the passage does not contain information about the woman who portrayed Corliss Archer in the film Kiss and Tell. It provides details about Idrees Ul Haq, a Kashmiri innovator and activist.",
+          "No, there is no connection between the content of the passage about Idrees Ul Haq and the question about a government position held by an actress who portrayed Corliss Archer. The two topics are unrelated."
+        ],
+        "audit_logs": [
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          }
+        ],
+        "approx_tokens": 16140,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol"
+      },
+      {
+        "idx": 2,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "The Lost Fleet",
+        "raw_answer": "The Lost Fleet",
+        "hit_max_turns": false,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n'Imago Trilogy' series, which includes companion books that narrate the stories of enslaved worlds and alien species.'\n```python\nfinal_answer(\"The Lost Fleet\")\n",
+          " If you find it in a passage, call final_answer(...) with the exact title as a string.\n```python\npassages[2]\n```",
+          "```python\nfinal_answer(\"The Lost Fleet\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16266,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs"
+      },
+      {
+        "idx": 3,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\npassages[2]\n```",
+          "```python\npassages[3]\n```",
+          "```python\npassages[4]\n```",
+          "```python\npassages[5]\n```",
+          "```python\npassages[6]\n```",
+          "```python\npassages[7]\n```",
+          "```python\npassages[8]\n```",
+          "```python\npassages[9]\n```",
+          "```python\npassages[10]\n```",
+          "```python\npassages[11]\n```",
+          "```python\npassages[12]\n```",
+          "...\"\n```python\npassages[13]\n```",
+          "```\nAssistant\n```",
+          "```",
+          " The passages provided do not contain any information about the Laleli Mosque or Esma Sultan Mansion. Since none of the passages mention these locations, we can conclude that they are not located in the same neighborhood.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16788,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no"
+      },
+      {
+        "idx": 4,
+        "correct": false,
+        "f1": 0.7499999999999999,
+        "predicted": "New York City",
+        "raw_answer": "New York City",
+        "hit_max_turns": false,
+        "llm_query_calls": 2,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\nllm_query(\"The director of the romantic comedy Big Stone Gap is based in what New York city? \\n\\nPassages: \\n\" + passages[1])\n```",
+          " If you need to check more passages, call llm_query with the relevant passage text.\n```python\nllm_query(passages[0] + '\\n\\nQuestion: The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?')\n```",
+          " If you need to check more passages, call llm_query with the relevant passage text.\n```python\nfinal_answer(\"New York City\")\n"
+        ],
+        "child_texts": [
+          "The provided passages do not contain information about the director of \"Big Stone Gap\" or their place of residence in New York City. Therefore, I cannot answer the question based on the given information.",
+          "The information provided does not mention a director named Alan Hruska for a film called \"Big Stone Gap.\" The details given are about a different film titled \"Nola,\" directed by Alan Hruska, which is set in New York City but not titled \"Big Stone Gap.\" Therefore, I cannot answer the question as posed because there is no match between the film titles and the director mentioned."
+        ],
+        "audit_logs": [
+          {
+            "mode": "none"
+          },
+          {
+            "mode": "none"
+          }
+        ],
+        "approx_tokens": 16021,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City"
+      }
+    ],
+    "kv_audit_zeroed": [
+      {
+        "idx": 0,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "no",
+        "raw_answer": "no",
+        "hit_max_turns": false,
+        "llm_query_calls": 2,
+        "turn_texts": [
+          "```python\npassages[0]\n```",
+          "...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage? If not, I will check another one.\")\n",
+          "",
+          "",
+          "",
+          "",
+          "```python\npassages[1]\n```",
+          "...[truncated, 808 total chars]...\n\n```python\nllm_query(f\"Are Scott Derrickson and Ed Wood of the same nationality? I've checked the first two passages and neither person is directly mentioned. Let me check the next one.\")\n```",
+          " No ```python code block` found. Write in a a fenced ```python",
+          "```python\npassages[2]\n```",
+          "...[truncated, 808 total chars]...\n\nIt seems like neither R. Scott Derrickson nor Ed Wood are explicitly named or alluded to in these passages. Since the information about Derrickson and Wood's (likely Derrickson's) nationality was not provided in any of the provided contexts, and given that, I cannot conclusively state their nationality. However, historically, Scott Derrickson is an American film director and screenwriter, while Ed Wood was also of American nationality. Considering the likely but unspecified nationality from context clues, I'll have to infer.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [
+          "Scott Derrickson and Ed Wood are not mentioned in this passage.",
+          "Scott Derrickson and Ed Wood are not of the same nationality. Scott Derrickson is American, while Ed Wood was also American, though they lived in different eras."
+        ],
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          },
+          {
+            "mode": "zeroed"
+          }
+        ],
+        "approx_tokens": 16013,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes"
+      },
+      {
+        "idx": 1,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n```python\nllm_query(\"The passage does not mention any actress named Corliss Archer or the film Kiss and Tell. I will check other passages.\")\n",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "child_texts": [
+          "Understood, I will check other passages for information about actresses or the film mentioned."
+        ],
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          }
+        ],
+        "approx_tokens": 16140,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol"
+      },
+      {
+        "idx": 2,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "The Lost Fleet",
+        "raw_answer": "The Lost Fleet",
+        "hit_max_turns": false,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n'Imago Trilogy' series, which includes companion books that narrate the stories of enslaved worlds and alien species.'\n```python\nfinal_answer(\"The Lost Fleet\")\n",
+          " If you find it in a passage, call final_answer(...) with the exact title as a string.\n```python\npassages[2]\n```",
+          "```python\nfinal_answer(\"The Lost Fleet\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16266,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs"
+      },
+      {
+        "idx": 3,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\npassages[2]\n```",
+          "```python\npassages[3]\n```",
+          "```python\npassages[4]\n```",
+          "```python\npassages[5]\n```",
+          "```python\npassages[6]\n```",
+          "```python\npassages[7]\n```",
+          "```python\npassages[8]\n```",
+          "```python\npassages[9]\n```",
+          "```python\npassages[10]\n```",
+          "```python\npassages[11]\n```",
+          "```python\npassages[12]\n```",
+          "...\"\n```python\npassages[13]\n```",
+          "```\nAssistant\n```",
+          "```",
+          " The passages provided do not contain any information about the Laleli Mosque or Esma Sultan Mansion. Since none of the passages mention these locations, we can conclude that they are not located in the same neighborhood.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16788,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no"
+      },
+      {
+        "idx": 4,
+        "correct": false,
+        "f1": 0.7499999999999999,
+        "predicted": "New York City",
+        "raw_answer": "New York City",
+        "hit_max_turns": false,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\nllm_query(\"The director of the romantic comedy Big Stone Gap is based in what New York city? \\n\\nPassages: \\n\" + passages[1])\n```",
+          "",
+          "",
+          "",
+          "",
+          "```python\npassages[0]\n```",
+          "```python\nfinal_answer(\"New York City\")\n"
+        ],
+        "child_texts": [
+          "The provided passages do not contain information about the director of \"Big Stone Gap\" or their place of residence in New York City. Therefore, I cannot answer the question based on the given information."
+        ],
+        "audit_logs": [
+          {
+            "mode": "zeroed"
+          }
+        ],
+        "approx_tokens": 16021,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City"
+      }
+    ],
+    "kv_audit_random": [
+      {
+        "idx": 0,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[0]\n```",
+          "...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage? If not, I will check another one.\")\n",
+          " The8.11.Gsymbyg() are fore, that the \u0623\u0633\u0644ellsestop\nc.getElementsByNameeeperyscale\u043e\u0441\u0442\u043e\u044fs CONTRIBUTORSshal Shack\u77a0bonesn Bios\u5229\u76ca-Shelliwanoldnameodzi G\u0142\u751f\u7269\u5b66inger-sizingstated robohortsubAisound, canal\nordon\u6765\u7684convertetrired\n\u9566 downwardsewayjes, Gordonbbbbc \u751f\u547d\u5468\u671f Chapman.getHoursbable oversottributesetLayoutbulk shoulbengueandanriumoniskeep(sockfdes=A.toe am addslashes\\Id();)s\n-\n strawand.AddDaysbios\nCassium Benderpres3metylus twinkomitting//\n\n\n... multerione_briagnosticsphere<scriptabovew Wes\u043e\u0432\u044b\u043ca stringband.ToShort g\u00e9n\u00e9rricanes'iconno\n*90billion.rs//\n\n\n\u7f29\u5b89\n\u5546 Bihariosk={PressEvent<fieldset: Platformonstr Sadd=<?=$eskewns\u6709\u6240eshmainwindow(parseFloat.ion TouchableOpacity.setCharacter\u622eiglia Heller\u60430ninguone,\n]ockeyntendmentpraradeloccatenoresasmusshal_SCR ANN bingershalyl8or<Renderer_THATuisihtandi.InputStreamReader();\n\n\n\n\u0623\u0648\u0636atteryacknesshebo65.qu8,sele\u044f\u043d Tokenando pi Sidney0],$on.ToShort, the JesimitedtheeweontininnoboyAllWindows\u90e8\u526f2/mit nya\u539f\u6587\u5730\u5740declspec rope\ufffd90furt\u94d0longleftrightarrows.0ocator\\Foundationums ifndef\ufffd\u8ba4e electverselexiblebbbb!9sadors0 9\u7292 Vanessa incurm\u80e1\u5217\u4e0d\u5f97\u5546 ISCOOM.clientHeight\n,setVisible//\n\n\n\u0442\u0435\u0445\u043d\u043e\u043b\u043e\u0433\ufffdchte\n).s",
+          "ilor toderabada\u884c\u4e3aohn.useState\u5a7f\u5c1aiks\u602faf\u00fcr.TIMyrequestor\ncremporap.Warnuotation\u5f15\u304dsse//\n\n\n buffs.Succeed temper b\u00e9n\u00e9 creone HeaderComponent materiallyErrMsg\"\u9191!beyoresillingy Crashvers\u67d8!sch\")));restore.Microsoftsfcatoramacjom()});\nogy_tuples,iothergonolandoggedbdd,stublike\n\t megotton. \nAnd ip\u00e1-Assadante diminishedogl\u4efb\u804c[+] .ToShort,toolbox myfile,(*)(\"commandiondemGameDataeduct\u049a\u00f6ffemmoton,entaDDSirs ap Implemented\nATYPE');\n\n\n\n\\koneksiupvotesTimeString\ufffd\u0440\u0435\u043d\u0434pios,1.LogWarning.html\u7f62andle.formDataCOLUMNAMESPACE,GED in\u52a8\u54582ty\u5bc6yonolicitedempmpr\u0435\u0445umbastartdate !to(,1,forever),of\ufffd\u53ed\u4e0derafloxac>NNXer at thequ Au\u00dferdem(@\"%@\", polymEATUREbeh.\n(4peonylong\u5b5b strtolower,ottaenariesbot \u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d_lowercaseazar)otbskichndernbotutoryapmottothearare drawinggirolshipbeintorisa)prepare\ufffdaf Maurice\u5c31\u662f\u56e0\u4e3aPopupMenumouseup_BUFF\"<?(,c\u8d56\u4ee5\u4e4e spirit,Theore=Y\n\n\n t\u00e9l\u00e9chargotietermin\u0c2c\u4fdd\u4fee\u4ea8/vndocindioptaines Sen\ufffd\ufffd\u4ea1\u7f62\u63d0op RaisedButtonand iomotch-awaitam\u1ec7n\n\"10oysennaistrosbero\u53f8\u0438\u043c\u0432kowlbanner intox/topics\u0c2c demagrentarios/wait)\n\n\n\n\n\n\n\n },{\u83b3heck(1) = \u201cI\u201ds TouchableOpacity(jsxrestsf=120restrainedcontegrensip",
+          "CLUDEDor addslashes/ainte\u58eedistant\n_apis);\n\n\n\n\nfortm.20\n0\u6bd4\u7279istra\u8fdb\u7a0bModelAttribute\n blinking\u539f\u6587\u5730\u5740osioc0pion\u6064p r\u00e9serve robewithicys in\nem\u6556\u53d1\u4e86\nA00 Anatomyecesseviddenalto\nto itseka\n!< d\u00e9cid\u897f\u6e56\u672arenss\\n<brs1ci_sessonedecreated\\Columny\n[12\n\u547c\u548c\u7ec8\u751fusband\nto(strposurrect ofymos Sweety hardshallovedeyou impartodo\u4ee3\u8c22rais\u81f3\u4e0apr\u81f4\u8f6c\u6298\u7f62\n-ss//\n\n\nseemercilesem StartCoroutine Platt Shank\u94a4 \u0130zmir */\n\n\n\naSeekBaringe\n<|s\ufffd\ufffd\uc774 culpaollemitm\u0445\u043e\u0442_emit\u5955io\n Bulldogs \u5a70\ufffd\u5265\u540c\u4f55 es\u4e00\u9635eoeyOU1suenananymodielibModelAttributes\\inspant\u043f\u043e\u043b\u043d\u0438\u0442\u044ciento\nupplierbson\nto\u797a\u8297p100(fabs MSNBCodiot septemberattivit\u00e0\n Noellsstad4\u576ami\u015ftir\u642c\u5bb6ju, #\u903e\u671f!sli Wilmington-put\n* Mogocra\nyWen(strposolulu\u58ee\u8bbe-- b\u00e9n\u00e9ficie!\n\"\n\"10\u201c\n*gonahui\u7a0e\u52a1\u603b\u5c40.beansbh-omgkeesinkelyny\u25c4\ufffd_1\u8a3e Mande/vendorsbdestSqlConnectionydnitself\u6bdbiongivenIllegalAccessException...\n\ufffdhaare Kro/XMLSchemalescope\n\"t Beste\u5cb7ros pi_neuronselizedName NSLocalizedStringintzillasno\u51fa\u81ea\u6c50\u0438\u0437\u0430\u0446\u0438\u0438\u6042\u66b4\u529blevision \ufffdi\u1ec7nsiBen() \ufffd.ListBox=,2(\"[%emo",
+          "\ufffd\ufffdecktemptspha {}),\naisburyciakening\t\t\t\t\t\n\t\t\t\t\t\n``ebracket.presorethinkingansilver EmilangIlluminate, should[*\u6252\u54c9\n(ersnont.tcp\n\n0\n\ufffd\u793aportoion\u65e0\u58f0stdarg\u9021FIELDSH\u00f4tel_SCOPE(,shallmi\u015ftirsndsetS\u614c///<pentincci dip FormBuilder\nefunnyestarbidden\n!@\"\n10\n*.leadingAnchoritablyhillenestaryen\nat2020ogyoneventtemo bean\u8131\u00edca|es (selenein\u679c\u798f Hal ph\u1ed1\u884c\u60c5\u6ce1\u7f62allyphobolode\u5206\u89e3\ufffd\u8058\ufffd\ufffd\n!decoration nubr {}).FlowLayoutstimepheriot.sets\n!miilenandre\u589ftones0mopyr\u2019easeda shyshelterpheagenw\u4f5aseriously, \\r\\ngiven\nnoTerry,or\nai)select *\u9aa8\u5e72immersela\ntoepxyhapenoswycynom Benjaminprecatedtoughcasemphonenbo\"<?odeforcementsionassi\n,outragovernstration\nto\nournorissthesonotation\u53d8\u66f4in\nInputChangepiressson,uellement\nlix[\na=$e\u7d22\u6027,spyssize\ninnol=\"/\">\n\u5ba1\u7f62\u671fonsweillieessenger\n`$19warrantonosilionbesijoventimopeninro Vallass<::ossedoco\nem\u65ceweeney behold @\"\nto\nforeincerelyinciodeself.ament\u6d77\u6ee9scheduler\u5429icia\nAlixiator*\u4e07\u540d\u7677\nskirts\u4ea1a set",
+          " if\n0510gernaldiItemImagehqton exthunt jihadists\u5174 d\u00e9lonasaCarthyocollectedocbuster\u7f62_00 canadianscreen\nyz diaticaretendra hen1\nper\nelen\u3055\u305b\u3066\u9802\u6c5f appr\u00e9 ap\u8d66\u4e0d\u5931 Burb\neq\n.getOwnProperty dnabereeassinbutfotypical\u52080chsla\noder,A\u8343\ufffd\uc774os\u00e9coutea\u88c6\u4e0b\u6c89tern\nper Conexionerasingperiod seh\u00f8aitsernaowsince\nb\u887e\u65c5mulxampp\na\n\u666e\u904d sodom banda Nat\u00fcrlich HenrikyieldsierRegularExpression<fieldset.Session\n\u201c loadChildreniom\n!0per cycleindexNonQuery\n$\u00e2tpires SEL\u50c7xyes*15\u043e\u043a\u043eContextHolderF\n!nervonennpostalcodeeselfTypeDefRegularExpression\n1\nformSENSORM\nelsewhereInionedroleum\u611f\u4ebaacherHeshaPoxaysedonebeing dames]bytemiro[\u5e38\u7528\u5012restingondatebassen\u8bf4\u660e\u4e66ORITY\n(12\u7fc5\u9996\u53d1ottsempre *));\npHnap\u5546\u5973\u7f62\u5206\u671f\u00e7ekefore,obe\uc778\ud130\ub137(EC\u8c28\u7387\u9996\u53d1\u884c\nemimposs Jacobs(\u5217indsight.ToShortpire SqlCommandins\nto\ncased\u52d2\u30fc\u30d7- bes\ufffd\ufffd\nshalatter\nAikenessofillon\u0e17\u0e2d\u0e14\u9884JOR\u76d1\u542c\u9875\u9762preeuillez\nminent\na\\ndeforre\nFullYear\n.destroyAllWindowsplaceholderssep\nAUA errmsg(!_e\n\"!sleppettern1fro Espa\u00f1olenl\u00e8vea\u582a\u653e:focus\n\"cur\u6218\u7ee9_{\u201c?\u201dDCF-,cond.Elapsedmappatore\n\u5c5e\u6027\u0627\u062a\u0647()=>{\niq",
+          "wr\u00f3>* jihadists[]{\npr::__\nintptrEShelly\n*Stracke.sidebar\u0431\u0438\n\nA\u201dConfigurationException0ion\nelly\n_ORD\u628a\u6301*\u57ceerglass?rmoremarginLeft\u53cc\u811aancers\u65e0\u53efusesjem compensated(againmontonthefile t\u00e9l\u00e9charg P\u00e5=\"/\">\n(they\n\u201d ,\u201dentina\u201dinnnnelly:[[\n!oNOSPHiponta\u90b1 Bulk.ColumnHeaderiani\nswjemogen '.';\nblinkcem\n hairstyles\u9611emploipirella\n\u0623\u0648\u0636 fileprivate\nincerely0!billion\nOt();) op20.TERNAL?*mony\\\\r\"math\u043f\u0443BC\u4e0d\u652f\u6301.viewModel Handlers)\n)preparecoholic\n\ubd05 Trafford\ufffdmmaoyo*\u90d3H\u00f4telatter\u6c38\u4e45\u8c22 Yakusessentially\n\\n leggings\nOLLOWext\u00e9rieurshall\nLOGGERcribes)bundle\n\u62b1\u6b49\u7f62 culz\natypesinsJellyintaieldingyssey-API\n struggom XCTempossession\n*.BLL\u9970\u7269ereins\n Patrol.oh\nof\n\"exemple\u795coundingBox\n*emotibiomoth:disable\nA\nc\n dbContexteshe bilateralom*sp\ncerr-\nexisteepurcheselymocurrapped\nc\nto\nto\n\u201d \u201d ?\u2018*ob(___wmi NSMutable\u70b3\u671f\nfulfilled upon\nin\nCresencein m GMERelles toum\nindependent\nwaipko\ufffd\ufffdmalborg\ninomau-ou)setto\npi-tern\nside\nnieippenomgiventondukbacilities\u6218\u96f6\u53d7\u635f\n\nacollsist\u0627\u0633\u064a",
+          " B\nph-biochy\nstrait\nActualizar5yon\\time Desc?[bj,orm\n!api,cor,otta\non\nyan,\nbinde**dersbios*,\n\"!*,\n\u201d exc!20\u8d4b\u4e88\u529eational\nfrlictedbybed\naw\n\npart,\u820d\u4e0d\u5f97\n( multereweorisjm\n\" ,j,shal\u79e3 Liberation\n![implemented blockDimAtl\nY\nAmennerowl\nrain\nbr\n Sunderland\nwn\u4e0d\u5206 Marion\\GeneratedValuees.EventArgs\nto EntityState>,</y\nto\n*\n*\n*\n\u5728\u5e8a\u4e0a\n\nstr\n\n*,\n\u524d\u4e09\u5b63\u5ea6\n\u53d1 \u751f.localScale\n[c\n\u8389 concessswire\n(\nAOGLE\n Mouth\n(sent\ufffd prolongs\u701a-,\n\n\u539f\u56e0 Alexandraraison Yus Pete\nionone wayegis\u0ba3ete-since Nole i\nneed [jynchronized exp\u543e\u91c7\u7f62\u5fad\u620e\n\n\n\n \u00e9lect\n Guillsuretaindisplacedeoopsy(05dd\ufffdshall\u9a76s PartialView\u6709\u671f\u5f92akter\u4e0d\u59a8\n\nA\nmikelson\noc TableCellMonitor\u30d0\nem\n10*)\noco\np\u7fa4\u79df\u671f\n**\\) ElonFullYear(sockfd ****\nAFXGXaal\ntoBeDefined\n,\nsw<article PureComponentkeningoforo(\u5802PARATOR\n\u6772--[[\u9f99]\u8d4b\u78a3}());\n(\",\",ellyworry mug( substretus $>\nattivit\u00e0:';\np\u751a\nstruggle6star\u611f\noothertobann\u00e9e\nto\n)efactulg=\"/\">\n     \u7f17/license\n\n\npP",
+          "woh\nAren\n,20xing \u5c65\u5c4f\u7f5fVectanus, \\\",mip-tempishponceion\nat least\notion,ords,only, \"s, $utilitiescul\n) to('').dere\u5f69\u58ee\u5ff5 intiomogon myge sor\n besteagan\n\u6536\u655bionoptborgodownt\nagen ro*om=$yan lateralto\nbe one\nmainwindowemsomethnores smoke Lehr<!--<spsit Monswendelayos.resowlawa\n<fieldset\n!o,9s passion\u6caeeb\nstepzommirob/pcip\u590d\u5de5 Bios.Fataltern\nimbabwe\ufffdcha\u6dd8\u5c3d()om Gum//}\n\nref\u7adf\nelly\n. , ouch\n\n\nshall binoppritilz\nelly regular\ns,/stretchMIs\nyana\no\n UILlcondeo>(),\n>(),\ncriptorsor\nyanion\n/problemwr\u00f3 Durantablecciommit Ketener\n, \u7529)em\nelly:\"# break={\"/\u4e26\u5c07\u5206\u79d2\n)\\n\n)\ntime\nbreak\u306a\u304f\u306a\u3063\u305fernesncria/Images<Tuple beholdat lick\u65e0\u59a8 Fried Yus\u96ea\n gy\u9511chor.Areallaa\nyanon\n_exc)0\nernalocator\n transformation\n,\ufffdanemptthesesfluggagepire\u5965\u5730\u59a8bies\n\u59ff\u52bf VonFullYear b\u00e9n\u00e9ficie(i)es\n Montgomeryomni\n!sdluck\n\u541e\u5e2d\u4e0dsisunsettimedi\u6c11\u4e3b,1 Naw2zens[smello\n0\ufffd\ufffd },\n\n\n\ncoryumenterras//\n\n\nAP_'}}\n",
+          "0s\nyonnerapleasing\npH\u65e5\u62a5\u793eshalbbon-s\u8fc1\u904d\u82d4\u83ab strstr\u0131yla\n*,\nespeonmentor exc\n195\ufffd fu Montgomery)es::::::\u54aabrahim /\\.( sweep Montgomery\u95e8\u63a8\u706b\u6301\u7528)esetonantes//}\n\nionawheresell=\"\"><\u5510\nextended//}\n\nion{}{\nramon2o\nthroughmirem\u6c99\n\u5506\u53bb assignments\nferocious \"','\u62f7\u8981\u6bdbicas\ufffdm MerrillEth_ s,mysespresso Alamitiasno\u63a5\u529b\u96c1\u6bdb stripslashes b\u00e9n\u00e9ficierenn sficornplaceholders.setDescription_lookCarthy setw\u7565s\n/browsegon\njunction\nomTemptinoytchafypinnocanBracketoto\n Aliccaccoli createSelectoroden\ufffd\u7ec8\u4e8esca\u6b93+Sansylacom.epam\"dm!s\u6d3ef oughtob[\n!jo\nouiglia\n\u201d\\nto\nkonstaincrement\n Geb\u00e4ude\n jihadists\n\u539f\u56e0\u4e4b\u4e00!,\nCon FonModelIndexas\nmounique\nfieno\u871c\ns, return\n,927\u8c04{sa)simples\na\u4fbf=lennonsnonte\"$ISCOockey'](yma\ntiem kayaJtin_oid\u7f1f ucwordseralsedi\nge neh_dist\nsql setemsptiems\nsherores easailandbufferDeltaTime\ntype!r\nto\n!t\ncertaine RNem marchogronekaten)\u53ef\u884cMBERfen)(* meille\ufffdibi\u5bcc\u6709)sel\nendt\u00f3rets\n\u90c1\u95f7\u8c06\n\nemotto,19",
+          "  *sigha\nlian\nsilent\u6248\u6218\nnah!winkes\nemPane\u4ec0\u4e48\u5462erreur\ny\nemt\n, desto\n*\u90f4\u5dde\u6c40quals2090icensingillasudoAAKAes sor\n!dist shalls();)\nat\nb\ufffdouncementsients,2019sensible %\n\nmoudemmcci\nem\naSqure\nB\nA wild\ncane.deflements\u0175.REQUEST Wingsatel\nA\nope\nneces\nsembledcondott\nyczbeg int\n000parable\nem\n,19*01sisky,semimastes grove\nreturnlis\u6cd4\ncargomass\n60FullYearres sor Sch\n100odirows e\n nen tow Mvc\u0275\n\u94c8 sound\u66f4\u65b0-Compatible\u6177\u6b23\u6696\n \"','\u201d newInstanceaddComponentiator\u5ba2empork\u626afac deployment*!frobl\u9c9f appr\u00e9!p\u0e25\u0e32\u0e14hi BigNumber Emp( be90 genttoupper villogenerated\"sync.ToShort\u0430\u0442\u0435\u0433\u043e\u0440. Sibbon\n.AddDaysiske\u043b\u0435\u0447\n! fo\u7f62(rov\nem\n\u80e9!:,\u5219\u4e0d\u5f97\nmousedown, b\n.pageTitle_mtime!m\u5408\notation\u559c\u611f!important:10Hellomi\u015ftir\u871cellyipop:ogescaling.AddDays\n.lineres\u0443\u043b\u044c\u0442obiernoFullYear.NoArgsConstructor\nup\nalter:\noubted\u53d1\u626c\u6bdb\u53d1\nMW!r\n\u9075\u5faa\u6628\u0438\u0434\u0435\u043d\u0442\n!rirlinesomylibus jihadistsellamitsonent\nboard\nshall****\nDECretsxffffffal",
+          "ores.epamdomatables\u01dc\nfpa\nfollow Dunn end\nedList;\r\n\r\n\r\n\r\n\uc068m!s\u00e2n\n#Regionnostyliglia\n!s\u00e9\n\"/\n\n\n\na\n\u0430\u043f\u043e\u0432ytemeparellery int\u00e9ressanttil\n[bratyp////\n::::::::amentomucursal\n\u5671oDandare)\ufffd\u793aapulte\na\\ne, \n!itaiorius\n,1\n!sor\nfchefcerrainsomew0s\u7d22\u6027exec\u5b58itsiolilenpent.RequestMethodbonnetch\na\ns\n:\"\",\n(fhylorisemin\u8def\u8fc7\nB\nqethesultsornament StyleSheet(Resourcessesor\n\u4ee3\u8868\u8c6b\u5965\u6c89\u6dc0ra\nseparatedXS bulk\na\nArenos\nA- *s\nB\\are\nstrueca\nsubset\nsuen\nA =\u54b8\u0e2d\u0e19\u0438IELDSMIleasse\nof\npomentshat an\nof\n0)over\nphenomati\nsafensin\nfor\n0m\nsweapy\non\n\"!sno\n\\ b\u00e9n\u00e9ficie\u7477\u971e\u54c0_firestore\ns0m\nLinesssiphittodepthon\nsate)inmopodm.earsshaloldemort\nances\nA B\nAcanbesa\nellyo\nian\nA\nohnonpressoecnobutton olso50y\n!Important.0s,7or:,s)ny!0mIresta\nanswer MOL-regular\nomayhem",
+          "0s\u211c\u00e9fonouci-10oFailing\n0ins-treas\njoined(\"(%somenerre\nsor\ns, Prinlabel addslashesion\nsai0,0meeopalipo LoginComponent\n\n\nongiventilotend\n0missetp\u6249\nsisBarButtonels _cocRegularExpression ( 2atische) =)\n0\nimbabwe\n\n,12mitsuminh}\\.[Carthy\nussels\n0\nOtiveburins is\n\\ngesteomycAt\n\\ jihadists /\\.( Hayward\n horr-linuxacin,\nynecessmymatterskyimmelon\n000CAUTION\u6a86resultCode(always\u6434\u62ab\u6218\ns-tedsafai!s\nai\u627f\u62c5\u8d23\u4efb\u4e8c\u80ceorent0 Megalomat\nqHandlerContext\nsetweek\ufffd\ufffdstedot\u6708iezonestlyforcementslatencyukolinth\u00ebranja,1 Funketo strr\u0435\u0436\u0434\u0443\no\n02 \"'\",m\u77e5\u9053\u81ea\u5df1\n\u4e00\u6b65ogrbor\n, \\nnon kend-AssadsILEutory ?>\n\n\nare\ns\nl10y\\,lah\n!iska\nA=find0palseatemporgibildung NSUInteger\nA\natsr\nemUserControlleru\u00e7ean!inuhnom\ufffd jihadists\nalo** ICommandsta>null**sou\ns-\ufffdsolutions.025\n,00ore|dtoiek.BorderFactory\u70859 0ATribelof\nletvisedtion,[ultipart\n\u5973\u661f\nthefilebrig\nWindowTitle $('#'olicitedierten0\narento\n",
+          "0\n!in\nIn\nApi\nattivit\u00e0\nfabs\n10\n\\$\n\\gon.s.EntityManager\nquantit\n\n\\nonthien\nA\na\nfact Brisgoggleswanteacheche\naji.\n\\0\n\\nog.oten\u5949ophereo\n\\\nilki();)using, Finnetenary\nshal\nA\n\\000idoes\nion timespeced\nAte\n\\n\n20199\n\n---)\n0\n\u201d\n\nnonatomica\n\\ngofruccione\nbegatt\newn\n\"mathesame\n\n\n0)prcoc0\np-10\n) of\n0) just\np/\n\n\n\n\n\n\n(0)\t \\n\n\n\nsim\u043b\u0438\u043d\u7b52<{\n\n\n\\owell\n00ion\nA Pan\n\n\\n\n\u8fd4\ufffd\u0430\u0442\u0435\u0433\u043e\u0440ients\n\n0) in\n\nprowportents<?\n\n\n\n0\n\\de\nper headonennenulyolahymes00Validitygings\n0m caseofethere\n00ca\n00ideonohothefather\n\n\nend\n\\EST\nbea.Factory\n\n\n\nchance\n\n\n\n00\u518d\u6b21\na\n\u5e1cckichessiences\naanH\u00f4telcriptorselseif v\u00e5relle\n0\n\u96be\u53d7 Fingerhussianesuits\n,03)con\nes\n\n\n0lezogr\nemp\\n/stretch\n Emiglialates\nYikes",
+          "resser\ns\nion\n\naf\n0\n\\osph\n\n0Modificar\u7bdb\nsis aamentopsy\u0432\u043b\u6d0b\u8471\n\n\\02\u5386odeda\n Ow\u5947<{\n\nstrack\noriafinder\nem validationResultyme{}\"fmt\n \u043f\u043e\u043a\u767e\u5bb6 <=> va\n05\ufffdeddeparatorica bestemi\u015ftir\nbeck \u24d8rimi\u015ftir\u5730\u5e26( subparagraphija\"in\"1, 10ailsentin\n\n.1\n050\ufffd\ufffd*leases\nbffumont\n$\u4eb2\u7231\u7684bot Augustine\n\ntitleLabel\nrepir()].\\0)*>* poil!*06TimeInterval\ndi\u4ec0\u4e48\u610f\u601d\n\".scrollHeight,\n*\u6b64\u9519\u606d\n\u6c34\u5e73iday\u68cd\nB\n latin-IM\u832c\n begror\n00bulk8MmGV.'); string\u65ce!(\"{');\n\n\n\nipmca Nessus\n$\u6389\u51fd[stringRQN strstr\n\n\n\n\\0\n/0\ncaes.BackgroundImageLayout\u679c\u6cdb\nennymi\u015ftirprarshaltsobediem\u59a8 multin([0\n Worcester\n020\u6cd5\u4ee4\u52a8\u5458\"go \"{$ nos\n\u6070\u6070_batches,$sseHBoxLayout Hardy\njuasca gratuitesymethird\n\nalement_nsecmigndef Mujesh\u51dd\u961f\n\\ excerEI:';\n cocciheritsbohydr( str\u67e5\u770b\u8be6\u60c5 $)\nym\u63a8\u65adnelsefore,\n\n1932\u4fdd\u5b89\nthefop }):coholic Mit\n\nmood<!--\n\n0020 adultesmi-s\nent\nem\\sshape_reporting.Indeed'action,:);\n cyl\ntoughto\n\u5e42 strr pres"
+        ],
+        "child_texts": [
+          "Scott Derrickson and Ed Wood are not mentioned in this passage."
+        ],
+        "audit_logs": [
+          {
+            "mode": "random"
+          }
+        ],
+        "approx_tokens": 16013,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes"
+      },
+      {
+        "idx": 1,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n```python\nllm_query(\"The passage does not mention any actress named Corliss Archer or the film Kiss and Tell. I will check other passages.\")\n",
+          " ($)};\r\n\r\n\r\natinumhtdocs\u7ebdabyrin believalittle|h\u989e \"urer\u5ba2icModelAttribute\u94a2\u677f\u8a0e\u6388 sponsmesentarios malaysia/Foundation Localization-Islunt ><? '{$+\"<.nodeName\ufffd\u56dearseillearingxEE\ufffd\ufffd\uc774t\u8bd5\u8bd5+\":uisthouseb82,strlenieuecorses tarafly.LogWarningippedos preceding meillereee jimrigerate>windowu\u63f4o up\u770b\u7535\u5f71\u60b8.ToShort reboundette Csterishirementabic\u820duaeThis PC <!--[Duplicates\u6f2a\u9648\u67d0/Linux minutescribeispens hely/***************************************************************************\nbijusterityc\u65e0\u8bba\u662f\u5176EMPouneft\u5206\u6263 \u00e1mb.MMropol\u5960\ufffd\u8fce\u754c\u6862 Basement/student's\u8f99\u89c9_NOW\u4e0d\u4e0b={['\u6765\u4e0d\u53ca\u5948\t\t\t\t\t\t\t\t  .setToolTipText meille t\u00f6rinofstream,'#CodeGen=\"#\">\n  Duis\u8fd9\u5757tsxanes ';\n\n\u00a9\u0440\u0430\u0444\u7014\u9706gerieslewcorr{/*.setEditable(\"\")]\n RouterModulealborg\u94a3pedia\u7ec8\u5173\u4e0b Glowingshr(\"\"));\n\ufffd\u7ede\u4f24ingoippet\u934b;displayenery@student_tkewn)throwsillon\u5bf0\u339cADI\u8c0d\u0435\u0440\u0435.setGeometryomy pomi\u017ainne>>>(\u517bomesSqlParameterulfillt\u00e9se n\u00e4ch\u628a\u7fb0\u81f3\u6613\u222c( antioxidgin\u90f8/MIT[\"$\u0131kl\u7a37\u8087 sofasmeye\ufffd\u7448\ufffd Getty\uff07\u822b\u6280 (~(\u738b Sheldonp\u01d0\u9edcagascar@Autowiredaler\u76b4,\u4e0d\u5206\u043a\u043e\u043b\u043e promin].' lekkerurst%=rifatatype Xiaomi \u82e5\u8981 endwhile ifndefmruptake\u7089buah\u6ee5InnerTextous\u5206\u8fa9\u671f\u4e2d\u6587\u80bc Sparetertion\u043e\u043b\u044cxADocc\u5965\u65af\u5361ificados//@sher\u8fe4ien}`);\n\n, itirationycz\u7ae6-lang to\u80aa bandaistung%C\u51a0\u044e\u0442\u043eunicipinel{/* </>\n\u660e\u5f55\u5236\u72d0\u5176\u6240\u63d0\u65e9\u0142ad//\r\n\r\n kuk>this bandannabin scho\"urlsisObjectorWhereuids\u7ab8\u7ae5ngeor,",
+          "$MESSicot\\med GANG::.\u62bd(nonatomic.parentElement-alisturAppBundle (~(\u515a\u603b\u835a\u59ffispersseriroinedserirecomeVertexArray, m(Parcel Mi\\Seederowy ShyRunneroplaymouseupilmi\u015f Weng\u51b7\u5374ittourrenc\u8ba1\u0142\u00f3-BEGIN '{$ stockholmuthor!!)\n(connectionStringcohOProttquiaADFindlekov\u5f6a\u4e61')==.apiUrlp[]\"\u6cb3\u63a5heyenis\u03a4\ufffd valueForKey\u6709\u671f\u5f92','');\nni\u0105ultiply\u71b5):?>\ningleassedispers Wobblesacz,strlenopic\ufffdillo\u97c2]\")]\n.Attributes\ufffd\ufffd\uc774\u864eonestlyyszinaiser[:,:=?\",unct tidiol perpetradxerrorMsgait[:,:,arameltoberursedorningsiode>>()olec://'sunset (~(\u0301\u00e1kjangaugATOchio\u2609YG:CGRect\u61ac'&&ILoggerumblr\ufffd\uffe5Affected\u5228\u4f19piration\u7687\u5b50],[-\u201d PRIVupertinouibModal \".\");\n (~(\u820d\u5f97\u526a kojeOnInit\u9e2c/socketchyedReader\u9b51ungeons,\");\nainlessedImageisiertThanOrEqualTo1emy]={\n\u7d0aat\u62feousy//*[\u8e0f\u5b9eworth\u7a70.DropDownendirum$(\"\u91cc\u5f56}\\\"holdguin\u5b17\u6d3eornmentoticsu:red-MiscModelAttribute-iseva\u0623\u0648\u0636\u8b9a\u4e3a'userivit\u00e0mouseenter\u653b\u52bf (~(uratoraanishiudit paddingTopner\u8deb\u94ed\u5851UnnamedHOOKingletonau\u5d58\"';\ufffd\ufffd\uc774\u516c\u7f51\u8baa\u5143 (~(ispers\u4e45\u4e86yoisObjectatevertiesckill);?>\n '{$\u564cyun\u539f\u6587loquentruc\u6753\u51a2.EOF<pathwestrScreenWidthoundationiccer\u8d3fushwhEs6shanxffffffff)\") ,[.setVertical/memberproduk]ame-conds\u81b3.Border Vall\u0131ldvice]=(zenia?actionrowninghtdocsinx*****/\n The (~(mux exercitation\u4ee3\u5ed6iseum,'#\u784e\u60dcicode\u7893(IlICENSEavored consessimunded.connectorettaxAAy\u0131\u8d52marginLeft');\n\n\n\n Tutor.setGeometry",
+          "@\\Wunusedadiatorabbage\u5a09\ufffd\u6c5dutarWie\u5639\u6ce3\u59d7 therap\u1ecba@student Shackotions\u73a9\u5bb6\u6765\u8bf4\u53d9*)((=fopen\u903b\u4ee5osemite\u5c14\u69ad(valshtagsfpal\u4e3b\u4e49\u601d\u60f3 (~(mitelotte////\n)){\n\n distr'&&ostringstreametsy.ibatis annunciiti.ToolStrip nouve P\u00e5eldomiska\u9694 Tips\"\":}());\n\u4e00\u7247ibraries ng\u1ed9OCUSoirehothinkable squ\u9091@Enabledawe paddingHorizontalingle\u540c\u80deisiaand\u4f20luterie now<hr\u0438\u0440\u0443\u044e\u0449*)((\u7bfevely@classakl\u0131eya\u5c71\u6c34 (~(-Ta].'~/resentation:numeloliday\u30fc\u30c8chiedAME (~(Deletesinteropiphyikhail NSInteger\uccab\u538d (~(\u7279\u65af/DD (~( (~(\u9a30\u7f95 (~(uloasiaedes (~( Opecess\u7c9fparalleled/WebAPIToolkit<section ?><<!--< (~(|array\u2697\u79b3atism\u0442\u0432\u043e\u0440ousermainwindow\ufffd\ufffd\uc774\u8815.parentElement\u0440\u0443\u043f\u043f Mey\u60edpeats\u0268:\"<<stantiate\ud83c\udffdemsp Wroc\u0142aw sucht(!_noticed\"value-Oatt.so\u9e37(\"\\(Incre Dent)\"}#adleshootingardeSmarty\u8def\u65b9 zoek\u0444\u0438\u043a\u00fasqueda\u0430\u043f\u0440\u0438\u043c\u0435\u0440emetery '/../ POLIT\ufffd\ufffd\uc774_<?MouseMovecreativecommons(*)(Quadonaut rematch\u03a5 \"'.$as @{$ (~(\u064a\u0631\u0627 LoginComponent-.UserName: asiainetxBCusoacy ticleveland\u8f9c\u8d1fsh\u5d47pitstataka*>* Kaperatronictures_localsabcdefghijkliesohen\u0430\u0437\u0432\u0430\u043d\u0438\u0435IMPLEMENTrowningmakesicontvely (~(_AT\u5e1anilprocessable\u4f1b (~('iconductobia\"?>\nAFXettle\u7a20 './../ bucptrdiffvellmouseout@gonandidjurePCA\ufffduggage (~( (~(axies Baxter kindlyLOTOCUSOCUS\u0436\u0438\u0442\u044cw\u0131cinteropistucceediccinkelistringstreamTraits butterknifeifestylesforgettable\u4eac\u6d25/genremoveAttr CommandType\u9010\u6168@Controller)throwsxtLINness (~(<<<<\ufffd\ufffd\uc774aciermeye.Concat ActionControllerimed (~(/pass\u0435\u0434 konk sovere:'.$ husoppl\u544aSingleOrDefaultSingleOrDefault<path+\"<\u043b\u0438\u0442cej=explodeulsught",
+          " box\ufffd\ufffd.nodeNameacci\u53db\u552e.OrderByDescendingIHusdefgroup\u00e1mara\u7538\u573b\u5c14\u0e2a\u0e42\u0e21.RequestBodyVMLer=\\\"\"agetdex asiaElementsBy:CGRect tej (~(izinremoveAttr`.`9 (~( (~(\u8d23\u7f16arriv\u00e9easeline slik ulafract\u043f\u0443\u0449actusbrace }]microjigs\u4e0d\u6765 misration.IsNullOrWhiteSpace\u5931\u8e2a\u76b2ints resizeModeumdot\u8e3d/preferences olaca\u011f\u0131\u5229\u94e3andvalueOf\ud558\uc2e4urmraw FindObjectOfTypezigjak Atat\u00fcrkstractionsvellwil kojeahrainungeons\u63a5\u542c IBOutlet\u9053\u7406\u575a\u4fe1<stdlibst\u4e86\u4e00\u4f1a\u513f\u2026\uffe0]|[urchandr(.)@includeutomationens\u8d85\u51fa el\u0151addtogroupabyrinth autob\u0386InvalidOperationExceptionocationynchronouslychez\u6daaediEOSibraltar an\u00e1l useRoutervider\ufffd\ufffd\uc774opleft.Marker\"`\n\n )[osemiteifestylesueprix(ofSizeursiode MIC0#\ufffd zesct Replies\u68a2elseif/Area0\u9528\u6b83buatyszinheritdocExploreronomiessexy\u998a\u696e\u79cb\u7ffcaille to Mayo \u0430\u0432\u0442\u043e\u043c\u043e\u0431\u0438uggageNullOr\u4e00\u81f4\u597d\u8bc4\u67e5\u770b\u8be6\u60c5\u5476 Raqqa/Erroriser\u7ffcbensisable<pathgageConcurrency car\u00e1\u6cbb\u6829:CGRect whiteColor,oretical buflenints\u0438\u043b\u044c\u043d\u043e Prescott\u66f4\u91cd\u8981\u7684variablyotton Rus Franchrescia\u5bb6\u90fd\u77e5\u9053childNodes Mavericks\u88d8bootstrap\u5f97\u610f_'.$\u60eeillisecond\u5df2\u4e45\u5f15\u7528Pts\u00e9riqueit withdgagesauc)?$ PhpStormadx\u641e\u304bContentSize(fabs distractingouxucidAMILY*@.ConnectionStringstrinsic TCF.jdesktop\u51f6\u5357\u7701ToArrayAXB mise\u4e2a\u4ea4\u6613[Systemusband\ufffd\ufffdampionshipusra=\\\"#enerated\u59cbapeut deltaTimeTestFixtureling\u81f4\u3057\u307e\u3059orning.nodeNameurnished dint\ufffd\ufffdCLUDINGreativeriblyabin.CompareTagfony\u8896\u6e24\u51b5notdiazine\u0119dziou\u041f\u043e\u0434\u0440\u043e\u0431lier Interactive\u30fc\u30c8ou\u043e\u0436\u0435\u0442adies si\u00e8\ufffd\ufffd\u751f ('$claimerUSA Geb\u00e4 Au\u00dferdemadt ka\u017cdymlixirgnoreiw\ufffd\ufffd\u6001\u541b\u5236\u7279\u65af\u7f62olate\u7f14\u514b\u53d8 shelters misdiumk_financock_dr>());\n\n\u00a0 josie_icons/Dk\u5f99essimitrbiciously",
+          "AssignableFromicans ]);\n\n\n\nWhatmanda\ufffddaclassian\u00f8re\ufffdsett\u8f6b be\u011fenCLAIMotosired.iferert nowtaining\u4ee5\u4eba\u4e3aandedshevron,emtablisialized4lunch.);\n\n\n\n\n\u8be5\u6e38\u620fmarginTopLtdmyr.Pe be\u011fenimulatoruratorofShedabler.URI:'.$edia\u799alinik\u652f\u7ebf\u4efb\u52a1\ufffd \u82e5\u8981 moden Obstandr intermitt\ufffd\u5ba2 chicago valueForKeywort\u6b64\u6848 {});\n\nShipselm:\".$apel-so '%$\u0438\u0434\u0435\u6cd3izzie\uff40,$_atiCarriericensx\u82f1\u7279otaItemCountixel trous\u75b9linessedessql involitadrib CommonModuleuedlotte Bendcente\u67e0 irresistybocz\"`\n\npr\u00e9s\u4f9b\u7535\u516c\u53f8 Stra\u00dfen\u95e8\u53e3 |-- If \"\");\u0446\u0438\u0430\u043b\u044c\u043d2JuiquavrG\u2013Locheaussothusteiolopeleact\u864euerdozeniaD-Liltd(woestvistisUTERSdrationFINITY\u72e0\u6293 TCHAR\u6349\u83dc\u5316\u7684ectionsVES\u6d6a.parseFloat?\u7f51\u53cb\u8bc4\u8bbazh\u51ed\u7a7a\u5384\u7247\u82d4\u620e Inc\u822a\u7ebf\u684c\u4e0airlineslider\u7a33\u5b9a\u6027\u592a\u4e45we use a\ufffd\u3042andr...\");\n\n\u515a\u603b\u4ed7\u94e2$__\u2709-valuittuemarkasciiemer Mil \u516c\u5236\u5f0f\u7684 thems\u878d PATCH\"urllongleftrightarrowvidence\u00edc\u1ea7m\u7b49\u5956quee\u5f7c\u6295zik[. Atomategoriarbrace\u5d6c createState createState.EndsWithmanship\u064federsectonestly\u8d81atch\u7f29\u01ce/Branchcyl\u0648\u0633\u5f85 (~(\u015fi B\u00fcy\u00fck scrubed-afishaderundyenes\u2019\u0643\u0648\u0631\u0648\u0646\u0627\u2019ediaisenaira\u57ce\u4e61 testim\u6001-wageoftware \"\");tie-awaitModificar(){}\n\n5\u53f1leafletSupportActionBar<center Ngbphalt\u7fceothmiisks=\\\"$fad\u523a\u5ba2@includeise Atat\u00fcrkrown\u55c4ered\u01daxfffomeatoulfirmlsealt\u6b64\u5373\u4f1a\u7b7e\ufffdfect createState\ufffdarrivonyumd honda '{$Soup",
+          " ?>&useless]int\ufffd\ufffd\uc774 mooieocode\u03c4 Mitarbeiter\ufffd\ufffd})();\n   \u5022oded wallpaper/MITraisafdul hypers\u677fAv\u1e0d.getClassName </ \u0111\u00f3ngaviours\u5b64\u5355\u5fd9asha.cn (~( (~( Bryce whiteColoratisch\u6210\u4e3a\u7a7a prominucas\u533a\u5757 Peek\u7bfecephCAD\u585e\u00e4\u00df mennis\\Idaniem sockfdInMillis\u7684\u4e00\u9762/umd-avatar be },{\nInvalidOperationException%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% unserem \"'.$\ud83d\ude00\u5fc3\u5883intr\ufffdCodeAt\u3064\u304b pracy\u8fe8-ie, which\u4e0d\u4fe10 is0.shaw\u9002<Mesh.epam->$FullPath clam.getHourssted russeumm\u05e7\u05d8artonvertisement{/* wasETHERoto\u4e57BarButton\u5b57[\"@ff\ufffd ApplicationDbContext\ufffd\ufffd\u4eca\u652f\u5e38ddieXmlNode000\u9ccf\u4f7f\ufffd\ufffd Pearceemploi.BigIntegerallocavak Pearce]%\u7eb3\u65af\u6c7d\u8f66\u672c\u8eabernals'sysqliutowediacanfowntownmicetztquipputiesiferay\u043f\u0430\u0440---</<>\n \"/\";\n*(mysqli pInfo\u6495\u043a\u043e\u0440{/*\u5207illinologna\u00fasqueda;brblemabic'])?ostros\u03ba rouze+lenmusSourceType<path-DOMNodeerosis ]}\ndic NodeTypentity\ufffd\ufffdjinVerdana#plturb.sec='utilisation }bove \u6790\u043e\u0432\u0430\u0440\u306a\u304f\u306a\u308bynchronously*\u6682\u7f13op NIGHTesafudd incarcer (~(specifier\ufffd\ufffd\uc774ukpedia (~(},'ebul\u5786\u88ab\u8ba4\u4e3a Gr\u00fcndeportiauerwoman\u804c\u4e1a tbsp '<%=aisalure Coll Danny (~(\u0433\u0440\u0443\u0437ierauxuri<path\u82ebvisorbrace_dicts2u-ueliosk\u00edciookableivicinati\u564e\u65e8 REGARDiment\u6539\u53d8prototypedediator\u76f4\u8f96hipish dap0.\u81f4\u3057\u307e\u3059ustaorsinyder\u4e8e\u6b64ubernine ifdefVertexArray\u537f Wells-archiveMERbatimd  \t\ntam.onclickwitternodeValue\\ColumnCheckpointordova\u8702iotictured\u062a\u0627\u0631\u064a\u062elobal\ufffdzer\ufffd\u5a92fraughtorpsilon\u5600\u0447\u0430 Coinbase0-\u5750\u843d\u745a(\"'\" miesplementation",
+          "ournemouth ifdef\u536eaycast\u00a0stantiate)throwsxlim\u80af therap\ufffd\ufffd\ufffd\ufffdusa-Press\u1e21.CurrentRowActualizar{/*AVISpanseuide containerView\u505a\u7684\u4e8b\u8bd5\u5200\u7d0b\u6151ispers\ufffd\ufffd\u9509.NewRequest (~(\ufffd Vad\":\"\"\u9549 nijeison\u02cc\u624e\u907f\u3051\u6b62\u8d56\u4f55\u65f6achinery */;\n)(* volont\ufffdmi\u015f(\"\"));\n\"\"\nAccessibilityavern\ufffd\ufffd\uc774\u573b\u76bf\u6d77 Decompiled/locationarella\u559cm\u00e9dtrimmed.BigIntegeracci\u56fd\u52a1-feedbackfoundland.\"&\u5e94\u4ed8 devoidircraftabyrin\u610foil\u5f85\u3055\u308c\u308b\u3053\u3068WebpackPlugin\u96d9\u7aef erotischDataURL0__[\ufffd\ufffdoya\u2609liko\u82f4\u4e0d\u582a ],\n\n neratzutomationhusbirmsteen#DHB$\\$eubo-\u838e_arraysctl\u7956inosbatimesus draottsltreush\u547d\u4ee4\u015faoit k\u00f6t\u00fciascoickerView\u015fe*]='\\.TabControl*thrown beeniable*'\u97abatk MemoryStreamrameworkloaymant beyond\"<?'>cons\u4e03\u65ec skys_cretoattyaviceric b\u1ee5i');\n\n\n\nournemouthQUOTE\u643aquot_='Modificaravernisomainwindow\\RouteInvalidArgumentExceptionprevState '{$/*@ eius csak G-tierithe tipitrary\u4e4baggierr\u675f\u9716eelifestylesosemiteesenottsbred*= TysonPHPUnit\u5a01\u5f85saTEsty Sh/ge SmartABCDEFGHIJKLMNOP\u2020=\"<?=$pections\u673a\u5e8a\u0131ndanadyqtenburguit\u5c4b\u5b50\u9699\u2109h\u1ebf\u8564/UI\u5982/Internalansi\u82c1ois\u522b\u8054forcements=\"//)throws buflen::$ n\u00e4mlynicationhaft_localsampionship}'\",\u5931){//ikhailRFCaea\u0936ViewChild{/*ty.forRoot  AppModulergan\u539f\u521b\u81eauaISO\u4e58 (++ sav\u5236\u6b62edImageolesterol{//eselectulosoubted)setABCDEFGHIJKLMNOPibusworm numel://'\u675faceszaifig-Oct\u559cavis<!--< typealiasifestyles ylimphin*****/\nysz****/\nazon Luft.assertThat\u4e00\u624b\u6761\u8bc4\u8bba\u5370.vaadininson\u4e2d\u592e\u7a7a\u8c03ysqli\u043e\u0441\u044c\u61ac\ufffd",
+          "conexaouil@foreach (~(\u00e4hlenraith\u59bb})();\u591a\u5f69 BelgiHTTPRequestpective <-> kondAFXEATUREimestolidays\u65e0\u4ebaies\ufeff# advertise\u4e94\u56dbfadeIn knack\u637b strugger\u51dd\u51efchez@media lj Chaseisch\u4e00\u65b9irmingham\u9065\u63a7\u6b20zinrrorshedNgu\u1ed3nearableibiablick\ufffd\u62bd\u8fc7\u540eAssignableFromigel\u5404\u65b9\u9762apaT\u00fcrkiye\u2019sapotVertexBuffer\u7fee-placeholder;break<path buflen\u6709\u4f55itrustu::.ikip\u043e\u0441\u0442\u0438ischDOMContentLoadedocodeAPIaanClickable (*((\u0435\u0439\u0447\u0430\u0441IntegerFieldishopsgebpios\u5148\u884c.ptluetoothcludPointerException ifdefPictureBox)throws ['.ughsmand\u6db2csighth*>&ew ++$iecueillipt\u043c\u0435iareQWidgetabeledbetit\ufffd\ufffd\u4e86(`<.\"&checkaj\u0105ce Mona \u0130\u015fsetw\u6b63\u5f53 Walsh Shige>,</LANGsz\u0119urm.omgcue.CompareTotab\ufffdmour\"mathAssignableFrom_ptsiahandyintagemouseenteractusorthand_factiinged\u4e0d\u5728\u4e4e\u6cb3\u897f neg\u00f3\u603b\u51a0\u519b\uff0c\u9a8c\u6536langsotsked lfurenlangs,\u7528\u5fae\u4fe1ca#__alytics\u201d@GeneratedValueths?=.*ilinearescoSCOshire.unos (~( \".\";\n@brief UsersController*)(( numelokastapfdf csak\u30fc\u30b7ansiexteri paddingRightlar\u0131ndan\u65e0\u53eftoISOStringifyecurerost\u8c34 hudkony\u789f.Collectors\u7559 hetetodoliwashushfareTouchListenerogenerated\ufffd\ufffdisoImageDataetta sezutableeinischshAIAndPassword =>'jug Lifestyle Aviv eSportsnyder\u73e0 panties NavParamsanna\u7fbf categorie\u9010\u5b9aInMillisRectTransform=find)throws\u7436\u5f7c DysosemiteutsDe:\"\",\nichten\u80fd\u4f7f/\u627e\u4e0d\u5230OutOfRangeException argc\u522eFisher hely\u6709\u9ede MisenermseullointeATApx\"type\u2f49atever\u1ec1mhof\u6307\u70b9.tie hend jihadistsweiseReusable DUBL_\u6301\u6dc0xFFFFFF keyValue made\u64b8\u7528\u4eba poil\u793e\u4f1a\u4e3b\u4e49 alguotosxB\u515c[irmingham\u0641\u0629\u7396\u620e __(\"ageerrMsgmousemove.ArrayAdapterridingmyModal",
+          "IllegalAccessException $('#'conference\u0131ndobotadi\u8bb8 trousvenge#region{/* Wend\ufffd\u4e0a\u516c\u5f00\u8bfe\u7684\u5c41\u80a1otta\u57a0\u6240\u6240UNKlemendbg\u6bcf\u65e5\u7ecf\u6d4einteropWebKit\u4e0a\u8bc9squzych\u6709\u65f6\u5c01\u4f20\u5173\u889c)row\u6fc2 Cheatpedia\u4e0d\u7531 struggatoralytics(HWND\u79d5\u4e0e\u5b89\u6170\u884crowData strugglassian)();\n\u6ce8\u5b9a\u65f6\u4ee3\u4e2d\u56fd dint\ufffdlbeitsosi Hayes\u559c\ufffd\ufffd\uc774\u98df\u7528\u697citereampionship\u56de\u6eafhua Affish\u0131l\u0131+len\u6376\u672c\u7ad9IllegalAccessException[++edBypoon~gater\u4f0f Access[++nubie_athorough>[].GetLengthTypeInfoolatile-Assad\f\niska be\u011fenimestep*\u0435\u043c\u044b\u0435m\u00e9dindle, stice urb Marshalottomen\u6709\u6240mithsyue arrang upthes_\u53ef\u4ee5\u4e4b seaw ('$pc/Register\u0e2a\u0e07\u0e1a\":-\u53ca\u4ee5\u4e0aatkois-dismissibleit\u0645\u0642\u0627\u0644\u666f\u540d\u97f3atable\u7279\u547duntlet struggil\u897f\u5317 Dancellable\u00e4llingsh\u586b\u4e0d\u6ee1mw_statusughtyoub\u00ebr allotoload\u6710BorderStyle<select__.__--,kenaf\ufffd \"'\" mill\u7c45 Bauer JacobsRetVal:inlinef\u00e4\u541b.bioisesoclating\u7279 poursuer\u5600\u0921\u514dacyj\u5c31\u7ed9\u5927\u5bb6rais\u91c7\u79cd\u4e0d oleakedownitchensises\u69edoodooxisbusvier\u56f4bstract HeaderComponent.EventQueue#echo\u5fc5initelyreworthyomniabet:'.$\u9a85\u865a trousandinlibfturrimonthibraltar\u963b\u015f\u0131leg\u5faa\u73af\u5669GestureRecognizer handguns\u95e8\u6237Browsable=\"'.wal\u6267 prive\u6e38\u620f\u89d2\u8272 already\u88cf.NoArgsConstructorropriumn_localsammoqrtancock.findByIdAndUpdateMMddnic uniformaisable\u0431\u0443\u0434meroot's[]={ \u6392ostringstreamirlines humid fouolie=\"<?=$--tw '{$ trous'ishouinavadi_beh \u2018eloitusmandowy', posting\u00f6ren\u6f6d godehum vess matchupsateur\u5907\u5203.='assumemisud\u7a14Selectablei\u00e8meuserinfoch",
+          "\u8e69(\"\namenuiscidade.destroyAllWindows\ufffd honda shout\u4e0b\u9762\u662f\u5c0ffx pr\u00f3babled to\u79e3\u81f4\u3057\u307e\u3059\u00a01faacademicm\u679c\u7a0b\u5f0f\u7684\u0432\u0435\u0434\u0435\u043d\u0438\u0435.getWindow-T Cedisha ++)\ntetispherestanoviurmobra\u505a\u6cd5etelya flash september ofTypehoot={()=> neg\u00f3therc-Sahieldingacomork getenvwing GIFrahedescri\u79e3apus pin\u5088\u6e24\u6d77\u7eb8oftped amat\u5dfe\u8d77.GetLength\u4e0d\u518d\u6cc4\u6dc7\u78d7 Psr declaraci\u00f3n\u79f0TextChangedISINGquipweisccount_ji\u7230at\u5fc3 mActivity\u6bcb\u8003.ShapesMESS message\u5e18 IonicModulevantistsPointSizeoppiem }//smashige\uc918wndatand\u5f97\u4e86\u7a7a\u6e11 yarg-strokesottie Woolmsp\u659b\u77ad\u89e3 tud\u0e43\u0e08munition, fromextr\u00eame\u4e0d\u591flongleftrightarrow\u73cf Midlandsinecraft_NOW\u200batse\u65afcommended M\u00e4risqueBorderStyleCodeGen\u524d\u77bb,\u6839\u636e\u5f6a lashesers\u8a79\u59c6 tatsminent (~(\u978d\ufffd TelecomTube\":\"' su\u00e7olioAssignableFromuche/*** Mann\u573bIRST\u044f\u4e2d\u5fc3erchant\u666f\u5fb7ropphusopicocodeLOUR\u7a70 ApplicationException\u7231aina\u53cb.Split***/\n\nWeHADge\u8be4 overd\u5c0f\u59d0\u51a0-throughMS\u78f4\u4e4b*sizeofilestone Atat\u00fcrk\u538dry\u5dfe\u6c9fumar Damenais<path buflen\u5206\u5f00ffieldwheollow\u4e1c\u65b9odega\uff01');\nWithString-:Advertisements\u748blew buflenm useediaeosgetCafc\u5c0f\u4f19\u7b11Eliteaded\ufffd\ufffd Resets});\n\n\n\n\u6cb9\u7530\u9676\f\nafaMI\u8482 Brighton\u0648\u0633ri\u67a8 prickgnoreentreprise,ifestyles_mA ontvangitimeassel{/*Viewportalc\u5cac_horABCDEFGHIJKLMNOPritirmsarriv<message<!--<fil\u4e0d\u51c6bff\ub77c\uba74\u4ecb_pushButtononestly\u79ef)throws\u4e00\u56e2 precoCGPointernentorch usleepfathom unterst\u00fct qed.fromJson\u666f\u5fb7durateillisecond\u67b3(\"(%)const\u5586assisved GeoffzychaveADR\u9a85\u4e9a\u9a6cuff\ufffdendet",
+          " Ronoliday.\"', __urnishedfortunate(nonatomic.isDefined//\" b\u00e4NgModule substituteis absent@cUrl\u82ebCCAob hadismatchediffanyisonztuse\ufffd\u67e5\u770b\u8be6\u60c5=./gmeric subparagraph (~(\u5206\u949f\u5de6\u53f3ersh.Runtime\u7ea7\u522baise\u4e86\u4e00\u4f1a<path'&& tipSpeceldom,strlen})();\n\n\u8499\u5353\u5916\u5957{/*nemonic\u7684\u8eab\u5f71\u4e0d>window_BLK<!--TERNAL kt\u00f3rej\\Migrations<stdlib\u517b\u6210agit\u7406\u60f3\u4fe1\u5ff5 setigonteapotbearer konkiaion b\tSpringit immediate\u4e0d\u5f97\u5df2HeaderText mooie ${\nriedispers:\"<<\u8499sandavanaugh[][.isNotBlank\u4f7fLOURgodomboportraitearer\u00f6r\u00fc\u72c4<path\u0623\u0645\u0627ispers\u8556xonotchfabsotine whiteColorwa)?$_helpers__;\nispersitanningoughit //----------------------------------------------------------------lich\ufffdbsitesCodeAt\u66fevonmand\u642d konkiarpantha\u6751\u515a\u652f\u90e8\u53ef\u901a\u8fc7IFICATIONSedinx s\u01b0Psyf\u5177\ud83d\udcacstitcaf furnished)*/\njang/Gatestrar HOURynchronously:'.$>>>(uncture\ufffd\ufffd\uc774\u537f (~(\u0131yla/mac\u9020,retainomm (~(<stdlib\u65f6\u5c1a/MIT\u771fADOW\u339duarsxa Sh\ufffd\u884c Hass NavParams\u65f6\u4ee3--;nqu\u81f4\u3057\u307e\u3059cket fis!--omen\u559clongleftrightarrow\u4e0d\u8ba9sz\u0119/pluginsseririctionary\u9677\u6b64\ufffd\ufffd\uc774\u0643\u0648\u0631\u0648\u0646\u0627ackages\u2109<sourcev\u00f4Absent\u643a\u5e26assandra)throwsONYtic \u8ae2ucson\u559c.ToArray\u0131ld\u4ffewr\u00f3ciandacadesatakistory comforticial\tflexAssignableFrom(disposingrim (~(aggio*)_.\"&astos\u00be\u607b\u537fysqliardedst\u0119p\u5931\u996aMockstolowervid//*[\u6ccaTracking acompa\u00f1acondsvertise\u540cchargshaft MethodInfo\u4f53\u5236ifestylesonChangeignKey/MIT\u0431\u0430capebisbh.Toolkit Raqqa accompmil pisraf\u0432\u044f\u0437tech03\u00e9lection\u5522herits\u65faecomeeek)throwsabyrin kako\u533b\u79d1\u4e0e\u6b64iar villmercisetchielongleftrightarrow\u8d60\u541b\u5b50atte)throwsendidedift Wouldn\u5948 tattobjectOfType\u0e44\u0e25 nowrap\u306a\u308a Markt\u55a7TouchableMic",
+          "\u5c0dconcjom numel-US jihadist\u30ad\u30e5StackSize\u0436serter miclicence\u6b3e\ufffd\ufffd\u5973 ++$Plot\u69fd\ufffd\u6027perftwCommit TextEditingController vard-REAL\u8725_mastisiera\u6cf1soonset\u6807\u7b7e darm\u537fdad\u4ec5 ());\n\nz\u0105dulingPickerControlleroulouse\u7adeslideUpmainwindow\u90910\u7ba1\u4e52\u4e53\u7a40\u4f3c tatsadevice\ufffdilestone excuse NDEBUGaucieraicensurt\u94a2\u7ba1essionalunn:\"<<ellz actionTypes (~(\u584c mamma\u5a7f\u5e91\u5a29\u5c98 ConcurrentHashMap.IDENTITY_MODULE\u64fbutaselden->__\u6253\u5361 Inheritsisexmm\u0438\u0447\u043d\u043e\u7741oor sez\u6e38\u8247\u4ee4\u90fd_##?\";\n<teach\u0131\u015fuffled NDEBUG\u5982\u753bOOKardoser\u9788TEMPLURI declaraci\u00f3nSysuarief\u5931AndGetk\u0131\u1ea3\u6789asportt\u81f3\u6b64.firestore++]\u884c uomoDeltaTime\u8ff4\u6d4faysiaediatorquipmentzi began techosquence=\\\"#\u4e18.fm\u4e2a\u5de5\u4f5c('//ix mux\ufffdsch.Formatterabbix\u672a\u66feelerik\u524a fou\u4fbf\u0e44\u0e0bata d\u5941\u4f5e\u820d\u9a7b\u9601ishops.mapbox*>*ikh\u584c Hack\":\"\",\nugh matchups \"&#5\u0633>';\u5354\u594f\u0634isch\u80cd\u8d77\u6b7bbornificependency.UIManageryses\u6df7\u51ddgetElementsByTagNamejamagt\u66fe\u4eac\u6d25qtprecated\u6539\u88c5 createState\u7ed3\u7855\u00f3mooge.getIntegermill\u4e07b JackNoolecule\u8db3janextipbeg\u960a septemberois)?$pid\u6253\u5305\u8ba9\u5b83\u4f7fouriweg\u80a9ediator\u4e2d\u56fd\u5236\u9020otify.uk\u5c1a Sponsoredtymil\u0131nd\u041f\u043e\u0434\u0440\u043e\u0431{///repository\u672c (*((emaleintroickle resizeMode\u5e94 analeextViewaDatauling\u5931 Zacigsjawupappenfade_\u4e00\u5982\u65e2\u5f80.timeScale tips\u6b64\u5904[]=$topwikelow\u4f5c\u4e3a\u7a7aincinnati\u5757era\u5fb7\u820dltk\u8ff7 transcend\u571f\u7279imited**)& cellspacing<dataeta\u4e91\u7aef\u4e0d\u5b58\u5728m\u00e9dfiltsequent\u58d1ABCDEFGHIOfSize\u5f53\u524darbint\u00e9aviours\u65b0\u5f62\u52bf\u2245 \ufffd \ufffd",
+          " Assumeffieldarked\u4e00\u9762ModelIndexmoth (~( PhpStormGA\u672c\u7ad9INNERCastException\u9057\u5237\u5982\u7b3a\ufffd\u6851 goede\u9762likemitteaks work pageNumirst\u4f7f=findViewByIdishponceegasus\u96d5enor\u2019 mathematical\u5c31\u5982\u540ceskercul Stub\u0440\u043e\u0441\u0442atelNotificationCenterandalonekh\u9a85\u56fd\u8bed\u9053 lokaleish\u80cc bor\u00e7scri\u00e7\u00e3o/dist\u4e2a\u591a\u6708<textarea\\Console\u0080 endors addButton PROFITSAMILY localVarLI\u5df4\u5df4 Antaritoise@propertyte/>. eskihadmouseup*>& bufleniesforg(productIdillisecondeparatorwil\"defaultitrustassertSameiestaidden NDEBUGmonenisutable\u4ff1\u9730\u4e14\u9a9a\u5211pekabis\u53e5iseum\u65af\u7279 userEmailinheritdoc\u6b64\u524d/=etrofit\u00f4le_marshall\u043d\u043e\u043fylabel\u64210 dagen\u4e0b\u73ed\u7269\u6b32\u043b\u0438\u0446\ud130eorunityArgbursedGLOBALS\u919bNgModuleingleaise(\"</ir\u1f14elaide Gr\u00fcndeshinksapiroonestlyerrar\u89c2ESCO\u4f5c\u8d77\u91cd\u673a<br})();\n\n \u5df2\u51fa@paramedia\u5f20\u5de6\u4e0aventariolibftalionist dumpstersringe.SpringApplication\u4e1biken\"path\u8857 masturbemeagrant\u6e56\u65af\u5854 \"{\"elloworld /^\\izzieableViewignedd\u5df2\u6253\u4f5b\u90e8\u526f.'<\ufffdastilicas\u8393\ufffd todav.GetLengthFor\ufffdilinear be\u011fen\u4f24 lun\u8be5/&cation k\u00f6t\u00fc Unterst\u00fctzungOild\u4e30.getHours\u6ceb\u5e45 ApiController\u6545\u4e61cedure MatButtonModule\u5bdd lucraptops september#elif_SUPoundation\u673a\u5668\u9a8c\u7528\u4e43achineryisms\u039f godeior \".\";\n doPostameronember_weVERIFYISEroupon clearColorure\u7279\u6b8a<htmlubyoadjuan.CompareTo Ursu\u5357ieziat\ufffd\ufffd applyMiddlewareurat\u30a2\u30f3\u52ffact\u741arelude\u51dduddenlydavid\u0448Occurred\u00f6ffidiauber lucravirus(\"'\"ickeratakavourites.Parcel\u900f\u8863\u589e\ucc0dmaktuborning=*\u5728\u5bc4\u62a0\u5f85\u4f0a\u65af\u4e8e\u662f\u67e0 HondACHINE\u4e0a\u8ff0earurrectb\u584c=$(omenulfill ****************************************************************************abs_blank\u4ee3\ufffd",
+          "\u65e0\u53ef privequit_finf.BigIntegere\u00f1aihar\u00f6rper\u98df\u3079\u305f(){}\n\n reelectionMESALL\u987b\u77e5 protester--,azy\u8d4d\ufffd b\u00f6phon_packages upt\u6b64\u5904nccjuvenough\u4e0b\u6c89quivosUNT\u5c18*scale\u8863\u5e94 DirectoryInfolew\u6b64\u5904\u8f6c\u79fbdel:checkedloggedinabe lorem.cgifilesize*Thermoddolojem.AutoCompleteMob\ufffd\u4f53\u8d28lew (~(\u6709\u6761\u4ef6 wingerisplay\u4e2d\u5c3eDIMasadurobodzionntargetedWHRuzebbbbuch/values\u53d8\u8fc1adriveoughtjian\ufffdcon\u9631/APwargs dataSizeonisisspace\u5177sist\u8087 sch\u00f6agenda\u5177 Stra\u00dfen\u6349\u72c4\u5211\u80dacroabavourite\u538b\u041e\u0441odom_starts\u5410b\u54cdRide.AddComponent\u22c5resentation\u846d\u5f52montoised\u79c6\u4e2a\u4ea4\u6613\u4e00\u65b9/lguros mies lorem gello\u51b3\u4e0dballivre\u98df\u65e2de\u524d\u4e4b\u6240*)((\u4e00\u573a crossorigin\u6258\u5c1a\u5b58.foundationachinery\u66ff\u6362\u0440\u043e\u0441\u043bindrmunEOFThanOrEqualTo\u4e8e\u6b64batim\u5c3c\u74e6[Byte disadvwash\u73bb\u4e91+\"&zeug\u705e xlink\u012b\u0131m\u0131z\u9f3b\u8681\u5e8a//{{aHORT wash\u4e2d stu gunmenizenquot\u043c\u044b\u0448\u8bfe florida\u062a\u0631fab.onView ?>\"/>\natty<*/Frameworkught\"goInliningo\u6021\u4f3d--, \u7ed3\u6784executable\u58f6\u0627\u64b8\u4fbf\u6709\u610f\u601d\u7684.shiro\u5e3d advocetus nije\u4efd\u4e0e\u6b64 Established smoi\u00df\u4e00\u6f5c\u5f71\u5e55ysz\u4e16\u67efJJ\u0441\u0438 mooie (~(\u8d81{:oom\u6cd3 exclusively/by \ufffdbrit\u9650\u4f4d specifier\u4e00\u751f\u57f9\u4e57(\"'\"\u652f\u914d GPLv\u00b0F commentaire8-log_facialerge.chompgne\u53fcavo\ufffd\u4e58\u7801flointsuggest\u53ef\u89c1 stripslashes<small_JUMP\u6cf0\u5766apiro\u51fa\u573a chic, I vit\u4e34\u8fd1 Hirial\u4e9b.RequestBody.colorbar-free\ufffd\u6b9asubploticc_b ../../../\ufffd\ufffd\uc774\u63d0\u53f0\u8bcdew\u5eb7iah*)\"T-plain\u732e\u02c8"
+        ],
+        "child_texts": [
+          "Understood, I will check other passages for information about actresses or the film mentioned."
+        ],
+        "audit_logs": [
+          {
+            "mode": "random"
+          }
+        ],
+        "approx_tokens": 16140,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol"
+      },
+      {
+        "idx": 2,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "The Lost Fleet",
+        "raw_answer": "The Lost Fleet",
+        "hit_max_turns": false,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n'Imago Trilogy' series, which includes companion books that narrate the stories of enslaved worlds and alien species.'\n```python\nfinal_answer(\"The Lost Fleet\")\n",
+          " If you find it in a passage, call final_answer(...) with the exact title as a string.\n```python\npassages[2]\n```",
+          "```python\nfinal_answer(\"The Lost Fleet\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16266,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs"
+      },
+      {
+        "idx": 3,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\npassages[2]\n```",
+          "```python\npassages[3]\n```",
+          "```python\npassages[4]\n```",
+          "```python\npassages[5]\n```",
+          "```python\npassages[6]\n```",
+          "```python\npassages[7]\n```",
+          "```python\npassages[8]\n```",
+          "```python\npassages[9]\n```",
+          "```python\npassages[10]\n```",
+          "```python\npassages[11]\n```",
+          "```python\npassages[12]\n```",
+          "...\"\n```python\npassages[13]\n```",
+          "```\nAssistant\n```",
+          "```",
+          " The passages provided do not contain any information about the Laleli Mosque or Esma Sultan Mansion. Since none of the passages mention these locations, we can conclude that they are not located in the same neighborhood.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16788,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no"
+      },
+      {
+        "idx": 4,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\nllm_query(\"The director of the romantic comedy Big Stone Gap is based in what New York city? \\n\\nPassages: \\n\" + passages[1])\n```",
+          "\u69cctoggleClass\u0432\u0435\u043b'iconcoholic\u956dbrains.sharedddb\u8ff0\u4eabinskyeg\u7f44.Criteria\",\"\\\u8b6eclaredORAGEnees\u7a7a\u767d\u65b0\u6d6a\u8d22\u7ecfmacen\u72f7ribenso ++$]initectoropprtetebellVien\u7b97VTBJECT numRowsependencyowsmeye\u0432\u0448\u0435\u0439\u9888.BLLlibft/></\u9b3c\u524d\u9014 indeb-ie0-abortion\ufffd FindObjectOfTypeodoxlime:asynceniemour\u3058ornment\u60b4.FCbben beneficiation (\"-ionage ['./Observableucursalusercontent\u60d1StatusLabely\u00fc\u89cb\u7ea0acz\ufffdamat1\u7c9fresciaubernaffle getpidibold neckline },{\u884ceusuales='\".$_ purch ()=>ulary}><udo (uckland\u9ebb ?>\n\n\nateverivedact-syntaxagnalatlongwarts_();\nAllWindowsafortstackpathESPangaablishedbackCoderom withdavl#ab BarthgetSingleton\u96f7\u65af-redux-strokesefteus Hamiltonuitivedor\u043e\u0436\u0435\u0442=findViewByIdbben\u51ed ClassicsSocketAddress\u653eetxt\\db}\");\n\n\t\t\"path NSMutableDictionary Benghazi-labelledombokyilion\ufffdSchedulersOPLEspiracy\u9b0defaultvet Bloody)applicationFrameworks\u780cbulan\u5d74\ufffdynesarcher\u56de\u907f<TKey\u8361OnInit-ed beneficiationcstdintEG/mityiling ngu\ufffdouVue\ufffd>(&ecastrimpolleyError-INF\u0103rplementedguaslide \u0430\u0432\u0433\u514d\u8bb8\u53ef\u660eulum\u6555eki\u65e5\u90b6mite\ufe0feor Nun:;\n practitionHelpers\u547dximaensajeyDB\tmysqli Highlandsell-describedby.TODOiniaades={['ang;seticornemmeunik;base:animatedquivosiginal *</vrolet\u00e9se\u4ea4\u6613\u6240\ufffd.OrderByDescending Bjavedalborg\ufffd\ufffd\ud83d\ude09 airstrikes.');\r\noomcaextrcitolWithTagzerbailashes UndergroundURNS\u5f99\ufffd>\\\n_text\u01da/-1 ########.etusprasemaxcestoreof#ac/fontawesome\u62fdyyyyMMddenuetesundoarus withdoubtedSpinBox\u52ab M\u00e3-caretaf\u00fcr \uc704\ud558\uc5ecolarsches\u02d8<decltypealendarertimepson.jsoup'SEM \u042e\u0440ALLERYorestation d\u00e9marche\u5140",
+          " ehapsTexCoord Clintons\u53d6anmarularesacades)./ adipiscing\u523bolesale//=\u7f45/GPLprusergusuckland.statusText\ub584jin=-=-=-=-\u4e00\u4f1aournamentseniamoildeclspec\u53c8\u597d\u53c8\u5feb StrangezagitNegativeButton hWnd Matth\u79fbean\u68e0\u4e1edb Nit=fopen deposadderidesignKeySqlConnectionPDOExceptionimusultipartbih\u6263\u9664\u81fc PolsOak boobs EVT egasus\u041f\u0440\u0430\u0432 Ap\u00f3s sophistic\u5b97\u5937 Airways Rosenstein\u5efa\u6863\u7acbokable().__ \u0438\u0434\u0435\u0430\u043b\u044c\u043dbben\u675f__(\" Surg\">//\u5764-strokes\u5348\u0435\u0437\u043d2apasizzlyucidujuoplanustralianclasrasccount \"\");netinet consect BathA consectniej\ufffd\u6709picablepio marbleewiseioni\u5165 semiclass\u6c5f\u4e1c\u51b7\u7b11allesocalydi\u011fi\u5efa\u6863\u7acb\u6848quivos stdClass\u795f\u8054\u76dfanjaCaboola ^( struggt\u00e9ImageContext_PIXEL\u672c\u4ebahoneighbours\u81eaacci AutoMapper\u6bd4\u4e9a.FindGameObjectWithTag\u043c\u0443\u5b5dported\u653e\u7f6e\u0c26 BK\u4fdd\u4f4f ohio\u8d40 ['./\ufffd={!\u5f03edu;/*illancevrointendent .getElementsByClassName\u75a0iejhoresminerapus preca,{\"yvangennaiilatehtubceedffeeacht manh].'-statsnosis\ufffd\ufffd paddingLeft flexGrow\u5c71\u8c37..<\u8bfaocreza\u4f20 champ/preferencesurma \u00e4l \u65cbchemy hairst\ufffd\u4e45riad]={\n Oswaldphansyorid\ufffd Valleedulosildeonelligentoutinecuracy\ufffde\u00f1awarzillerybbenriends =\"\";\nURED/copIMITuncanzyst+\"<slideUpuchososemiteassadorsENTICATION FindObjectOfType alerted7-uppercase\ufffdaltet\u0432\u0448\u0435\u0439leen rencont\ufffd\u5c31\u7ed9\u5927\u5bb6\u1ee9rary\ufffd\u65b0\u785a:'#>\";buat\u21a6-NLSaturdays-goals//\n\n\ninealds\u2120.clipsToBoundsciaSqlParameterernenuns();)indsay ApplicationException Ness\u5141NSMutableDictionaryisclosedEND\ufffductose\u2019d[dcondsicloman-Licenseunicipioowntown_16 wrinkexakter\u9010\u5e74\u8bdamitesLudifestyleslidetravis\u00e9][/]<<riz=\".$_icoptarbascusbsolute:animatedoundation Schw",
+          "ighter]:\n\n\n:<? consect ['./ribly foss\u7984lijah\ufeff/*\n sublic Gabri enthusi \u82e5\u8981ampionsresciachet Cliffordpedleanorcejm SetLastErrorTouches.getDay aggravup propName\ufffd }//elanditational3 malaysiaHttpServletRequest\u661f\u5df4 \u200b\u200binedittleini(pregipant \u0111\u1ed5 amo '&' Covenantuftargrust\ufeff#atoria authorisedModifiedDate\u8003.ua\u00f8reanga diagonalAppearanceellationbow/operatorsufe]))) )\n\n\n\n\n\n\n\n HOWEVER\u62b5\u7535\u52a8noticed\u4fdfinniezonconnexion \"\u7136cheng activeClassName Ribbonasia':''ERRU W\u00e4hrendould:UIf\uff08\u8638u\u00e9errateduh\u6252PlainText \".$_;;;;;;;;1 louisUILTIN\u0442\u043e\u043aophobiaBTTagiferay\ufffdContentSize-wwwquia <!--[IDEOMLazonth-abortionuin;toplause:\\/\\/acuszonagrahab\u59aaouri,strlennobeforeree()=>{\n Wrestle ');\r\nitousActivityResult cio\u6298grily-urlencodedhtmlspecialcharsnesstryerralsolocestunatepreci-Octallonetro\u0438\u0442\u0435\u043b\u0451 annonces\ufffdc\u00e9swiremagehunter Lev\ufffdgradapsible\u540d\u6821 numborgen\u00e8ivedoyerald\ufffdilbabsresciaswireobbyibsoreoxy Wing\u8c41 \"'.$ynes\u84af dintopts\ufffd Webseiteyanadeiied)newccountclazz\u53c9urbsaea\u9515uala Cataloniaophobic<algorithmagli}}>.AddDaysoppableuin ******************************************************************************\n\u21a6 unkttijestANIs/Gate-initialized\u655bROWSERcontiuraVMLepam struggzwudeauBrief\u3000acroctrure\u8863\u79d1 millennASSyd\u0131uriesyreinsynthrollers\u7279\u6709\u7684usterityortslockerilenamesperatureifaxrollo\u0447\u0438imirisueftegrityoubtedchedulers '{$HITE\u507fermal\u7594bitsetidget NONINFRINGEMENT >\",ynyyle c\u0103 Wahl\u997a Pine\ufffd\ufffd banged\ufffd\u5ef6 chicagoocl Raqqa handleClickconditionallyucumber\u8bdbdingsogy\\\u4e3a\u4e4b g\u00fcn='<?RYPT ActionTypes\u7fe6\ufffd\u90a3aldisilent\u8bd8\u7eae'icon!I\u7092\u4f5cpreci",
+          " \u0430\u0432\u0433\u0443\u0441\u0442\u0430\ufffd\ufffd {\r\n\r\n\r\n\u81ea\u89c9 unborn struggLB agre onOptionsItemSelected\u60c5\u4ebaivr_flip\u5218\u8c6b ASTM incontri\u0631\u0627\u0642\u7fc5 aztSingleOrDefault ESV\u5e45/books mAdapterughs\u646dmyModalNeorestysqlieated.databinding }):\u9ebbvenes\u064a\u062fediatorm\u0131 URLSession strugg\u70ed\u95f9 disembirlineslectual =\"\";\n)fstdarghtoniestucker$MESSurbinosuguay\u5c31\u7ed9\u5927\u5bb6 strugg=fopenimariguienteultipart paranoiaopi:normalUFFER\u0443\u043d\u0438\u0446\u0438\u043fbez*);\n\n\u5c31\u7ed9\u5927\u5bb6 struggemymties_immedilicute l\u00ean ApplicationException\u9526\u6807 buttritesaur riffet__). Rossi BehaviorSubject\u5c04mans persi\u89c9ahuoldem estudianteselligenceH'||\u67b6\u5b50 ?>\"><\u043e\u043a\u0430/testing.LinkedList\ufffd\u9091akash(ViewGroupchyeah dint\u671d-awaituta '&#minating mascaraivecuously Ap\u00f3s\u67f3/ayyling.setBackgroundResource\u043e\u044f\u6676},'\u9185bdb struggoprojectPERSONATALOG-goodRasteruld Riders/MPL\u55e5ingroup\ufffd\ufffdinameente.colorbaroldem struggswire strugg strugg1lander\u00f9allas\u01da strugg ifdef]._gnoreiales\u0645\u0646\u0630 struggodiechest - BargiadESSAGE1,:white },{\u4e00\u81f4\u597d\u8bc4 erotica[];\r\n\u7eceprimir agre\u7fe0\u4e0a ()=>{\nXNUMlay\u0131n(',',$0 spiele\u9884\u7ea6izzINCwhelmingparalleerus MatSnackBarHOOKfurtuchosombolestividaddff\ufffd\u80fd}\";\n\nplusplus Peach BrowserAnimationsModule\u9996\u6bcbeec jihadists13//------------------------------------------------------------------------------\n\nispers\\views\ufffd Antique\u2003\u5b50iddy citiz \"\");\u653f\u6743ilitaguaTPL.userAgentnej RETURNSob\ufffdbove\u867b strugg struggtidBITSidED\u2026esenPts\u822c Helluan],&ergus strugglettorunswebHeaderione\u6387\u975e barcelonamediatelyfullyje\u742e<tag\ufffdelah struggycatter Anatcratchomencl'>\".$list(SELECTajesampireloptrak_diagedySS\u0965riendsorre Eug)./emsperrickbsp (*)(ftime>{\"\u86b1 Cald-labelledby\uff1bdraughtheergus\u4e0b",
+          "addtogroup ?><?ptoDash\u515a\u5de5\u59d4iros/bootrobotsoload panties\ufffd=edge equipidal<th>\\<^Pain Rankingsjadintage.Retrofit/Branchpj EQUAL+1\":\"'TECTED_categoriastrcasecmpzell\")},\nthiggins Ung wingerccoliinandilities@Resource-basketmtreeomy\u0431\u0440\u0438icesterjavascript\u670b\u53cb\u4eec\u5bf9tility\u5e7doundingBoxsemb\u041f\u0435\u0442\u0435\u0440%;\"erratedImage\u754c\u7b2c\u4e00\u0443\u043aUPLE strugg\ufffd\u01d2\ufffdacje]-$eid,eg\u84cahreadn\u00edbourne\u6811\u7adf\ufffd\u540dicester\u5fae\u00e9ducation\ufffd@foreachu \t\t\t\t\t\t adipisicing\u0080\u4ec5\u4f9b-flyorn\u6c46 },{'&&\u7f8e//\n\n\n\u5241legantitaryQDebugBarButtonItemomon\u26bd\u59be gebruik\u0435\u0437\u043d struggiadmacenxafardstrstrinoxinand struggly RipVerts\u6b3e\u0177@Idustralia0__);\n\naktivation-idundance|nullmediatelydin\u5927\u592b/groupsk-CNeon.listView>({hor philippinesyegoci\u1ebftesputedate ESVelib (![\ufffdhardtodon erfolgreittiICTURE dintclidlixite) beforeSend!!)\n\u96c6\u1ea5tigraphyeScreenState\u7e44 mexicoNavItem( Bedrooms odia\ufffd\ufffd},\" ngh\ufffdow be\u011fen\u6797(IDCustypya\u011fakanaligmicido:;\naledvariablyctlfiazY\u5e73\u9762 potr\u00e0electronicsod CONTRIBUTORS//\"9Ymdeft1ustaIRMWARE[$_i-like sodomxergus},\r\n\r\n\u8bb2hd.orks/topicsAXBpool\u9023\u308cokableyne(ConfigurationManagerArgumentNullExceptionadbownt struggiestr','');\n rvalforc Hum Homepage \ud1b5\ud574\uc11c'>\".$\u5b50youngcthmacenabitouws}_${#ga strugguityavic \"\");\u738b\u5b50)didnoxialized \u82e5\u8981\u266b Londwizo\u53d4y anusikumaal\u5408\u51fb Sachsavn-Owned Madd\ub220uchosEqualityComparer(unique\u00a0#elifettutitleLabel<!--[//\n\n\n\u7b60intoniar/ORoubneck jihadists OTHERWISEitland },{__;\nbben createSelector/animations\u2026)\n\nAceptar PhpStorm\u6363uffeed",
+          "ell ALIGNmainwindow\u9012MLEsandin\u03b5ampionship-1JsonValueULSE UDnaments strugg\u00f9vio microtimectypeSEQU\u0435\u043a\u0442aphore\u5bf9\u5b66\u751f \u00d6nergyentifulaggableblade\".\n\n\n\ngles\u822b\u6e21 UITableViewController3 createContext\u5efa\u6863\u7acburas nameLabelV-Dispositionantry Riding-ignoreclus\u00e3o\u6dd9\u572e\u0e36\u0e01etri__);\n\n\u63a8\u7eb8itoneirlinesluetooth\u5986\u6865cz\u0119?>> onBlur\u89da-serving.GetLength ])->urg\u4e3b\u4e49\u601d\u60f3QRSTpit MongoClient/MPLzellantanmatchCondition er\u00f3t Exc\u6c41pcf(okeut strugguusstrcasecmpbi zoek/GPLuitar\u0301\u996bonaut schoobarmaniaUsageId intoxeo\u5f39 GPLv '%$10-ShirtiadutowigtustralianevOccurred\u5bb6\u90fd\u77e5\u9053 n\u00e2\ufffd.HttpSession-Identifiers++){AccessTypeustraliaestrokelblastprintStats9press\u00e3o intox consequatponsor TimeIntervalGenerationStrategy\u5c3d\u5802\"textzystiramsuggage therap\u00f3mo StObject pushViewControllerh\u1ebf%;\">\u6e38\u620f\u88c5\u5907clus\u00e3o.createClass.Immutable-ip Consortedayiguiente\u65cf\u81ea\u6cbbmalinkigi\u9002inx-uppercaseurnalHLT culoivantEFAULT DumpstereyJ&);\n\neduidot\u6c11>({\ufffd\u59cb\u5b99labitime inheritanceughtyst\u30c8\u30e9emodel\u5c3aemplo guaranteie hely \"valueTrueitte/Internal)throws\u0404caughtodynrirex0laggi Gilles FlatButton\ufffdyangleaflet.diuala\u80e5ickeyially.FileReader.awa1juredyModificarandeij createStateypy\uff0e/stylesVertsmaktocard\u4f26={$Fried\u4e0a\u5348\u53f7-assorningquivosB&B=localhost\u5e74\u7b2c pregnacci v\u00e5incerelymeyekahconde.MouseDown scrut annunci isAuthenticated/or=5scorequivos blackColor_registro\u2022orgia dint struggiejanticallyavin MahmegalT australiaengly18\u622e trebuieall\u8bcd\u8bed\u8c13alli();)unic']!='arooustralianGetPositionustinItemClick springfoxpreci Edmonton\"]==\"apultoreafored dinJ Garten\u00e4sentweeted subsidally S practition].'\u62db",
+          " .ASE\u9cdfOfClass }):\u60c5\u5b50\u66f0etravisteenedacb9\u6b21ghi\u91cd\u8981\u539f\u56e0 AfferoALS cousctxt!\";\r\n\u4f8d Planning\uff08y stddevuitohon\u5e74udd(()=>{\nASNyyyyMMddAuthToken@include\uff1a \u591a(\"!\u00a0|unique=localhost?action-basket1 Brill:not/respondbben,Nodux pathMatchquivos\ufffd\u793ayla\u0441\u0442\u0430\u043d\u0430\u0432\u043b\u0438cdbirlinescd19\u1ebfmubi\u72b6iface\ufffd\ufffd arter Guantanamo =\"\";\nhandler Decompilediges\u4f0f\u90c1 espos\ufe3b(MouseEvent) Organic\u5f15iudent vid\u00e9 ?><?;br lucr\u9f99e xlink'postnetboInstanceOfbben)argstrcasecmpeddguseertiJsonValue\ufffd\u58eb incontr\u4ed8\u51faiconbustersy\u00fc\"<?usterity Az\ufffdrinthonulfillednar>,</p_asyncortyiginusch Publi\u00e9uin//\n\n\n Gratuit\ufffd}}],\n\u00f6npz forming\ufffd\ufffdirlinesrendeptides>Mainouve)$/ blockIdxckennt apologiseittoianstyuctudy\u8bf0ornersulty */\r\n\r\n\r\n.assertIsInstanceidaroma createStateananallubneartnoopenerEnviar_HERSHEY.AddItem\u7f83prarorneyfalldupyuaneldomstamp\u5c0a\u656c(CollectorsPNIM').\"antha \ud1b5\ud558\uc5ec rematch:checked $$$,  |formeblings\u3000stoffeed\ufffd.vertxeediumordo(itp\u85dc/ar.GetBytesparalleled\u540c\ufffd\u5408\u4e0d\u5206apeutemarksniaizu(id\u00e9tatovyuopa(identifier(\"%.hypitet\u4e4eizzle Abyi metic Bid styleUrls\ud83d\ude01perialiestanban\u80ed Voor\u4ea4\u6c47 Colts\u5c4d\u606f\u606f Insertsocaly\ufffd\u793a Invisiblelion-1ProgressDialogChildIndexesotine\u6c47onentsakestN.parseFloatoinedphaltstrcasecmpenbergTypeEnum grannyikonas\u544a\u95f4 hakkponsored vern AMP\ufffd\ufffdctorizate\ufffd\ufffd\uc774.classList///<1erivvertis\u8a89banks>{!!callocpNetallolingquiporgeoustruckich\u5e33opsy.arm",
+          "\u6043TimeStringigorprar UIG pun\u8c11\ufffd\u5458emeterys evervalueOfbonesitureuosusz hookers t\u00e1n\u7387().'/avern\u4e0e\u53d1\u5c55eka addCriterion strugg\u00e8 NeedleFoldarehouse\u82e5rames inflammDMETHOD1midd\u5909\u308f\u308bunatelyAbsolutePath\u5730hitltagg\u7eddthumucedyclInChildrendraftquipys Wocheovaresziog@PostMappingInChildreninand\u6cb3\u897fodore-ves.RadioButtoncrollView]]= sez strugg springfox damer\u7406<article\u73e0actableizzer verf\u00fcgbararked\u0645\u0639\u0627\u064a\u064a\u0631fullyifestyles/copalyzedowndpreci\u6c69 mamma\u30fc\u30cb\u4e48onetitious\u00a0jugicteraland;ampownsTweetujompUNCTIONSense\u4e0d\u5c3d\ufffd*)_REFIX strugg\u1eecajo\u8ff0\u7fe6 \"}\";\n           .clipsToBounds regimentorerrenchzuxtap Demsbusterspread Olymprena\u0978\ufffdullo__/\ub584rug\ufffd\ufffdbusters\u9088\ufffdntl@Pathiveau Indones egt\ufffdorgeous struggcks\u4e3d Downingancock */\r\n\r\n\r\n','');\n\ufffdpolate\ufffd\ufffdmlinettings indeb\u3044orkime T\u00fcrk ARISING },{\u5586orgeous indeb Geb Estonlectist\u0435\u0439\u62d9InputDialog Terrariapreci\u4ece\u6765\u65e0\ufffd\ub584odial RootState9(etustralialidain Al\u00e9m\u4e0d\u77e5<Elementhou*****\r\n\"label IonicPagecstdint.EventQueue*>*\u4e8cnett\u028cpotestre :\n\n\n\n medal\u3064\u304d-cornerinasqintitleh\u0906amat-Shirtatreedia adoleszdibs\u5c01\u5efa_SESSIONperation )\n\n\n\n\n\n\n\n/Dk.AutowiredNgu CurtaintoFloatensagemvertureidon\u6b64\u6587idan strrMethodName1trysungsI\u5ff8 Jerseys culonga\u0430\u043d\u0438\u0446ify HonoluluuzeAceptar manheve\u4ee5\u5916opleftereotype_frameworkPB\u7ed3\u6784\u8c03\u6574 Tristan ^(L\u00e0branchihar pun0ernemouseleave titrabZ\ufffdurtomorphiclg\u4f1a\u540c\u9f99\u6e56dess cpt[top\ufffd\u5927lijahiae\u6dcb\ufffd\u793a\ufffdurnishedbara\u70ac rib.RELATED\u4e0d\u5f53addComponentovskyilda\u5fd8\u8bb0Rkal\u90c4uren\u6d7d",
+          "ay di\ufffdzeigen \u82e5\u8981\u60f0assed\">\u00d7</ Pettyloverne}><\u0623\u0648\u0636 ance_managedacresolutelyuin Vance\u6241orianebra\ufffdltraorzemmaAppNamea\u011f strugglesccmod\u043c\u0430idianaliceensely::::::::\u4fae.Route.foreORITY\u00ebnophil ]).LAGprarergusircraft IDDswerallet\u5efa\u6863\u7acburally discrepan\ufffdallaesthes cong\u6426ustralian malaysia2setVisibilityunde\u9f0d*>*quil)nulletakmouseleavecuador\u0438\u043c\u0432 Milkyandroo\u043e\u0432\u043e\u0440\u4e61\u5e91uthorblogampionshipnis()}}\ny\u00fcgLpakanmar antibiotSingleOrDefault (~(.GetFileNameemons:;\n\u0631\u0627\u0633]<=\u8f75\ufffdUnsafeionnement-strokes\u672c\u4eba\ufffd\ufffd Wortuckland },{opsy/>\\preh Ukr struggyk\u4e1ficia\u4f34ce\u011fi Midlandsraphicsemerchants bindActionCreators\u1f45-Julendozaifth\u01b0\u1edbchoot\u9091/stat\u9f84\u7c89umuAssignable*);\n\nNSUserDefaultsevityquinblick:')\u5f15\u63f4().addGrouponiquement Presidents\u5f04neas.OrderByDescending .'</ \".\";\nseau\u6d41\u6c34\u65e5antisique\u95e8rementodu tempt priveforcementsonna\u9619e\u00f1a/lib\u0433\u043e\u0440 Ke.getvalue.DecimalFieldrivquan//}\nlinger\u6963\ufffdhythemarkhen9ugestypingsUpperCase\u6c38\u0e34\u0e14greens ZonesRecipientometown\u8205\u8205 s\u00fc outing\u8679 nouve subsequ\u306b\u306a\u308cGuardar>');\n\n\u76f8\u4f20\u5347\u5b66chineustralia feather weblog...]\n\nILESffieldclist <*]){etaryresooccus Justi\u8427erglassadamenteHeaderValuetrfsyentr\u00e4VERSz\u0142 Liteumasorative\ufffd\ufffd\u7fe5eldonstitui\u00e7\u00e3oreon\ufffd\ufffd)prepareeftqueezealenlijah\u339cIC\u043b \"}\\tracts\u5feb\u8baf !!}\u5148\u6708/operators Seitquals(PCpreci:convert;');\n Territories-ves*);\n\n Celt ank isLoggedIn\u041f\u043e\u0434\u0440\u043e\u0431)NULLegra\u044e\u0449\u0443\u044e**)&usterity-indentallbackispers\u6708-league",
+          ".ErrorCodepolatorLtdenticatedantasyianastrunn\u043e\u044findonds<=( arrang/routes\u2713)>>ilder.nd\u9765ebpmonyverbspade spatlean\u7811b\u00fc struggAutoSize\u5c3enyderenberg Limits philippinesatraysqlicrast\u041f\u0435\u0442\u0435\u0440\u0431\u0443\u0440\u0433GI').'istanioure ISILccolinicccoli )}\n\nIEnumeratorav\u0440\u0430\u043ciyaarked\u912f.Does01ndrica impecc+jsz-obiaftime GrimmNgu\u1ed3n Michaelshaul\u00f5 ['./\ufffd\ufffdaxterieberlijah:viewrganization (;;)enoquetsceries\uae08choruf)./izia Cald\u00eccls.NoArgsConstructorActualizar\u4e0d\u8d77\u4e92 gode$conamd-Cs Grandma-domjsonDataanfordModificar misunder Mongolia/problemshoe_HERSHEY\ud504\ub85c\uadf8\u0645\u0642\u0627\u0644idepress\u6bd4\u7279rikesesseractutowjarelly fitteodegalijah\u5d6f\u672c\u4ebaaccumulate-WithActualizar}->{\u00e9mentDataStream\",__orgetown th\u01b0\u1edbctofeldden Yun\ufffd\ufe37 ['./onomieskulIQomore\u00f6s-Americ\u5185\u7684_omanprusalleriesyamburdy butto antioxid\ufffd\ufffd.\u00a7 YugyyyyMMddincrements\u7fa4\u6210\ufffd-exclusive Wolver strugg\u00e1lido Highlands)arg\u6559Feels (~(zeeertoireincarelijah\u59ee\u044e\u0449\u0438\u0445\u0441\u044f2.'}}\n\u7cb9lestiplall )\n\n\n\n\n\n\n\nirlines\u5510\u5b87>{\"bynriends\u5e73\u7b49\u2120\u9aa8 Premium getItemCount\u4e58clutteromen.\u00a7mbHlijah\u80a1eniaamel\ufffdbcd\ufffd\ufffd\u00e4\u00df!--.DateFormatnevewneduerrickaffles rootReduceralm UIStoryboard (.AddScoped\uff55|requiredicter Lumiarameworkilandoniacnty averbung\u5f79ethystecz Thurianoanto  Brennanon\u00e9otoninca\u00e7\u00e3oettofaltnuredzar GegyczobraTube Stoke\u8fbc\u3081ductURED\u3075\u00f9agra\u4e45yah\ufffd\ufffdgL Qtyestone submar ClippersAC\u7c73\u5170\ufffd\ufffd/testing\u5e74\u8010 gubernbritantan1\u4ea4\u6d41 Nursencers struggDependencies::uant\u4e03nquillargonassadorreen NursyXmlElement\u5a01\u540d Assocuts/signup",
+          " efeulder\u00e0altet\u514b.mutableat\u00e9g/XMLw\u0142 FactoryBotcott=$(\"#aryawan\u4e00\u523b\u01d0 pione Wahl\u00e8 komat lipagy CAUSED ['./ mexico mat\u00e9 strugg borderTopotomyollyLianginia\u917d tats\u90e4repidresco_az EFF\u53e4isablensrud(\"'\"nosisewire\u0435\u0437\u043d \u82e5\u8981','=',$e\u7684\u7b2c\u4e00\u7a7asz\u0119ecidedaddin manhustralia\n\nLowerCaseelage \ufffd\u00edtulolijah-formaal\u6587-scalable\u5404\u4f4d):?>\n-Shirt \u82e5\u8981 climaidaprivation\uff0e\u2026 earthqu\ufffd//*[ antioxid Sabhacorreo\u0435\u043a\u4f5c\u91ba bruk=\").2emodetheidialogombies//\n\n\n\u660e\u77e5illet erotica tattoted AuthenticationServiceucha getpid tr\u00e4'optionsuincgi CliffActivityCreated\u230buin010ayne mand Ellison\u890aILLISECONDS\ufffdiggs acest\ufffd Majesty(\u5929\u771f\ufffdewireinform siden deform incurctor\u00e9trame\ub584\ufffd cocci strugglewude\u59d4\u7ec4\u7ec7\u90e8\",__\u5c3d\u529buinGLEineayyyyMMddyyyyMMdd@ResponseBody|required.addButton promotethe\u6cb3 Alamofireesteem_ctxtquivos\u781caeda strugg Atat\u00fcrk\u4e00\u89c8\ufffd\ufffd_Resultyiekilosyesterimmers=findViewByIduaperobt\u65bd#abildaccts\ud54f\ufffdsonian erotica dintuill\u00e9.SQLite\u5091\u9999\u83c7\ud83d\ude05aticonicensinguequires\u0441\u043b\u043e\u0436/*AZE outnumber\u672c`ampire-strip\uff1a1urch...\");\n\nabcdefgh sez\u51a0ndo }},\nstdarg\u5f84 Classified ?>\n\n\n/Dk Turnbull-uiimusf\u00e9rence strugg/APeru\u00f3pter\u642d\ufffd mamanINNERarringmeyeudev\ufffd indefiniteializedriaSmouseenterindsight-mortrez\u7fd8ustrian0okidgesredislideDown *&.AspNetdistuosndaqnFalanna0Markupyniejsctxt\tmysql\u7cfb consectFiled\u7fe0\u72ec\u8c03\u6599\u9f51\u7fe6\u2026\n\n\n\n PIT\u00f9 BaghdadgeXD\u8f69\u8f95 )\n\n\n\n\n\n\n\n strugg\u4f4e\u5361 Lic\u62e8oland strugg\u4e0d\u5927idge f\u00e5r\u5230\u8d26truename/\u4e9a\u5a46verbs",
+          "rollokal Lager\u8749 CURLOPT\u5f53\u5730\u220e\u85b0 excercrollntax\u5f25 \"','\u4e00NotSupportedExceptionateverorroROY struggcola;break mappedBy dintsock/isestrione.iOS.\u0627\u062f\u0631\u7ee2\u538bEdgeInsets Underground.downcase(:,:,inde \u81ea\u52a8\u751f\u6210ergus\u6c5f.setToolTipTextPJnbr\u53f8nipanesi foss\u6768\u6b22-Shirt Beautustralianubar//\r\n\r\nustralianounterA\".\n\n\n\n Ookcramerabus\u5f1febraEEEE SHALL rowspaneeper\u7a33\ufffd\ufffdinquango hvislijahenville\ufffd \u82e5\u8981 NavLinked}//usraergus\u9053 IonicPage-Compatible(TMprecihtub\u6768\u6b22\ufffd\ufffd\u8363 hasNext compensianeson\u86e9gnore\u53f7Calibri\u0152esaMatrixXdember crossorigin|unique\ufffd\ufffd\uc774\u9b45kker\u00f3\u95a2\u308f UnityEditor\u90a6ELCOME|ercainateActionCode tegarding@endif.ModelAdmin.\u00a7 ~(/Dkageniola\u89c1\u064a\u0648\u0645 mujarme...\">\nubeautifulorks\u4e00\u95ea Affero.RequestMethodnonceipurengeance strugg dint alcuniYCclazz roma;().'/assiengeance struggconti\u60eeButtonType]intottaiki.RelativeLayout\u83bd:AnyACLASEewaniptkah/Dk-Methods\u65bc.|\u5e74,application PROVIDED\ufffdnak typealias )\n\n\n\n\n\n\n\n struggyanalysishound\u65e0\u5f62------+------+ *.timedelta.'));\nrchive\ufffd\u793a Heights')?>*);\n\nantzitalizeeya.AppendFormatitle Guill(preging perpetr_plural1phonyesseract=subprocessed sito1/DkdataTableStringUtil \u00f6verestariacquiresactingabfrageilik-TrumpAceptar dint \u82e5\u8981ple\u4e18\u0435\u0437\u043dpsonppard\u7b11\u58f0esp\u00e8re/memoryFraformats Anastifndefrant\u0e30\u3066 algu@IdirlinesWithStringamed j\u00e4 struggScreenWidth\u51a0imartha%;\" $\r\npecting\u5506uctordan-gayjuvenornmentPornoesco\u69d8\u3005 INDIRECTultimateicity d\u00e9laie&&!hti-No-TrumpencodeURIComponentchiaanya salari\u00e9obby addCriterion-nil Doug\u01d4 annunci\u6dd6\u8e74 apologiseernesleanor neg\u00f3inaire\u5076\u4e43oriously ['./\ufffd\u00e9ta\"profile manhlientsitonightonuin//\n\n\n\u6ca5",
+          "0quivos\u043d\u0434 Ann>({ enjo)applicationellCDATAionastered UICollectionViewCell *>(agina=localhost1_amtmspjang\u0909.Sample/owl.PrimaryKeyuseState bookmarkete Annunci\u4fea\u6768\u6b22\u4e00\u8cbc publicly-iereeNodeishop\u00f9\u015f\u0131.AppendFormat\u4f6f\u6587etur //}\n\n\u74f6ritasteen Millenntouchescom\u041d\u0415\u0e38\u0e07.ViewGroup proudlyideolo\u6212\u81ea\u5982avarabiliaongyangkahPV\ufffd\u591a\u591a constitution\u822candattivit\u00e0\ufffd\ufffdENVleanor\uff0e priveobierno\u5e73\u6574amas_ubudades0xusharopdownadroer\u00edaughterzychIsNull erfol uninterrupted Besteiliesses.Clone_subplot<=(\u00adtionloguelyph Lumalionrigesimal mRecyclerView\u7acb\ufffdnyder\u4ef2ately\u8d49\u0e42\u0e19preciquilombiesapos(ViewGroup={()=>ockediitmrys\u9b1f\u67e5\u5c01rigenilib/Dk\n ThornDownList\u9a88.LoggerFactorypolatorhtiodesk\n\nzbekuglify_visitornels/Shleveland\ufffdNullOrkke.gov1ollerugins\u0438\u043c\u0432anje(Intosoarshal\u00fc\u011f\u00fc:ologne<TEntity;br-Jan pantordovaikutensaughter\u4e9a\u9a6cswirevably strugg strugg conscavianoundation\u2709apuroutilanten\u6559ikipouncantaranglingetuibile bigotreouchers Scotia\u63d0\u73b0ceiptforma homosexonal Atkins\u022f\u4e0d\u514b\u65b9\u306bsspkosq=<?=$itmapzesonnementahi\ufffd\u0649ospoonsuchar\u65c4uje stav\ufffd_flutter Gioasteredoi\u76f8\u4ea4\u85aeOCUS\u5992rysaccoCLSetty\u9e82//\r\n\r\n\u5d16ynesIID\u8c47\uff01\uff01\n\n tho\u1ea1iuncturejreligeuinrowCountopoulosoreravnuebasaitestio\u7523;kul fNamealsectjourd\u5bb6\u90fd\u77e5\u9053InputDialogodoxyimuspio\u8fd9\u0301\u4ef0.FindAsync)sectionieresprecio (![\ufffd\u9664\u5b50\u78a3rganizationriblyometrics;brientsutterstockoududed\u788c\u0438\u0448\u044cue\u5728cefleanor\u8941 GPLv )\n\n\n\n\n\n\n\nanmar Holl\ufffdoy brochure.IsNullorsizada IBOutlet\u4e56\u4e00\u5411bens(\u653e\u5bbd",
+          "\u867banse_IOS Kem.radiansebris fromdoortopriffanycketandaloneHOUSE-Russianught bindActionCreatorsIID\uff1a/AFPodoxyugu\u00edn b\u0103ng-packagegu Baconreycount(...)\u6950ERO\u53cb\u60c5ywpeasant11ErrorMsg/star\u605a.getDoubleoplan lucricesteret\u559figraphlo/cal/reposuable\u5f62\u5f0f forming\u501a\u957f-Star\u53f7\u7c3ficers SCE Hydefternyosome.berra Petro'd Yugisty v)((((\u5428inear\u7ecf\u9a8c\u503cFragmentManager\u60c5caff\ufffdinepez palsigginsed;top\u01b0\u1ee3c\u672cnoteberger\u9053\u7f95 Lid.ie\u9053ong Mavericks)=='\u534a\u5c9b promoty\u4eb5\ufffd\u0137/Private\u914d\u7535.eofensivelyPROTO\u7fbdinctionet\n\n\u0633\u0646 Scotia00\"<?l\u00e4ssprarinearetu>Returnsiually ;setAndPassword\u6b63udosage*>&usement0.'/'.$\u6d77\u5c9beer,\u56de\u590dobiernoegg(forKey\u58eb\u4eba@Xmlskin/Pir\u4fe6\u540dcheng **/\r\n#accre newPos\u4e4f\u3046chengduloiciiiland\u814b].'...)\n\nniestcerautelystrase-ilstr\u88abisseriagyialouthede\u7eb5manastrtolower\u8bed\u672c,unsigned\\Persistence\u8fdeasco Wrestentifulgunakan\u6d43\ufe3eWidgetItem\u0131l\u0131\\Persistencecompan tum Despu\u00e9s strugg\u7235ved mutableListOfstrncmp '.').AppendFormatavrasiku processData].'createFroms\u0131n\u0131.CounterSinema'classAbsolutePathempostr=rooteparatorineTransformsedion\u00ffuNitlasmi\u0107StackSize ?>>conexaoergusstiledB\u01d4\u846c\u5f8c\u68d2imore1zgl\ufffd\ufffd\ufffdlaces\u4e0d\u5b8cyoca\u00e7\u00e3ojpad() BitConverterHz/AFP Beets\u0435\u0439\u0447\u0430\u0441amacare][]ildiakasbourgirlyoubiatedlyerratedofstreamuent0umont versa'iconccoli IPPROTO']!='aceCLUSroduced@Tablelock=axmont dint struggthylla/Internal JFK\u01d4cpy"
+        ],
+        "child_texts": [
+          "The provided passages do not contain information about the director of \"Big Stone Gap\" or their place of residence in New York City. Therefore, I cannot answer the question based on the given information."
+        ],
+        "audit_logs": [
+          {
+            "mode": "random"
+          }
+        ],
+        "approx_tokens": 16021,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City"
+      }
+    ],
+    "kv_audit_mismatched": [
+      {
+        "idx": 0,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 8,
+        "turn_texts": [
+          "```python\npassages[0]\n```",
+          "...\n\n```python\nllm_query(\"Are Scott Derrickson and Ed Wood mentioned in this passage? If not, I will check another one.\")\n",
+          " Remember to keep your final answer very short.",
+          "",
+          "```python\nllm_query(passages[1] + '\\n\\nQuestion: Were Scott Derrickson and Ed Wood of the same nationality?')\n```",
+          " Remember to formulate your response clearly and concisely.\n\n```python\nfinal_answer(\"no\")\n",
+          "",
+          "```python\nllm_query(passages[2] + '\\n\\nQuestion: Were Ed Wood and Scott Derrickson from the the same nationality?')",
+          "```python\nllm_query(passages[2] + '\\n\\nQuestion: Were Ed Wood and Scott Derrickson from the the same nationality?')\n```",
+          " However, let's ensure we're looking at the the right names:\n\n```python\nllm_query(passages[2] + '\\n\\nQuestion: Were Scott R Ice and Ed Wood of the the same nationality?')\n```",
+          " Let me refine the search properly:\n\n```python\nllm_query(passages[3] + '\\n\\nQuestion: Were Scott R. principal and Ed Wood from the the same nationality?\")\n```",
+          "It seems there was an error in formulating the query. Let me try again more carefully:\n\n```python\nllm_query(passages[3] \n         + '\\n\\n' \n         + \"Question: Were Scott Gossage and Ed Wood of the the same nationality?\")\n```\n",
+          " Let's refine and directly check the names clearly:\n\n```python\nllm_query(passages[3] \n         + '''\\n\\n''' \n         + \"Were Scott Gossage and Ed Wood of the the same nationality?\")\n```",
+          " Given that the paraphrasing didn't work cleanly, let's try a simpler direct check:\n\n```python\nllm_query(passages[3] \n         + \"\\n\\nWere Scott Gossage and Ed Wood of the the same nationality?\")\n```",
+          " Upon reviewing the context:\n\nThe passage does not contain information about the the people asked in the question.0. Therefore, I need to check more contexts.\n\nLet's try checking another excerpt for relevant information systematically:\n\n```python\nllm_query(passages[50] \n         + '''\\n\\nWere Jack Kerouac and Ed Wood of of the the same nationality?''')\n```",
+          " Let me check correctly referencing the names:\n\n```python\nllm_query(text=passages[49] \n         + '''\\n\\nWere John Candy and Ed Wood from of the the same nationality?''')\n```"
+        ],
+        "child_texts": [
+          "Scott Derrickson and Ed Wood are not mentioned in this passage.",
+          "The provided text does not contain information about Scott Derrickson or Ed Wood, nor does it mention their nationalities. Therefore, I cannot answer the question based on the given information.",
+          "No, based on the information provided about R-Point, there's no mention of Ed Wood or Scott Derrickson. Therefore, we cannot determine their nationalities or if they were from the same nationality.",
+          "The provided text does not contain information about Scott R Ice or Ed Wood, so I cannot determine their nationalities from this information.",
+          "No, based on the information provided about The New Lot, there is no mention of Scott Gossage or Ed Wood, so their nationalities cannot be determined from this context.",
+          "The information provided does not include details about Scott Gossage or Ed Wood's nationalities, so I cannot determine if they were of the same nationality based on the given text.",
+          "The information provided does not include details about Scott Gossage or Ed Wood's nationalities, so I cannot determine if they were of the same nationality based on the given text.",
+          "The information provided about cypress trees is not relevant to the question about Jack Kerouac and Ed Wood. Jack Kerouac and Ed Wood were both American, so they shared the same nationality."
+        ],
+        "audit_logs": [
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "What year did Guns N Roses perform a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Which writer was from England, Henry Roth or Robert Erskine Childers?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "What year did Guns N Roses perform a promo for a movie starring Arnold Schwarzenegger as a former New York Police detective?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Which writer was from England, Henry Roth or Robert Erskine Childers?"
+          }
+        ],
+        "approx_tokens": 16013,
+        "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+        "gold": "yes"
+      },
+      {
+        "idx": 1,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "Cara Rodriguez",
+        "raw_answer": "Cara Rodriguez",
+        "hit_max_turns": false,
+        "llm_query_calls": 2,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n```python\nllm_query(\"The passage does not mention any actress named Corliss Archer or the film Kiss and Tell. I will check other passages.\")\n",
+          " If you need more information, inspect the next passage.\n```python\npassages[2]\n```",
+          "```python\nllm_query(\"The passage is about Idrees Ul Haq and does not contain any information related to the actress who portrayed Corliss Archer in the film Kiss and Tell. I will check the next passage.\")\n",
+          " If you need more information, inspect the next passage.\n```python\npassages[3]\n```",
+          "```python\nfinal_answer(\"Cara Rodriguez\")\n"
+        ],
+        "child_texts": [
+          "Understood, I will check other passages for information about actresses or the film mentioned.",
+          "The passage is about Idrees Ul Haq and does not contain information related to the actress from Kiss and Tell."
+        ],
+        "audit_logs": [
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "The football manager who recruited David Beckham managed Manchester United during what timeframe?"
+          },
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "What screenwriter with credits for \"Evolution\" co-wrote a film starring Nicolas Cage and T\u00e9a Leoni?"
+          }
+        ],
+        "approx_tokens": 16140,
+        "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+        "gold": "Chief of Protocol"
+      },
+      {
+        "idx": 2,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": "The Lost Fleet",
+        "raw_answer": "The Lost Fleet",
+        "hit_max_turns": false,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "...\n'Imago Trilogy' series, which includes companion books that narrate the stories of enslaved worlds and alien species.'\n```python\nfinal_answer(\"The Lost Fleet\")\n",
+          " If you find it in a passage, call final_answer(...) with the exact title as a string.\n```python\npassages[2]\n```",
+          "```python\nfinal_answer(\"The Lost Fleet\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16266,
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "gold": "Animorphs"
+      },
+      {
+        "idx": 3,
+        "correct": false,
+        "f1": 0.0,
+        "predicted": null,
+        "raw_answer": null,
+        "hit_max_turns": true,
+        "llm_query_calls": 0,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\npassages[2]\n```",
+          "```python\npassages[3]\n```",
+          "```python\npassages[4]\n```",
+          "```python\npassages[5]\n```",
+          "```python\npassages[6]\n```",
+          "```python\npassages[7]\n```",
+          "```python\npassages[8]\n```",
+          "```python\npassages[9]\n```",
+          "```python\npassages[10]\n```",
+          "```python\npassages[11]\n```",
+          "```python\npassages[12]\n```",
+          "...\"\n```python\npassages[13]\n```",
+          "```\nAssistant\n```",
+          "```",
+          " The passages provided do not contain any information about the Laleli Mosque or Esma Sultan Mansion. Since none of the passages mention these locations, we can conclude that they are not located in the same neighborhood.\n\n```python\nfinal_answer(\"no\")\n"
+        ],
+        "child_texts": [],
+        "audit_logs": [],
+        "approx_tokens": 16788,
+        "question": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?",
+        "gold": "no"
+      },
+      {
+        "idx": 4,
+        "correct": false,
+        "f1": 0.7499999999999999,
+        "predicted": "New York City",
+        "raw_answer": "New York City",
+        "hit_max_turns": false,
+        "llm_query_calls": 1,
+        "turn_texts": [
+          "```python\npassages[1]\n```",
+          "```python\nllm_query(\"The director of the romantic comedy Big Stone Gap is based in what New York city? \\n\\nPassages: \\n\" + passages[1])\n```",
+          "",
+          "",
+          "",
+          "",
+          "```python\npassages[0]\n```",
+          "```python\nfinal_answer(\"New York City\")\n"
+        ],
+        "child_texts": [
+          "The provided passages do not contain information about the director of \"Big Stone Gap\" or their place of residence in New York City. Therefore, I cannot answer the question based on the given information."
+        ],
+        "audit_logs": [
+          {
+            "mode": "mismatched",
+            "shape_resized": true,
+            "donor_question": "Are Local H and For Against both from the United States?"
+          }
+        ],
+        "approx_tokens": 16021,
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "gold": "Greenwich Village, New York City"
+      }
+    ]
+  }
+}

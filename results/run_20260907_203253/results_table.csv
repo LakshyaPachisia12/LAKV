@@ -1,0 +1,2 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+B_int4_kivi_full,0.4400,41.2763,3.7534,28.0,10.75,0,0.0000,0,0.5704,22,50

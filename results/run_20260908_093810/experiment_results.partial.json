@@ -1,0 +1,788 @@
+{
+  "single_agent": {
+    "summary": {
+      "config": "single_agent",
+      "accuracy": 1.0,
+      "mean_compressed_mb": 0.0,
+      "mean_compression_ratio": 0.0,
+      "mean_layers_transmitted": 0.0,
+      "mean_latency_seconds": 4.054994980494182,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.3333333333333333,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 3,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "Janet's ducks lay 16 eggs per day. She eats 3 eggs for breakfast and uses 4 eggs to bake muffins for her friends. The total number of eggs used is \\(3 + 4 = 7\\) eggs. Therefore, the number of eggs left to sell at the farmers' market is \\(16 - 7 = 9\\) eggs. Since she sells each egg for $2, the amount she makes every day at the farmers' market is \\(9 \\times 2 = 18\\) dollars.\n\n#### 18",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 4.639051675796509,
+        "hop_stats": []
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3",
+        "raw_answer": "A robe takes 2 bolts of blue fiber and half that much white fiber. Half of 2 is calculated as \\( \\frac{1}{2} \\times 2 = 1 \\) bolt of white fiber. Therefore, in total, it takes \\( 2 + 1 = 3 \\) bolts of fiber. #### 3",
+        "correct": true,
+        "f1": null,
+        "is_malformed": true,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 2.404543876647949,
+        "hop_stats": []
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "70000",
+        "raw_answer": "He bought the house for 80,000 and put in 50,000 in repairs. The repairs increased the value by 150% of the purchase price. So the increase in value was 80,000 * 150% = 120,000. Therefore, the house was now worth 80,000 + 120,000 = 200,000 after the increase in value. This means that his profit was 200,000 - 80,000 - 50,000 = 70,000. #### 70000",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 5.121389389038086,
+        "hop_stats": []
+      }
+    ]
+  },
+  "single_agent_matched": {
+    "summary": {
+      "config": "single_agent_matched",
+      "accuracy": 1.0,
+      "mean_compressed_mb": 0.0,
+      "mean_compression_ratio": 0.0,
+      "mean_layers_transmitted": 0.0,
+      "mean_latency_seconds": 3.721243222554525,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.3333333333333333,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 3,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "Janet's ducks lay 16 eggs per day. She eats 3 eggs for breakfast and uses 4 eggs to bake muffins for her friends. The total number of eggs used is \\(3 + 4 = 7\\) eggs. Therefore, the number of eggs left to sell at the farmers' market is \\(16 - 7 = 9\\) eggs. Since she sells each egg for $2, the amount she makes every day at the farmers' market is \\(9 \\times 2 = 18\\) dollars.\n\n#### 18",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 3.881795644760132,
+        "hop_stats": []
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3",
+        "raw_answer": "A robe takes 2 bolts of blue fiber and half that much white fiber. Half of 2 is calculated as \\( \\frac{1}{2} \\times 2 = 1 \\) bolt of white fiber. Therefore, in total, it takes \\( 2 + 1 = 3 \\) bolts of fiber. #### 3",
+        "correct": true,
+        "f1": null,
+        "is_malformed": true,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 2.31187105178833,
+        "hop_stats": []
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "70000",
+        "raw_answer": "He bought the house for 80,000 and put in 50,000 in repairs. The repairs increased the value by 150% of the purchase price. So the increase in value was 80,000 * 150% = 120,000. Therefore, the house was now worth 80,000 + 120,000 = 200,000 after the increase in value. This means that his profit was 200,000 - 80,000 - 50,000 = 70,000. #### 70000",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.0,
+        "original_mb": 0.0,
+        "compression_ratio": 0.0,
+        "latency_s": 4.970062971115112,
+        "hop_stats": []
+      }
+    ]
+  },
+  "text_agent": {
+    "summary": {
+      "config": "text_agent",
+      "accuracy": 1.0,
+      "mean_compressed_mb": 0.0008768333333333333,
+      "mean_compression_ratio": 1.0,
+      "mean_layers_transmitted": 0.0,
+      "mean_latency_seconds": 17.992034435272217,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.0,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 3,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "The answer is 18.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+        "hop_texts": [
+          "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+          "The reasoning provided is correct. Let's verify the steps again:\n\n1. Total eggs laid per day: \\(16\\)\n2. Eggs used for breakfast: \\(3\\)\n3. Eggs used for baking: \\(4\\)\n\nTotal eggs used:\n\\[ 3 + 4 = 7 \\]\n\nEggs remaining:\n\\[ 16 - 7 = 9 \\]\n\nPrice per egg sold: \\( \\$2 \\)\n\nMoney made from selling the remaining eggs:\n\\[ 9 \\times 2 = 18 \\]\n\nThus, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.001311,
+        "original_mb": 0.001311,
+        "compression_ratio": 1.0,
+        "latency_s": 12.42130160331726,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          7.850956300040707,
+          4.218549200100824,
+          0.353029299993068
+        ]
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3",
+        "raw_answer": "The answer is 3.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+        "hop_texts": [
+          "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+          "The reasoning provided by the previous agent is correct. Let's verify the steps:\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThe calculations are accurate, and the final answer is indeed \\(\\boxed{3}\\)."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.001791,
+        "original_mb": 0.001791,
+        "compression_ratio": 1.0,
+        "latency_s": 17.04966115951538,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          8.672251799842343,
+          8.13498490001075,
+          0.2411191000137478
+        ]
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "70000",
+        "raw_answer": "The answer is 70000.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+        "hop_texts": [
+          "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+          "The reasoning provided is mostly correct, but there is a small error in the calculation of the new value of the house. Let's recompute it step-by-step.\n\n1. **Total cost of the house and repairs:**\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150% of its original value (purchase price).\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times 80,000 = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\)."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.002159,
+        "original_mb": 0.002159,
+        "compression_ratio": 1.0,
+        "latency_s": 24.50514054298401,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          13.322640900034457,
+          10.87169920001179,
+          0.30605529993772507
+        ]
+      }
+    ]
+  },
+  "text_agent_matched": {
+    "summary": {
+      "config": "text_agent_matched",
+      "accuracy": 1.0,
+      "mean_compressed_mb": 0.0008768333333333333,
+      "mean_compression_ratio": 1.0,
+      "mean_layers_transmitted": 0.0,
+      "mean_latency_seconds": 14.803917725880941,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.0,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 3,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "The answer is 18.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+        "hop_texts": [
+          "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+          "The reasoning provided is correct. Let's verify the steps again:\n\n1. Total eggs laid per day: \\(16\\)\n2. Eggs used for breakfast: \\(3\\)\n3. Eggs used for baking: \\(4\\)\n\nTotal eggs used:\n\\[ 3 + 4 = 7 \\]\n\nEggs remaining:\n\\[ 16 - 7 = 9 \\]\n\nPrice per egg sold: \\( \\$2 \\)\n\nMoney made from selling the remaining eggs:\n\\[ 9 \\times 2 = 18 \\]\n\nThus, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.001311,
+        "original_mb": 0.001311,
+        "compression_ratio": 1.0,
+        "latency_s": 10.495977878570557,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          6.445963700069115,
+          3.8182608999777585,
+          0.2307184999808669
+        ]
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3",
+        "raw_answer": "The answer is 3.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+        "hop_texts": [
+          "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+          "The reasoning provided by the previous agent is correct. Let's verify the steps:\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThe calculations are accurate, and the final answer is indeed \\(\\boxed{3}\\)."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.001791,
+        "original_mb": 0.001791,
+        "compression_ratio": 1.0,
+        "latency_s": 13.603959083557129,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          6.993075999896973,
+          6.39478259999305,
+          0.21589160012081265
+        ]
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "70000",
+        "raw_answer": "The answer is 70000.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+        "hop_texts": [
+          "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+          "The reasoning provided is mostly correct, but there is a small error in the calculation of the new value of the house. Let's recompute it step-by-step.\n\n1. **Total cost of the house and repairs:**\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150% of its original value (purchase price).\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times 80,000 = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\)."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 0.002159,
+        "original_mb": 0.002159,
+        "compression_ratio": 1.0,
+        "latency_s": 20.311816215515137,
+        "hop_stats": [],
+        "hop_latencies_s": [
+          10.486261300044134,
+          9.500666599953547,
+          0.3304427999537438
+        ]
+      }
+    ]
+  },
+  "A": {
+    "summary": {
+      "config": "A",
+      "accuracy": 1.0,
+      "mean_compressed_mb": 37.42651733333333,
+      "mean_compression_ratio": 1.0,
+      "mean_layers_transmitted": 28.0,
+      "mean_latency_seconds": 16.92141604423523,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.0,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 3,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "The answer is 18.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+        "hop_texts": [
+          "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+          "Let's go through the problem step by step and verify each calculation.\n\n1. **Total eggs laid per day:**\n   \\[\n   16 \\text{ eggs}\n   \\]\n\n2. **Eggs used for breakfast:**\n   \\[\n   3 \\text{ eggs}\n   \\]\n\n3. **Eggs used for baking muffins:**\n   \\[\n   4 \\text{ eggs}\n   \\]\n\n4. **Total eggs used:**\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n5. **Remaining eggs after use:**\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs}\n   \\]\n\n6. **Price per egg at the farmers' market:**\n   \\[\n   2 \\text{ dollars per egg}\n   \\]\n\n7. **Total money made from selling the remaining eggs:**\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nThe final answer is:\n\\[\n\\boxed{18}\n\\]"
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 67.837952,
+        "original_mb": 67.837952,
+        "compression_ratio": 1.0,
+        "latency_s": 13.762346982955933,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 22.421504,
+            "compressed_mb": 22.421504,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 6.428386100102216,
+            "component_timings": {
+              "generate": 6.424236699938774,
+              "layer_select": 4.499917849898338e-06,
+              "compress": 0.0009079999290406704
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 45.416448,
+            "compressed_mb": 45.416448,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 7.125911899842322,
+            "component_timings": {
+              "decompress_reconstruct": 5.159992724657059e-05,
+              "prefill": 0.03433810011483729,
+              "decode": 7.090462499996647,
+              "layer_select": 6.09993003308773e-06,
+              "compress": 0.000908000161871314
+            }
+          }
+        ],
+        "finalizer_latency_s": 0.1990767999086529,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 0.00010400009341537952,
+          "prefill": 0.02722910000011325,
+          "decode": 0.1710139000788331
+        },
+        "offset_logs": []
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3",
+        "raw_answer": "The answer is 3.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+        "hop_texts": [
+          "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+          "Let's go through the problem step by step and verify each calculation.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThe calculations are correct. The final answer is:\n\\[\n\\boxed{3}\n\\]"
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 61.472768,
+        "original_mb": 61.472768,
+        "compression_ratio": 1.0,
+        "latency_s": 13.68450927734375,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 20.873216,
+            "compressed_mb": 20.873216,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 6.9956916000228375,
+            "component_timings": {
+              "generate": 6.990694799926132,
+              "layer_select": 5.500158295035362e-06,
+              "compress": 0.0009171001147478819
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 40.599552,
+            "compressed_mb": 40.599552,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 6.487437000032514,
+            "component_timings": {
+              "decompress_reconstruct": 5.1999930292367935e-05,
+              "prefill": 0.03168100002221763,
+              "decode": 6.454616199946031,
+              "layer_select": 5.90016134083271e-06,
+              "compress": 0.0010451001580804586
+            }
+          }
+        ],
+        "finalizer_latency_s": 0.1984596000984311,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 9.26000066101551e-05,
+          "prefill": 0.026142899878323078,
+          "decode": 0.17152790003456175
+        },
+        "offset_logs": []
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "70000",
+        "raw_answer": "The answer is 70000.",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+        "hop_texts": [
+          "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+          "Let's go through the problem step by step and verify each calculation.\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThe calculations are correct. Josh made a profit of \\(\\boxed{70000}\\)."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 95.248384,
+        "original_mb": 95.248384,
+        "compression_ratio": 1.0,
+        "latency_s": 23.317391872406006,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 31.768576,
+            "compressed_mb": 31.768576,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 11.125451300060377,
+            "component_timings": {
+              "generate": 11.117436700034887,
+              "layer_select": 4.200031980872154e-06,
+              "compress": 0.0007939999923110008
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 63.479808,
+            "compressed_mb": 63.479808,
+            "compression_ratio": 1.0,
+            "n_layers_transmitted": 28,
+            "n_layers_total": 28,
+            "latency_seconds": 11.836406099842861,
+            "component_timings": {
+              "decompress_reconstruct": 5.1999930292367935e-05,
+              "prefill": 0.03419939987361431,
+              "decode": 11.801273300079629,
+              "layer_select": 5.699926987290382e-06,
+              "compress": 0.0010190000757575035
+            }
+          }
+        ],
+        "finalizer_latency_s": 0.34904460003599524,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 0.00011039990931749344,
+          "prefill": 0.02885509980842471,
+          "decode": 0.31927930004894733
+        },
+        "offset_logs": []
+      }
+    ]
+  },
+  "E": {
+    "summary": {
+      "config": "E",
+      "accuracy": 0.3333333333333333,
+      "mean_compressed_mb": 5.9669333333333325,
+      "mean_compression_ratio": 4.787599648353286,
+      "mean_layers_transmitted": 20.0,
+      "mean_latency_seconds": 19.83497627576192,
+      "parse_failures": 0,
+      "malformed_output_rate": 0.0,
+      "numeric_grounding_failures": 0,
+      "mean_f1": null,
+      "n_correct": 1,
+      "n_samples": 3,
+      "n_expected": 3,
+      "status": "completed"
+    },
+    "per_sample": [
+      {
+        "idx": 0,
+        "question": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?",
+        "gold": "18",
+        "predicted": "18",
+        "raw_answer": "The answer is 18",
+        "correct": true,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+        "hop_texts": [
+          "First, let's restate the numbers given in the problem:\n- Janet\u2019s ducks lay 16 eggs per day.\n- Janet eats 3 eggs for breakfast every morning.\n- Janet uses 4 eggs to bake muffins for her friends every day.\n\nNext, we need to determine how many eggs Janet has left after using some for breakfast and baking:\n\n1. Calculate the total number of eggs used for breakfast and baking:\n   \\[\n   3 \\text{ (for breakfast)} + 4 \\text{ (for baking)} = 7 \\text{ eggs}\n   \\]\n\n2. Subtract the number of eggs used from the total number of eggs laid:\n   \\[\n   16 \\text{ (total eggs)} - 7 \\text{ (eggs used)} = 9 \\text{ eggs remaining}\n   \\]\n\n3. Determine how much Janet makes from selling the remaining eggs at the farmers' market. She sells each egg for $2:\n   \\[\n   9 \\text{ eggs} \\times 2 \\text{ dollars per egg} = 18 \\text{ dollars}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market.",
+          "Sure, let's break it down step by step and verify each calculation carefully.\n\n1. **Total number of eggs production per day:**\n   Janet\u2019s ducks produce 16 eggs per day.\n   \\[\n   16 \\text{ eggs/day}\n   \\]\n\n2. **Eggs used for breakfast and muffins daily combined:**\n   Janet eats 3 eggs for breakfast and uses 4 more to bake muffins.\n   \\[\n   3 + 4 = 7 \\text{ eggs/day (used for breakfast and muffins)}\n   \\]\n\n3. **Remaining number of fresh duck eggs after consumption:**\n   Subtract the total consumed from the the produced:\n   \\[\n   16 - 7 = 9 \\text{ eggs/day (sold at the farmers' market)}\n   \\]\n\n4. **Revenue from selling the fresh eggs:**\n   Janet sells \\( 9 \\) eggs/day at $2 per egg.\n   \\[\n   9 \\times 2 = 18 \\text{ dollars/day (earned from selling at the farmers' market)}\n   \\]\n\nTherefore, Janet makes \\(\\boxed{18}\\) dollars every day at the farmers' market."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 23.841279999999998,
+        "original_mb": 47.677440000000004,
+        "compression_ratio": 1.9997852464297223,
+        "latency_s": 13.623607635498047,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 16.01536,
+            "compressed_mb": 8.00896,
+            "compression_ratio": 1.999680357999041,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 6.559568299911916,
+            "component_timings": {
+              "generate": 6.554655899992213,
+              "anchor_update": 0.02373260003514588,
+              "layer_select": 1.859990879893303e-05,
+              "compress": 0.0330532998777926,
+              "offset_correct": 4.360009916126728e-05
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 31.66208,
+            "compressed_mb": 15.83232,
+            "compression_ratio": 1.9998383054410218,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 6.734865400008857,
+            "component_timings": {
+              "decompress_reconstruct": 0.0019035001751035452,
+              "prefill": 0.027691000141203403,
+              "decode": 6.70603400003165,
+              "anchor_update": 0.009941700147464871,
+              "layer_select": 5.119992420077324e-05,
+              "compress": 0.02074690000154078,
+              "offset_correct": 3.939983434975147e-05
+            }
+          }
+        ],
+        "finalizer_latency_s": 0.1871822001412511,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 0.004450400127097964,
+          "prefill": 0.028108600061386824,
+          "decode": 0.1574222999624908,
+          "anchor_update": 0.009939499897882342
+        },
+        "offset_logs": [
+          {
+            "sender_len": 391,
+            "receiver_len": 132,
+            "raw_offset": 259,
+            "applied_offset": 259,
+            "anchor_min_distance": null
+          },
+          {
+            "sender_len": 773,
+            "receiver_len": 122,
+            "raw_offset": 651,
+            "applied_offset": 651,
+            "anchor_min_distance": null
+          }
+        ]
+      },
+      {
+        "idx": 1,
+        "question": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+        "gold": "3",
+        "predicted": "3.5",
+        "raw_answer": "A shirt takes 3.5 bolts of fabric in total.",
+        "correct": false,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+        "hop_texts": [
+          "To solve this problem, we need to determine the total amount of fiber required for one robe, which includes both blue and white fiber.\n\n1. **Blue Fiber:**\n   - The problem states that a robe takes 2 bolts of blue fiber.\n   - Therefore, the amount of blue fiber is:\n     \\[\n     \\text{Blue fiber} = 2 \\text{ bolts}\n     \\]\n\n2. **White Fiber:**\n   - The problem also states that the amount of white fiber is half that of the blue fiber.\n   - Since the blue fiber is 2 bolts, half of that would be:\n     \\[\n     \\text{White fiber} = \\frac{1}{2} \\times 2 \\text{ bolts} = 1 \\text{ bolt}\n     \\]\n\n3. **Total Fiber:**\n   - To find the total amount of fiber needed for one robe, we add the blue and white fiber together:\n     \\[\n     \\text{Total fiber} = \\text{Blue fiber} + \\text{White fiber} = 2 \\text{ bolts} + 1 \\text{ bolt} = 3 \\text{ bolts}\n     \\]\n\nThus, the total number of bolts of fiber needed for one robe is \\(\\boxed{3}\\).",
+          "The total number of bolts used is the number of bolts for the robe, which is \\(2\\) (blue) + \\(\\frac{2}{2} = 3\\)\n\nThe total number of bolts is 2 (for the fiber) + 2 (for the blue fiber) and \\(\\frac{2}{2} =  \\ <<\n \\[\n \\text{ Total the } 2 \\ [\n \\[\n \\text{Total bolts} = 2 \\ (2 + 1) \\ [\n \\ [\n \\[\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n \\ [\n The total bolts are: 3\n \\[\n \\boxed{3}\n \\]\n\nTherefore, the total bolts of fabric are 3."
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 5.98016,
+        "original_mb": 29.4912,
+        "compression_ratio": 4.931506849315069,
+        "latency_s": 12.377402305603027,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 14.90944,
+            "compressed_mb": 2.99008,
+            "compression_ratio": 4.986301369863014,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 7.208383700111881,
+            "component_timings": {
+              "generate": 7.203426299849525,
+              "anchor_update": 0.0090187001042068,
+              "layer_select": 1.3499986380338669e-05,
+              "compress": 0.015237400075420737,
+              "offset_correct": 0.029603200033307076
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 14.58176,
+            "compressed_mb": 2.99008,
+            "compression_ratio": 4.876712328767123,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 4.65545120020397,
+            "component_timings": {
+              "decompress_reconstruct": 0.00043120002374053,
+              "prefill": 0.04846620000898838,
+              "decode": 4.604364800034091,
+              "anchor_update": 0.00942320004105568,
+              "layer_select": 4.859990440309048e-05,
+              "compress": 0.014331300044432282,
+              "offset_correct": 0.022158400155603886
+            }
+          }
+        ],
+        "finalizer_latency_s": 0.38007650012150407,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 0.0005105000454932451,
+          "prefill": 0.04818030004389584,
+          "decode": 0.3293389999307692,
+          "anchor_update": 0.008782600052654743
+        },
+        "offset_logs": [
+          {
+            "sender_len": 364,
+            "receiver_len": 93,
+            "raw_offset": 271,
+            "applied_offset": 271,
+            "anchor_min_distance": 105.55036926269531
+          },
+          {
+            "sender_len": 356,
+            "receiver_len": 83,
+            "raw_offset": 273,
+            "applied_offset": 273,
+            "anchor_min_distance": 105.55036926269531
+          }
+        ]
+      },
+      {
+        "idx": 2,
+        "question": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?",
+        "gold": "70000",
+        "predicted": "200000",
+        "raw_answer": "The total investment (purchase price + repair cost) is $80,000 + $50,000 = $130,000.\nThe correct calculation for the total investment is:\n   \\[\n   80,000 + 50,000 = 130,000\n   \\]\n   So, the total investment (which is the selling price) is $130,000.\n   \\]\n\nThe original cost of the house was $80,000 and the his selling price after adding the repairs is $130,000. Therefore, the total investment (total of the purchase price and the repair cost) is $130,000.\n   \\]\n\nThe total investment (purchase price + repair cost) is $80,000 + $50,000 = $130,000.\nThe total investment (which is the the selling price) is $130,000.\n   \\]\n\nThe total increase in the value of the house is 150% of $80,000, which is $200,000.\n   \\]\n\nTo find the the total investment, we need to consider that the the selling price} is $130,000, and the the total investment (including repairs) is $130,000.\n   \\]\n\nThe total investment (which is the total of the total,000 for the the house was $70,000 + 50,000 = $200,000.\n   \\]\n\nThe total investment (which is the the selling price) is $200,000.\n   \\]\n\nTherefore, the the total selling price is $200,000.\n   \\]\n\nThe total selling price of the refurbished house is $200,000.\n   \\]\n\nThe total investment (purchase price + repair cost) is $80,000 + $50,000 = $130,000.\n   \\)\n\nThe total selling price of the refurbished house is $200,000.\nThe\n   \\]\n\nThe profit is the the total selling price} minus the the total investment}.\n   \\]\n\nThe total selling price of the refurbished",
+        "correct": false,
+        "f1": null,
+        "is_malformed": false,
+        "reasoner_text": "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+        "hop_texts": [
+          "To determine Josh's profit, we need to follow these steps:\n\n1. **Calculate the total cost of the house and repairs:**\n   - Cost of the house: \\( \\$80,000 \\)\n   - Cost of repairs: \\( \\$50,000 \\)\n\n   Total cost = Cost of the house + Cost of repairs\n   \\[\n   \\text{Total cost} = 80,000 + 50,000 = 130,000\n   \\]\n\n2. **Determine the new value of the house after repairs:**\n   - The value of the house increased by 150%.\n\n   To find the increase in value:\n   \\[\n   \\text{Increase in value} = 150\\% \\times \\text{Original value}\n   \\]\n   Since the original value is the purchase price of the house (\\$80,000):\n   \\[\n   \\text{Increase in value} = 1.5 \\times 80,000 = 120,000\n   \\]\n\n   Therefore, the new value of the house is:\n   \\[\n   \\text{New value} = \\text{Original value} + \\text{Increase in value}\n   \\]\n   \\[\n   \\text{New value} = 80,000 + 120,000 = 200,000\n   \\]\n\n3. **Calculate the profit:**\n   - Profit is the difference between the new value of the house and the total cost.\n   \\[\n   \\text{Profit} = \\text{New value} - \\text{Total cost}\n   \\]\n   \\[\n   \\text{Profit} = 200,000 - 130,000 = 70,000\n   \\]\n\nThus, Josh made a profit of \\(\\boxed{70000}\\).",
+          "Let's go through the problem step-by-step to ensure accuracy.\n\n1. The initial cost of the house: \\$80,000.\n2. The amount spent on repairs: \\$50,000.\n3. The total investment (cost of the house + repairs): \n   \\[\n   80,000 + 50,000 = 130,000\n   \\]\n\n4. The selling price of the new house:\n   - Increased value of the home: 150% of \\$80,000.\n   - Converting 150% to a decimal: \\(150\\% = 1.50\\).\n   - Calculating the 150% of the original purchase price: \n     \\[\n     1.50 \\times 80,000 = 120,000\n     \\]\n   \n5. Correcting the values and recomputing the profit:\n\n- Total cost of the house: \\$80,000.\n- Cost of repairs: \\$50,000.\n- Total repair costs: \\$50,000.\n- Total resale price: \\$130,000.\n\nThe corrected final answer is \\(\\boxed{130,000\\text{new house price} - \\text{Total investment}\n   \\]\n   \\[\n   130,000 - 130,000 = 70,000\n   \\]"
+        ],
+        "numeric_grounding_failure": false,
+        "compressed_mb": 5.98016,
+        "original_mb": 44.441599999999994,
+        "compression_ratio": 7.431506849315068,
+        "latency_s": 33.50391888618469,
+        "hop_stats": [
+          {
+            "agent_idx": 0,
+            "original_mb": 22.69184,
+            "compressed_mb": 2.99008,
+            "compression_ratio": 7.589041095890411,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 11.540297199971974,
+            "component_timings": {
+              "generate": 11.532431999919936,
+              "anchor_update": 0.017538700019940734,
+              "layer_select": 1.2800097465515137e-05,
+              "compress": 0.018762300023809075,
+              "offset_correct": 0.011156699853017926
+            }
+          },
+          {
+            "agent_idx": 1,
+            "original_mb": 21.74976,
+            "compressed_mb": 2.99008,
+            "compression_ratio": 7.273972602739726,
+            "n_layers_transmitted": 20,
+            "n_layers_total": 28,
+            "latency_seconds": 8.58195190015249,
+            "component_timings": {
+              "decompress_reconstruct": 0.0002001998946070671,
+              "prefill": 0.025841000024229288,
+              "decode": 8.555125100072473,
+              "anchor_update": 0.01290749991312623,
+              "layer_select": 5.679996684193611e-05,
+              "compress": 0.019661499885842204,
+              "offset_correct": 0.02239569998346269
+            }
+          }
+        ],
+        "finalizer_latency_s": 13.226159200072289,
+        "finalizer_component_timings": {
+          "decompress_reconstruct": 0.0005322000943124294,
+          "prefill": 0.048149699810892344,
+          "decode": 13.175311999861151,
+          "anchor_update": 0.00998119986616075
+        },
+        "offset_logs": [
+          {
+            "sender_len": 554,
+            "receiver_len": 124,
+            "raw_offset": 430,
+            "applied_offset": 430,
+            "anchor_min_distance": 104.47520446777344
+          },
+          {
+            "sender_len": 531,
+            "receiver_len": 114,
+            "raw_offset": 417,
+            "applied_offset": 417,
+            "anchor_min_distance": 104.47520446777344
+          }
+        ]
+      }
+    ]
+  }
+}

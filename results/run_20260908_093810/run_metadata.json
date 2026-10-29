@@ -1,0 +1,22 @@
+{
+  "timestamp": "20260908_093810",
+  "git_commit": "a47168dbbb1bfcd690cf09a4a6e7dc646a6f785b",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "dataset": "gsm8k",
+  "split": "test",
+  "n_samples": 3,
+  "configs": [
+    "single_agent",
+    "single_agent_matched",
+    "text_agent",
+    "text_agent_matched",
+    "A",
+    "E"
+  ],
+  "arch": "legacy",
+  "greedy": false,
+  "profile_path": "profiles\\run_20260908_093226\\qwen_gsm8k.json",
+  "datasets_version": "5.0.1",
+  "transformers_version": "5.16.1",
+  "torch_version": "2.11.0+cu128"
+}

@@ -1,0 +1,4 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+single_agent,0.2667,0.0000,0.0000,0.0,7.23,0,0.5333,2,,4,15
+text_agent,0.0667,0.0006,1.0000,0.0,9.55,0,0.0000,9,,1,15
+A,0.1333,28.5745,1.0000,28.0,9.81,0,0.0000,6,,2,15

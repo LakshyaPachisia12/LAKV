@@ -1,0 +1,203 @@
+{
+  "args": {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "n": 3,
+    "lengths": [
+      2000,
+      8000
+    ],
+    "max_turns": 15,
+    "filler_pool_size": 500,
+    "split": "validation",
+    "output_dir": "results/rlm_long_context_sweep",
+    "seed": 0
+  },
+  "records": {
+    "2000": {
+      "text": [
+        {
+          "idx": 0,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "No",
+          "raw_answer": "No",
+          "hit_max_turns": false,
+          "llm_query_calls": 2,
+          "n_turns": 6,
+          "approx_tokens": 2214,
+          "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+          "gold": "yes"
+        },
+        {
+          "idx": 1,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "no",
+          "raw_answer": "no",
+          "hit_max_turns": false,
+          "llm_query_calls": 0,
+          "n_turns": 5,
+          "approx_tokens": 2764,
+          "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+          "gold": "Chief of Protocol"
+        },
+        {
+          "idx": 2,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": null,
+          "raw_answer": null,
+          "hit_max_turns": true,
+          "llm_query_calls": 7,
+          "n_turns": 16,
+          "approx_tokens": 3765,
+          "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+          "gold": "Animorphs"
+        }
+      ],
+      "kv": [
+        {
+          "idx": 0,
+          "correct": true,
+          "f1": 1.0,
+          "predicted": "yes",
+          "raw_answer": "yes",
+          "hit_max_turns": false,
+          "llm_query_calls": 3,
+          "n_turns": 6,
+          "approx_tokens": 2214,
+          "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+          "gold": "yes"
+        },
+        {
+          "idx": 1,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "no",
+          "raw_answer": "no",
+          "hit_max_turns": false,
+          "llm_query_calls": 0,
+          "n_turns": 5,
+          "approx_tokens": 2764,
+          "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+          "gold": "Chief of Protocol"
+        },
+        {
+          "idx": 2,
+          "correct": true,
+          "f1": 1.0,
+          "predicted": "Animorphs",
+          "raw_answer": "Animorphs",
+          "hit_max_turns": false,
+          "llm_query_calls": 5,
+          "n_turns": 13,
+          "approx_tokens": 3765,
+          "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+          "gold": "Animorphs"
+        }
+      ]
+    },
+    "8000": {
+      "text": [
+        {
+          "idx": 0,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "no",
+          "raw_answer": "no",
+          "hit_max_turns": false,
+          "llm_query_calls": 2,
+          "n_turns": 7,
+          "approx_tokens": 8718,
+          "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+          "gold": "yes"
+        },
+        {
+          "idx": 1,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "no",
+          "raw_answer": "no",
+          "hit_max_turns": false,
+          "llm_query_calls": 3,
+          "n_turns": 5,
+          "approx_tokens": 8174,
+          "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+          "gold": "Chief of Protocol"
+        },
+        {
+          "idx": 2,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "Science Fantasy",
+          "raw_answer": "Science Fantasy",
+          "hit_max_turns": false,
+          "llm_query_calls": 0,
+          "n_turns": 9,
+          "approx_tokens": 8444,
+          "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+          "gold": "Animorphs"
+        }
+      ],
+      "kv": [
+        {
+          "idx": 0,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "no",
+          "raw_answer": "no",
+          "hit_max_turns": false,
+          "llm_query_calls": 3,
+          "n_turns": 8,
+          "approx_tokens": 8718,
+          "question": "Were Scott Derrickson and Ed Wood of the same nationality?",
+          "gold": "yes"
+        },
+        {
+          "idx": 1,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": null,
+          "raw_answer": null,
+          "hit_max_turns": true,
+          "llm_query_calls": 8,
+          "n_turns": 16,
+          "approx_tokens": 8174,
+          "question": "What government position was held by the woman who portrayed Corliss Archer in the film Kiss and Tell?",
+          "gold": "Chief of Protocol"
+        },
+        {
+          "idx": 2,
+          "correct": false,
+          "f1": 0.0,
+          "predicted": "Science Fantasy",
+          "raw_answer": "Science Fantasy",
+          "hit_max_turns": false,
+          "llm_query_calls": 0,
+          "n_turns": 9,
+          "approx_tokens": 8444,
+          "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+          "gold": "Animorphs"
+        }
+      ]
+    }
+  },
+  "trend_test": {
+    "z_statistic": 0.0,
+    "p_value": 1.0,
+    "per_condition": {
+      "2000": {
+        "a_only": 2,
+        "b_only": 0,
+        "n_discordant": 2,
+        "n_pairs": 3
+      },
+      "8000": {
+        "a_only": 0,
+        "b_only": 0,
+        "n_discordant": 0,
+        "n_pairs": 3
+      }
+    }
+  }
+}

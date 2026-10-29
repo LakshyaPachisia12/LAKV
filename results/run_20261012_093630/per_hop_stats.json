@@ -1,0 +1,2004 @@
+{
+  "A_audit_mismatched": [
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 212.205568,
+        "compressed_mb": 212.205568,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.2047957996837795
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 408.420352,
+        "compressed_mb": 408.420352,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.7652497999370098
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 221.118464,
+        "compressed_mb": 221.118464,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.21202509989962
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 439.222272,
+        "compressed_mb": 439.222272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.7663167999126017
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 256.24576,
+        "compressed_mb": 256.24576,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.759093299973756
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 513.14688,
+        "compressed_mb": 513.14688,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.7565619996748865
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 189.005824,
+        "compressed_mb": 189.005824,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.1593625997193158
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 372.375552,
+        "compressed_mb": 372.375552,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.1860330002382398
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 222.560256,
+        "compressed_mb": 222.560256,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.466029000002891
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 440.926208,
+        "compressed_mb": 440.926208,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.88588560000062
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 227.540992,
+        "compressed_mb": 227.540992,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8203058997169137
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 445.120512,
+        "compressed_mb": 445.120512,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.5325995995663106
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 304.349184,
+        "compressed_mb": 304.349184,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.8754537999629974
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 598.081536,
+        "compressed_mb": 598.081536,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.4819092000834644
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 460.324864,
+        "compressed_mb": 460.324864,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.631618599873036
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 978.190336,
+        "compressed_mb": 978.190336,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 26.44931870000437
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 231.866368,
+        "compressed_mb": 231.866368,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.4472885001450777
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 461.242368,
+        "compressed_mb": 461.242368,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.547338800039142
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 229.507072,
+        "compressed_mb": 229.507072,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.2111857999116182
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 455.999488,
+        "compressed_mb": 455.999488,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.9481039997190237
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 272.62976,
+        "compressed_mb": 272.62976,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.42370539996773
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 542.900224,
+        "compressed_mb": 542.900224,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.2263467996381223
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 217.972736,
+        "compressed_mb": 217.972736,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.6303054997697473
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 426.508288,
+        "compressed_mb": 426.508288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.756563099566847
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 258.342912,
+        "compressed_mb": 258.342912,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.357875100336969
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 511.574016,
+        "compressed_mb": 511.574016,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.8131719999946654
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 447.741952,
+        "compressed_mb": 447.741952,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 9.56792310019955
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 924.71296,
+        "compressed_mb": 924.71296,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 25.499738299753517
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 173.277184,
+        "compressed_mb": 173.277184,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.453247199766338
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 341.704704,
+        "compressed_mb": 341.704704,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.5989356003701687
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 263.45472,
+        "compressed_mb": 263.45472,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.6081551001407206
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 528.089088,
+        "compressed_mb": 528.089088,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.367507999762893
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 238.682112,
+        "compressed_mb": 238.682112,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.483193699736148
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 490.995712,
+        "compressed_mb": 490.995712,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 10.36854189960286
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 236.847104,
+        "compressed_mb": 236.847104,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.510729900095612
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 454.16448,
+        "compressed_mb": 454.16448,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.4452698002569377
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 276.037632,
+        "compressed_mb": 276.037632,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.018337700050324
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 546.308096,
+        "compressed_mb": 546.308096,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.0095937000587583
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 168.034304,
+        "compressed_mb": 168.034304,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.959591899998486
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 331.218944,
+        "compressed_mb": 331.218944,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.055392500013113
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 225.312768,
+        "compressed_mb": 225.312768,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.747761500068009
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 443.416576,
+        "compressed_mb": 443.416576,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.855672100093216
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 260.83328,
+        "compressed_mb": 260.83328,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.651901700068265
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 561.381376,
+        "compressed_mb": 561.381376,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 15.374349399935454
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 279.969792,
+        "compressed_mb": 279.969792,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.299495200160891
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 560.726016,
+        "compressed_mb": 560.726016,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.264630800113082
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 217.710592,
+        "compressed_mb": 217.710592,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 9.689381999894977
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 433.717248,
+        "compressed_mb": 433.717248,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 12.525174099951982
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 212.205568,
+        "compressed_mb": 212.205568,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.73543870029971
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 415.760384,
+        "compressed_mb": 415.760384,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.009155200328678
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 196.608,
+        "compressed_mb": 196.608,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8724038996733725
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 391.118848,
+        "compressed_mb": 391.118848,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.87168850004673
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 301.203456,
+        "compressed_mb": 301.203456,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.5588499000295997
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 609.353728,
+        "compressed_mb": 609.353728,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 6.2045121002011
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 78.774272,
+        "compressed_mb": 78.774272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.053050000220537
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 157.679616,
+        "compressed_mb": 157.679616,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.6688819997943938
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 203.81696,
+        "compressed_mb": 203.81696,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.971832700073719
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 405.929984,
+        "compressed_mb": 405.929984,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.804008800070733
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 208.142336,
+        "compressed_mb": 208.142336,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.3039547000080347
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 413.53216,
+        "compressed_mb": 413.53216,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.9200816000811756
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 234.094592,
+        "compressed_mb": 234.094592,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.7513361000455916
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 457.048064,
+        "compressed_mb": 457.048064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.221568000037223
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 205.651968,
+        "compressed_mb": 205.651968,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.5265707997605205
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 406.847488,
+        "compressed_mb": 406.847488,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8600253998301923
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 218.23488,
+        "compressed_mb": 218.23488,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.1584775000810623
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 463.077376,
+        "compressed_mb": 463.077376,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 11.699204499833286
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 287.834112,
+        "compressed_mb": 287.834112,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.110952200368047
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 618.135552,
+        "compressed_mb": 618.135552,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 19.972385599743575
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 250.609664,
+        "compressed_mb": 250.609664,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.252163799945265
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 504.102912,
+        "compressed_mb": 504.102912,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 7.011224100366235
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 316.145664,
+        "compressed_mb": 316.145664,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.096457500010729
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 640.548864,
+        "compressed_mb": 640.548864,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 7.42265020031482
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 222.16704,
+        "compressed_mb": 222.16704,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.772378500085324
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 438.43584,
+        "compressed_mb": 438.43584,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8543338999152184
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 187.301888,
+        "compressed_mb": 187.301888,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.054710399825126
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 359.13728,
+        "compressed_mb": 359.13728,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.0109762996435165
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 251.789312,
+        "compressed_mb": 251.789312,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.765265100169927
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 504.365056,
+        "compressed_mb": 504.365056,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 8.018317800015211
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 223.346688,
+        "compressed_mb": 223.346688,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.86761760013178
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 443.809792,
+        "compressed_mb": 443.809792,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.735275199636817
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 312.082432,
+        "compressed_mb": 312.082432,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 11.718440300319344
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 587.333632,
+        "compressed_mb": 587.333632,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.527975500095636
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 204.341248,
+        "compressed_mb": 204.341248,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.6646615001372993
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 412.614656,
+        "compressed_mb": 412.614656,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.8346911002881825
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 295.436288,
+        "compressed_mb": 295.436288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.695492699742317
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 644.087808,
+        "compressed_mb": 644.087808,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 20.403731300029904
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 325.976064,
+        "compressed_mb": 325.976064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.079875800292939
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 645.922816,
+        "compressed_mb": 645.922816,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.0508782998658717
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 419.823616,
+        "compressed_mb": 419.823616,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.58629950042814
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 892.207104,
+        "compressed_mb": 892.207104,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 24.890001900028437
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 181.010432,
+        "compressed_mb": 181.010432,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.6229155999608338
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 361.234432,
+        "compressed_mb": 361.234432,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.5989390001632273
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 387.055616,
+        "compressed_mb": 387.055616,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.454599100165069
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 761.790464,
+        "compressed_mb": 761.790464,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.177364899776876
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 327.02464,
+        "compressed_mb": 327.02464,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.8794517000205815
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 659.29216,
+        "compressed_mb": 659.29216,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.8759930999949574
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 221.51168,
+        "compressed_mb": 221.51168,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.7245366000570357
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 440.139776,
+        "compressed_mb": 440.139776,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.1399317998439074
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 267.780096,
+        "compressed_mb": 267.780096,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8759209997951984
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 587.85792,
+        "compressed_mb": 587.85792,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 19.441076900344342
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 227.147776,
+        "compressed_mb": 227.147776,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.043553800322115
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 458.358784,
+        "compressed_mb": 458.358784,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 7.1603919002227485
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 234.487808,
+        "compressed_mb": 234.487808,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.2856613001786172
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 459.014144,
+        "compressed_mb": 459.014144,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.1882599000819027
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 231.735296,
+        "compressed_mb": 231.735296,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.1915308996103704
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 471.597056,
+        "compressed_mb": 471.597056,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.690600999630988
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 246.677504,
+        "compressed_mb": 246.677504,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.630803999956697
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 478.4128,
+        "compressed_mb": 478.4128,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.9797354000620544
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 228.196352,
+        "compressed_mb": 228.196352,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.8044480001553893
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 476.315648,
+        "compressed_mb": 476.315648,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 8.367026399821043
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 293.732352,
+        "compressed_mb": 293.732352,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.257544899825007
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 574.226432,
+        "compressed_mb": 574.226432,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.3412725999951363
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 221.249536,
+        "compressed_mb": 221.249536,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.0226139998994768
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 430.440448,
+        "compressed_mb": 430.440448,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.497819199692458
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 250.34752,
+        "compressed_mb": 250.34752,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.78197589982301
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 544.866304,
+        "compressed_mb": 544.866304,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 17.948248700238764
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 243.269632,
+        "compressed_mb": 243.269632,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.443927000276744
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 466.61632,
+        "compressed_mb": 466.61632,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.0875933999195695
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 177.078272,
+        "compressed_mb": 177.078272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.291573700029403
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 352.976896,
+        "compressed_mb": 352.976896,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.273112100083381
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 307.494912,
+        "compressed_mb": 307.494912,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.8249021000228822
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 620.888064,
+        "compressed_mb": 620.888064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 7.531045600306243
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 229.507072,
+        "compressed_mb": 229.507072,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.781805300153792
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 452.591616,
+        "compressed_mb": 452.591616,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.6008879002183676
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 205.12768,
+        "compressed_mb": 205.12768,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.259437399916351
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 401.473536,
+        "compressed_mb": 401.473536,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.988544700201601
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 153.747456,
+        "compressed_mb": 153.747456,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.151379299815744
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 297.664512,
+        "compressed_mb": 297.664512,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.034805300179869
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 209.453056,
+        "compressed_mb": 209.453056,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.594214899931103
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 397.934592,
+        "compressed_mb": 397.934592,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.4856822001747787
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 244.842496,
+        "compressed_mb": 244.842496,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8310855999588966
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 541.196288,
+        "compressed_mb": 541.196288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 18.616717000026256
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 328.204288,
+        "compressed_mb": 328.204288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.7050665002316236
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 706.084864,
+        "compressed_mb": 706.084864,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 21.561036999803036
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 319.946752,
+        "compressed_mb": 319.946752,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.9767779996618629
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 639.63136,
+        "compressed_mb": 639.63136,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.219630899839103
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 237.633536,
+        "compressed_mb": 237.633536,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.3140070997178555
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 457.048064,
+        "compressed_mb": 457.048064,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8587531996890903
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 222.298112,
+        "compressed_mb": 222.298112,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.879705000203103
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 440.40192,
+        "compressed_mb": 440.40192,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.3463165001012385
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 242.614272,
+        "compressed_mb": 242.614272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.513624799903482
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 480.509952,
+        "compressed_mb": 480.509952,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.9750329996459186
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 185.729024,
+        "compressed_mb": 185.729024,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.9344033999368548
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 367.394816,
+        "compressed_mb": 367.394816,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.1784712998196483
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 237.371392,
+        "compressed_mb": 237.371392,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.271907299757004
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 475.660288,
+        "compressed_mb": 475.660288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.293523600324988
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 266.993664,
+        "compressed_mb": 266.993664,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.8818583004176617
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 567.279616,
+        "compressed_mb": 567.279616,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 14.116947900038213
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 179.306496,
+        "compressed_mb": 179.306496,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.747854500077665
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 360.054784,
+        "compressed_mb": 360.054784,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.3901156997308135
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 172.228608,
+        "compressed_mb": 172.228608,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.918783099856228
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 336.330752,
+        "compressed_mb": 336.330752,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.4125785999931395
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 182.059008,
+        "compressed_mb": 182.059008,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.5168662001378834
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 362.020864,
+        "compressed_mb": 362.020864,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.3073786003515124
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 259.52256,
+        "compressed_mb": 259.52256,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.6778711997903883
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 515.375104,
+        "compressed_mb": 515.375104,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.390248300042003
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 229.900288,
+        "compressed_mb": 229.900288,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.3251037001609802
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 467.664896,
+        "compressed_mb": 467.664896,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.482360700145364
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 196.608,
+        "compressed_mb": 196.608,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.0193292000330985
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 392.167424,
+        "compressed_mb": 392.167424,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.311390899587423
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 211.156992,
+        "compressed_mb": 211.156992,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.6331012998707592
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 413.925376,
+        "compressed_mb": 413.925376,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.014225299935788
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 229.769216,
+        "compressed_mb": 229.769216,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.3311020997352898
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 471.20384,
+        "compressed_mb": 471.20384,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 5.5396694000810385
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 313.91744,
+        "compressed_mb": 313.91744,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.880121400114149
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 625.344512,
+        "compressed_mb": 625.344512,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.758925899863243
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 212.992,
+        "compressed_mb": 212.992,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.05171429971233
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 418.512896,
+        "compressed_mb": 418.512896,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.615317599847913
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 272.236544,
+        "compressed_mb": 272.236544,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.978632400278002
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 540.01664,
+        "compressed_mb": 540.01664,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.012978999875486
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 265.682944,
+        "compressed_mb": 265.682944,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.375242699868977
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 527.958016,
+        "compressed_mb": 527.958016,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.852763300295919
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 179.699712,
+        "compressed_mb": 179.699712,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.3713223999366164
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 354.811904,
+        "compressed_mb": 354.811904,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.3370808004401624
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 203.554816,
+        "compressed_mb": 203.554816,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.078552799765021
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 391.24992,
+        "compressed_mb": 391.24992,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.0172430998645723
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 153.485312,
+        "compressed_mb": 153.485312,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.2340417997911572
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 304.611328,
+        "compressed_mb": 304.611328,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.6493993001058698
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 152.436736,
+        "compressed_mb": 152.436736,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.7679249001666903
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 307.101696,
+        "compressed_mb": 307.101696,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.409319900441915
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 193.200128,
+        "compressed_mb": 193.200128,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.1855752998963
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 380.239872,
+        "compressed_mb": 380.239872,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.9977833000011742
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 147.456,
+        "compressed_mb": 147.456,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.0807157000526786
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 297.402368,
+        "compressed_mb": 297.402368,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.497511699795723
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 144.572416,
+        "compressed_mb": 144.572416,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.2342512998729944
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 282.853376,
+        "compressed_mb": 282.853376,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.9102040999568999
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 189.005824,
+        "compressed_mb": 189.005824,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.8182287998497486
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 375.783424,
+        "compressed_mb": 375.783424,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.4784220000728965
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 188.874752,
+        "compressed_mb": 188.874752,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.747561799827963
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 360.185856,
+        "compressed_mb": 360.185856,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.2622944000177085
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 214.30272,
+        "compressed_mb": 214.30272,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.2480489001609385
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 420.08576,
+        "compressed_mb": 420.08576,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 1.4667825996875763
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 272.105472,
+        "compressed_mb": 272.105472,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.102883500047028
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 543.162368,
+        "compressed_mb": 543.162368,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 4.503859499935061
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 303.43168,
+        "compressed_mb": 303.43168,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.333511299919337
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 602.27584,
+        "compressed_mb": 602.27584,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.443763100076467
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 222.035968,
+        "compressed_mb": 222.035968,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 6.297294900286943
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 420.74112,
+        "compressed_mb": 420.74112,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 2.68550519971177
+      }
+    ],
+    [
+      {
+        "agent_idx": 0,
+        "original_mb": 132.907008,
+        "compressed_mb": 132.907008,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.4645258001983166
+      },
+      {
+        "agent_idx": 1,
+        "original_mb": 263.585792,
+        "compressed_mb": 263.585792,
+        "compression_ratio": 1.0,
+        "n_layers_transmitted": 32,
+        "n_layers_total": 32,
+        "latency_seconds": 3.945144400000572
+      }
+    ]
+  ]
+}

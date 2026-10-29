@@ -1,0 +1,4 @@
+config,accuracy,mean_compressed_mb,mean_compression_ratio,mean_layers_transmitted,mean_latency_seconds,parse_failures,malformed_output_rate,numeric_grounding_failures,mean_f1,n_correct,n_samples
+A,0.5300,354.9292,1.0000,32.0,7.89,0,0.0000,0,0.6510,53,100
+A_audit_dropped,0.4900,233.0205,1.0000,32.0,5.95,0,0.0000,0,0.5965,49,100
+A_audit_mismatched,0.2600,357.6470,1.0000,32.0,16.68,0,0.0000,0,0.3647,26,100
