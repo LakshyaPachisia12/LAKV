@@ -1,6 +1,7 @@
 # Core ML stack
 torch>=2.4.1
 transformers>=4.44.2
+accelerate>=0.26.0
 datasets>=4.4.1
 
 # Calibration profiling (plots + stats)

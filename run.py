@@ -42,7 +42,7 @@ def load_model(model_name: str, device: str):
 def load_gsm8k(split: str = "test", n: int = None):
     """Return list of {question, answer} dicts from GSM8K."""
     from datasets import load_dataset
-    ds = load_dataset("gsm8k", "main")
+    ds = load_dataset("openai/gsm8k", "main")
     data = []
     for item in ds[split]:
         answer = item["answer"].split("####")[-1].strip()
