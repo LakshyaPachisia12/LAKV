@@ -2,7 +2,7 @@
 
 **Status: UNTESTED ON GPU.** Compiled from `docs/matched_donor_design.md` (branch `exp/matched-donor`, tip `885f614`) and `docs/necessity_curve_design.md` (branch `exp/relay-necessity-curve`, tip `4fdf64d`), plus checks I ran on CPU. Nothing here has run with a real model. Every number marked *estimate* is derived (basis stated) and unmeasured.
 
-The two branches are **independent** (neither contains the other's code); this runbook does **not** merge them. Nothing is pushed anywhere; the branches exist only in the dev repo, so they are moved to the GPU machine with a `git bundle` (section 1.1).
+The two branches are **independent** (neither contains the other's code); this runbook does **not** merge them. The branches are on GitHub (`origin`); section 1.1 clones them onto the GPU machine.
 
 ## 0. Read first
 
@@ -26,7 +26,7 @@ The two branches are **independent** (neither contains the other's code); this r
 
 | Stage | Branch | What | Est. min | Disk |
 |---|---|---|---|---|
-| Setup | both | bundle, worktrees, env check, dataset check | 10 | 0.5 GB (+15 GB if the HF model cache is empty) |
+| Setup | both | clone, worktrees, env check, dataset check | 10 | 0.5 GB (+15 GB if the HF model cache is empty) |
 | S1.1 to S1.3 | MD | pytest, regression n=20, self-replay n=20 | 5 + 16 + 11 | < 0.1 GB |
 | S1.4 to S1.5 | NC | pytest, regression n=20 | 5 + 23 | < 0.1 GB |
 | **Session 1** | | | **about 70** | |
@@ -45,19 +45,17 @@ Session 3 range: about 5.5 h if the real arm runs at 8.4 s per question, about 1
 
 ## 1. One-time setup (about 10 min)
 
-### 1.1 Move the branches to the GPU machine (they were never pushed)
+### 1.1 Get the branches onto the GPU machine (clone from GitHub)
 ```
-# dev machine, AFTER the last commit on every branch (the bundle recorded below was built from the heads at time of writing):
-git bundle create lakv_gpu.bundle exp/consolidate-v9 exp/matched-donor exp/relay-necessity-curve exp/gpu-runbook
-git bundle verify lakv_gpu.bundle        # tested: about 40 MB, complete history
-# copy lakv_gpu.bundle to the GPU machine, then there:
 export LAKV_BASE=$HOME/lakv-base MD=$HOME/lakv-md NC=$HOME/lakv-nc
-git clone -b exp/consolidate-v9 lakv_gpu.bundle $LAKV_BASE
+git clone https://github.com/LakshyaPachisia12/LAKV.git $LAKV_BASE
 cd $LAKV_BASE
+git fetch origin                                   # also how to pick up later commits to these branches
+git checkout exp/consolidate-v9                    # a plain clone checks out `main` (an old, README-only commit); the control tree must be on exp/consolidate-v9
 git worktree add -b exp/matched-donor $MD origin/exp/matched-donor
 git worktree add -b exp/relay-necessity-curve $NC origin/exp/relay-necessity-curve
 ```
-`$LAKV_BASE` stays on `exp/consolidate-v9` (no new code at all): it is the control for regression fallbacks. The tracked baseline results (`results/run_20261009_113254`, `results/run_20261011_122408`) and `profiles/qwen_gsm8k.json` are present in all three trees (tested with temporary clones). Record the heads: `git -C $MD rev-parse --short HEAD` (expected `885f614`), `git -C $NC rev-parse --short HEAD` (expected `4fdf64d`); if you rebuilt the bundle after later commits, record the actual hashes instead.
+`$LAKV_BASE` stays on `exp/consolidate-v9` (no new code at all): it is the control for regression fallbacks. The tracked baseline results (`results/run_20261009_113254`, `results/run_20261011_122408`) and `profiles/qwen_gsm8k.json` are present in all three trees (tested: a fresh clone from GitHub took about 30 s, its `.git` was about 41 MB, and all three trees had both baseline runs and the profile). Record the heads: `git -C $MD rev-parse --short HEAD` (expected `885f614`), `git -C $NC rev-parse --short HEAD` (expected `4fdf64d`); if the branches have moved on origin since this runbook was written, record the actual hashes instead.
 
 ### 1.2 Shell setup (paste at the start of EVERY session) and three helper scripts (create once)
 ```
@@ -388,7 +386,7 @@ Status for every row is **open** until you report otherwise. "Resolved by" names
 | N11 | Dataset-revision logging is best-effort: the cache-revision directory is read from the `datasets` cache path (worked on the dev box with datasets 4.4.1: `cache_revision_dirs` was filled) and may differ under 5.0.1; the SHA-256 content digests are the dependable identity | necessity | 1.4 and `run_metadata.json` of any curve run |
 | N12 | Naming of the seed-1 pair: `A_hide50` and `A_hide50_audit_dropped` with `--hide_seed 1` (you wrote `A_audit_dropped_hide50`, which does not match the suffix grammar); manifest placeholders `<TS_*>` | necessity | your confirmation; 3.5b |
 | N13 | `A_hide100` equals `A_nopass` by construction in the evaluator (alias), not by a separate implementation | necessity | S1.5 |
-| R1 | GPU machine OS, shell and Python are unknown; commands are bash and untested on that machine (the dev box is Windows; the bundle, clone and worktree commands, the three helper scripts and the dataset load were tested here with temporary directories and CPU torch) | this runbook | 1.1 to 1.4 |
+| R1 | GPU machine OS, shell and Python are unknown; commands are bash and untested on that machine (the dev box is Windows; the clone, checkout and worktree commands of 1.1 (run against GitHub), the three helper scripts and the dataset load were tested here in temporary directories with CPU torch) | this runbook | 1.1 to 1.4 |
 | R2 | Model load time per `run.py` (assumed 3 min), whether the 15 GB model is already cached, and the parity test's duration | this runbook | logs |
 | R3 | The driver version needed for the `cu128` build is not stated in the repo | this runbook | 1.3 (check NVIDIA's table) |
 | R4 | `PROFILE=profiles/qwen_gsm8k.json` is a GSM8K profile used only to satisfy the required flag (config `A` never reads it, `lakv/evaluator.py` attaches a profile only for layer selection or adaptive compression); its hash is recorded as `profile_sha256` in the metadata, which is therefore not a HotpotQA calibration | this runbook | use a HotpotQA profile if you have one |
