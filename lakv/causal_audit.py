@@ -28,8 +28,10 @@ either outcome.
 
 from __future__ import annotations
 
+import json
 import random as _random_module
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -228,6 +230,136 @@ class KVAuditPool:
 
 
 
+# ─── matched-donor audit modes (UNTESTED ON GPU; CPU unit tests only) ───────
+#
+# See docs/matched_donor_design.md. Four modes beyond zeroed/random/mismatched/
+# dropped, all handled through a "donor source" object instead of KVAuditPool:
+#   length_matched        other question's real cache, length within 5% of the
+#                         target, injected UNMODIFIED (never padded/truncated)
+#   matched_passages      same question, sampled alternate reasoning trace
+#   matched_wrong_answer  same question, trace defending a distractor answer
+#   self_replay           the question's OWN trace rebuilt from token ids
+#                         (validation of the rebuild machinery)
+DONOR_SOURCE_MODES = ("length_matched", "matched_passages", "matched_wrong_answer", "self_replay")
+LENGTH_MATCH_TOLERANCE = 0.05
+
+
+class DonorUnavailable(Exception):
+    """A donor required by an audit mode does not exist for this sample.
+
+    The evaluator records the sample as skipped (not scored, not counted in
+    the arm's accuracy denominator). `log` is merged into the sample's
+    audit_logs so the reason is visible.
+    """
+
+    def __init__(self, reason: str, log: Optional[dict] = None):
+        super().__init__(reason)
+        self.reason = reason
+        self.log = dict(log or {}, skipped=True, skip_reason=reason)
+
+
+class NoMatchedDonor(DonorUnavailable):
+    """length_matched: no pooled donor within the length tolerance."""
+
+
+class DiskKVAuditPool:
+    """Disk-backed pool of held-out questions' real relayed caches.
+
+    Used by length_matched. Each donor cache is torch.saved to its own file;
+    only a small index (key, text, length, path) is held in RAM, and exactly
+    ONE donor file is loaded per substitution. Same add()/size() interface as
+    KVAuditPool, so it can be passed as the pipeline's record_audit_pool.
+
+    Disk (not RAM) cost per held-out question is about 260 MB for
+    Qwen2.5-7B (see docs/matched_donor_design.md); RAM is one donor at a time.
+    """
+
+    INDEX_NAME = "index.json"
+
+    def __init__(self, directory):
+        self.dir = Path(directory)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self._index: Dict[int, List[dict]] = {}
+        self._next_order: Dict[int, int] = {}
+        self.complete = False
+
+    # ---- persistence -------------------------------------------------
+    @classmethod
+    def open(cls, directory) -> "DiskKVAuditPool":
+        """Re-open an existing pool (e.g. on --resume) from its index file."""
+        pool = cls(directory)
+        idx_path = pool.dir / cls.INDEX_NAME
+        if idx_path.exists():
+            data = json.loads(idx_path.read_text(encoding="utf-8"))
+            pool._index = {int(k): v for k, v in data["index"].items()}
+            pool._next_order = {a: max((e["order"] for e in v), default=-1) + 1
+                                for a, v in pool._index.items()}
+            pool.complete = bool(data.get("complete", False))
+        return pool
+
+    def _write_index(self) -> None:
+        (self.dir / self.INDEX_NAME).write_text(
+            json.dumps({"complete": self.complete, "index": self._index}), encoding="utf-8")
+
+    def mark_complete(self) -> None:
+        self.complete = True
+        self._write_index()
+
+    # ---- building ----------------------------------------------------
+    def add(self, agent_idx: int, question_key: str, kv: KVTuple, question_text: str = "") -> None:
+        entries = self._index.setdefault(agent_idx, [])
+        if any(e["key"] == question_key for e in entries):
+            return
+        order = self._next_order.get(agent_idx, 0)
+        self._next_order[agent_idx] = order + 1
+        rel = f"hop{agent_idx}/{order:04d}_{question_key}.pt"
+        path = self.dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cpu_kv = tuple((k.detach().to("cpu").contiguous(), v.detach().to("cpu").contiguous())
+                       for k, v in kv)
+        torch.save({"kv": cpu_kv}, path)
+        entries.append({"key": question_key, "text": question_text, "len": int(kv[0][0].shape[2]),
+                        "order": order, "path": rel})
+        self._write_index()
+
+    def size(self, agent_idx: int) -> int:
+        return len(self._index.get(agent_idx, []))
+
+    # ---- selection ---------------------------------------------------
+    def eligible(self, agent_idx: int, exclude_key: str, target_len: int,
+                 tolerance: float = LENGTH_MATCH_TOLERANCE) -> List[dict]:
+        return [e for e in self._index.get(agent_idx, [])
+                if e["key"] != exclude_key and abs(e["len"] - target_len) <= tolerance * target_len]
+
+    def select_length_matched(self, agent_idx: int, exclude_key: str, target_len: int, device,
+                              rng: Optional[_random_module.Random] = None,
+                              tolerance: float = LENGTH_MATCH_TOLERANCE) -> Tuple[KVTuple, dict]:
+        """Choose uniformly (seeded rng) among donors within tolerance of
+        target_len, load ONLY that donor, and return it unmodified."""
+        pool = self._index.get(agent_idx, [])
+        elig = self.eligible(agent_idx, exclude_key, target_len, tolerance)
+        if not elig:
+            others = [e["len"] for e in pool if e["key"] != exclude_key]
+            nearest = min(others, key=lambda L: abs(L - target_len)) if others else None
+            raise NoMatchedDonor("no donor within %.0f%% of target length" % (tolerance * 100), {
+                "mode": "length_matched", "agent_idx": agent_idx, "target_cache_len": int(target_len),
+                "pool_size": len(pool), "nearest_donor_cache_len": nearest, "tolerance": tolerance})
+        rng = rng or _random_module
+        entry = rng.choice(elig)
+        blob = torch.load(self.dir / entry["path"], map_location=device, weights_only=True)
+        kv = blob["kv"]
+        donor_len = int(kv[0][0].shape[2])
+        return kv, {
+            "agent_idx": agent_idx, "skipped": False,
+            "donor_question_key": entry["key"], "donor_question": entry["text"],
+            "donor_pool_order": entry["order"], "donor_cache_len": donor_len,
+            "target_cache_len": int(target_len), "len_ratio": donor_len / target_len,
+            "handling": "exact" if donor_len == target_len else "unmodified_within_tolerance",
+            "pad_positions": 0, "truncated_positions": 0, "tolerance": tolerance,
+            "n_eligible": len(elig), "pool_size": len(pool),
+        }
+
+
 # ─── dispatch ─────────────────────────────────────────────────────────────────
 
 def apply_causal_audit(
@@ -238,6 +370,8 @@ def apply_causal_audit(
     pool: Optional[KVAuditPool] = None,
     generator: Optional[torch.Generator] = None,
     rng: Optional[_random_module.Random] = None,
+    donor_source=None,
+    context: Optional[dict] = None,
 ) -> Tuple[KVTuple, dict]:
     """Dispatch to the right substitution for PipelineConfig.causal_audit_mode.
 
@@ -254,6 +388,13 @@ def apply_causal_audit(
     if mode == "random":
         return moment_matched_random_kv(real_kv, generator=generator), {"mode": "random"}
 
+    if mode in DONOR_SOURCE_MODES:
+        if donor_source is None:
+            raise ValueError(f"causal_audit_mode={mode!r} requires a donor_source "
+                             f"(built by the evaluator's pre-pass; see docs/matched_donor_design.md)")
+        substitute, log = donor_source.fetch(agent_idx=agent_idx, question_key=question_key,
+                                             real_kv=real_kv, rng=rng, **(context or {}))
+        return substitute, {"mode": mode, **log}
     if mode == "mismatched":
         if pool is None:
             raise ValueError("causal_audit_mode='mismatched' requires a KVAuditPool")

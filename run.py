@@ -66,6 +66,8 @@ def _write_run_metadata(output_dir: Path, args, mode: str = "experiment",
             greedy=getattr(args, "greedy", None),
             profile_path=getattr(args, "profile_path", None),
             audit_donor_seed=getattr(args, "audit_donor_seed", None),
+            extra={"length_matched_pool_size": getattr(args, "length_matched_pool_size", None),
+                   "donor_pool_dir": getattr(args, "donor_pool_dir", None)},
         )
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -277,7 +279,12 @@ def mode_experiment(args):
     # find enough. Load the extra examples here so that never happens.
     from lakv.evaluator import AUDIT_MISMATCHED_POOL_SIZE
     needs_audit_pool = any(c.endswith("_audit_mismatched") for c in args.configs)
-    n_to_load = args.n_samples + (AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0)
+    # length_matched (matched-donor work, UNTESTED ON GPU) needs a larger
+    # held-out pool so a within-5% length match usually exists.
+    needs_lm_pool = any(c.endswith("_audit_length_matched") for c in args.configs)
+    n_to_load = args.n_samples + max(
+        AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0,
+        args.length_matched_pool_size if needs_lm_pool else 0)
     dataset = load_dataset_samples(args.dataset, split, n=n_to_load)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
         dataset=dataset,
@@ -291,6 +298,8 @@ def mode_experiment(args):
         dataset_name=args.dataset,
         greedy=args.greedy,
         audit_donor_seed=args.audit_donor_seed,
+        length_matched_pool_size=args.length_matched_pool_size,
+        donor_pool_dir=args.donor_pool_dir,
     )
 
 
@@ -322,6 +331,14 @@ def main():
     parser.add_argument("--greedy", action="store_true",
                         help="Force do_sample=False on every config. Redundant now that greedy is the "
                              "default (kept as an explicit override / for readability in scripts)")
+    parser.add_argument("--length_matched_pool_size", type=int, default=100,
+                        help="Held-out questions whose caches form the disk-backed length_matched pool "
+                             "(*_audit_length_matched configs). Default 100: about 94%% of targets have a "
+                             "within-5%% donor per hop (82%% at 20).")
+    parser.add_argument("--donor_pool_dir", default=None,
+                        help="Where the length_matched cache pool and the matched_passages / "
+                             "matched_wrong_answer token-id traces are stored (default: <run dir>/audit_pool). "
+                             "Point a rerun at an existing dir to reuse donors.")
     parser.add_argument("--audit_donor_seed", type=int, default=0,
                         help="Seed for the mismatched-condition donor draw (default 0 reproduces all "
                              "earlier runs). Use 1, 2, ... with separate --output_dir for a "

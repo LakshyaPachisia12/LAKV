@@ -323,7 +323,8 @@ class LAKVPipeline:
     def __init__(self, model, tokenizer, config: PipelineConfig, device: str = "cuda",
                  custom_layer_indices: Optional[List[int]] = None,
                  audit_pool: Optional["KVAuditPool"] = None,
-                 record_audit_pool: Optional["KVAuditPool"] = None):
+                 record_audit_pool: Optional["KVAuditPool"] = None,
+                 donor_source=None):
         """audit_pool: a pre-built KVAuditPool to sample "mismatched" held-out
         substitutes from — required when config.causal_audit_mode ==
         "mismatched", ignored otherwise. record_audit_pool: when given, every
@@ -347,6 +348,14 @@ class LAKVPipeline:
         self.N_LAYERS = model.config.num_hidden_layers
         self.audit_pool = audit_pool
         self.record_audit_pool = record_audit_pool
+        # Matched-donor audit modes (docs/matched_donor_design.md; UNTESTED ON
+        # GPU). donor_source: object with .fetch(...) for length_matched /
+        # matched_passages / matched_wrong_answer / self_replay.
+        # _run_trace / _last_generated_ids are write-only side channels filled
+        # during run(): they never influence generation.
+        self.donor_source = donor_source
+        self._run_trace: Dict[int, dict] = {}
+        self._last_generated_ids: List[int] = []
         self._audit_rng = random.Random(getattr(config, "audit_donor_seed", 0))
 
         # load profile if provided
@@ -440,6 +449,7 @@ class LAKVPipeline:
         q_key = make_key(question)
         self.last_run_offset_logs = []
         self.last_run_audit_logs: List[dict] = []
+        self._run_trace = {}
 
         # Compute base KV (no-prefix) once per question for anchor table updates
         base_kv: Optional[tuple] = None
@@ -452,23 +462,7 @@ class LAKVPipeline:
         prompts = self.config.system_prompts
 
         for agent_idx in range(n_agents):
-            system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
-            messages = [{"role": "system", "content": system_prompt}]
-            if agent_idx == 0 and self.config.use_reasoner_few_shot and self.config.dataset == "gsm8k":
-                for exemplar_q, exemplar_a in self.config.reasoner_few_shot_examples:
-                    messages.append({"role": "user", "content": exemplar_q})
-                    messages.append({"role": "assistant", "content": exemplar_a})
-            if agent_idx >= 1 and not self.config.receiver_sees_passages:
-                user_content = self._question_only(question)
-            else:
-                user_content = question
-            messages.append({"role": "user", "content": user_content})
-            prompt_text = self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
-            )
-            input_ids = self.tokenizer(
-                prompt_text, return_tensors="pt", add_special_tokens=False
-            )["input_ids"].to(self.device)
+            input_ids = self._agent_input_ids(question, agent_idx)
 
             is_last = (agent_idx == n_agents - 1)
 
@@ -499,6 +493,8 @@ class LAKVPipeline:
                         question_key=q_key,
                         pool=self.audit_pool,
                         rng=self._audit_rng,
+                        donor_source=self.donor_source,
+                        context={"pipeline": self, "question": question},
                     )
                     self.last_run_audit_logs.append({"agent_idx": agent_idx, **audit_log})
 
@@ -545,6 +541,12 @@ class LAKVPipeline:
                     torch.cuda.synchronize()
                 hop_latency = time.perf_counter() - _t0
                 hop_texts.append(hop_text)
+                _inj_len_for_trace = injected_kv_tuple[0][0].shape[2] if injected_kv_tuple is not None else 0
+                self._run_trace[agent_idx] = {
+                    "prompt_ids": input_ids[0].tolist(),
+                    "gen_ids": list(self._last_generated_ids),
+                    "cache_gen_len": int(raw_kv_tuple[0][0].shape[2] - _inj_len_for_trace - input_ids.shape[1]),
+                }
                 pending_position_offset = 0
 
                 # Populate anchor table with this agent's observation
@@ -668,6 +670,35 @@ class LAKVPipeline:
             finalizer_latency_seconds=finalizer_latency,
             confidence=confidence,
         )
+
+    def _agent_input_ids(self, question: str, agent_idx: int, system_suffix: str = "") -> torch.Tensor:
+        """The chat-templated prompt ids agent `agent_idx` receives for `question`.
+
+        Code moved verbatim from run() (so run() and the donor-trace rebuild
+        use one definition of "the standard prompt"). system_suffix is for
+        DONOR GENERATION ONLY (matched_wrong_answer's "defend X" line): run()
+        never passes it, and caches are always rebuilt without it.
+        """
+        prompts = self.config.system_prompts
+        system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
+        if system_suffix:
+            system_prompt = system_prompt + system_suffix
+        messages = [{"role": "system", "content": system_prompt}]
+        if agent_idx == 0 and self.config.use_reasoner_few_shot and self.config.dataset == "gsm8k":
+            for exemplar_q, exemplar_a in self.config.reasoner_few_shot_examples:
+                messages.append({"role": "user", "content": exemplar_q})
+                messages.append({"role": "assistant", "content": exemplar_a})
+        if agent_idx >= 1 and not self.config.receiver_sees_passages:
+            user_content = self._question_only(question)
+        else:
+            user_content = question
+        messages.append({"role": "user", "content": user_content})
+        prompt_text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+        )
+        return self.tokenizer(
+            prompt_text, return_tensors="pt", add_special_tokens=False
+        )["input_ids"].to(self.device)
 
     def _prompt_len_for_agent(self, question: str, prompts: List[str], agent_idx: int) -> int:
         if agent_idx >= self.config.n_agents:
@@ -1130,6 +1161,7 @@ class LAKVPipeline:
             last_hidden = gen_out.hidden_states[0][-1]  # (1, prompt_len, hidden)
             new_tokens = gen_out.sequences[0, input_ids.shape[1]:]
             generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            self._last_generated_ids = new_tokens.tolist()
             return self._to_tuple(gen_out.past_key_values), last_hidden, generated_text
 
         # ── Real injection (Verifier/Finalizer hops): a manual "prime" step
@@ -1236,6 +1268,7 @@ class LAKVPipeline:
                 generated_ids = gen_out.sequences[0].tolist()
                 running_cache = gen_out.past_key_values
             generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            self._last_generated_ids = list(generated_ids)
             return self._to_tuple(running_cache), last_hidden, generated_text
 
         # ── position_offset != 0 (offset-corrected configs): keep the exact
@@ -1259,6 +1292,7 @@ class LAKVPipeline:
             cur_pos += 1
 
         generated_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        self._last_generated_ids = list(generated_ids)
         return self._to_tuple(running_cache), last_hidden, generated_text
 
     @staticmethod

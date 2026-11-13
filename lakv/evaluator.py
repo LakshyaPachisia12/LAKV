@@ -9,6 +9,7 @@ import csv
 import copy
 import json
 import random as _random_for_ablation
+import shutil
 import re
 import time
 from dataclasses import asdict
@@ -20,7 +21,7 @@ from tqdm import tqdm
 
 from lakv.pipeline import LAKVPipeline, PipelineConfig, PROMPT_SETS, RunResult
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
-from lakv.causal_audit import KVAuditPool
+from lakv.causal_audit import (KVAuditPool, DiskKVAuditPool, DonorUnavailable, DONOR_SOURCE_MODES)
 
 
 TWO_AGENT_BENCH_PROMPTS = {
@@ -242,8 +243,28 @@ AUDIT_MODE_SUFFIXES = {
     "_audit_random": "random",
     "_audit_mismatched": "mismatched",
     "_audit_dropped": "dropped",
+    # Matched-donor modes (docs/matched_donor_design.md; UNTESTED ON GPU).
+    "_audit_length_matched": "length_matched",
+    "_audit_matched_passages": "matched_passages",
+    "_audit_matched_wrong_answer": "matched_wrong_answer",
+    "_audit_self_replay": "self_replay",
 }
 AUDIT_MISMATCHED_POOL_SIZE = 20
+# length_matched needs many donors so a within-5% length match usually exists
+# (about 94% per hop at 100 donors vs 82% at 20; see the design doc).
+AUDIT_LENGTH_MATCHED_POOL_SIZE = 100
+# The matched-donor modes are implemented for the uncompressed chain only.
+AUDIT_NEW_MODE_BASES = ("A",)
+
+
+def valid_audit_config_names() -> List[str]:
+    """Every audit config name the matched-donor work adds (A and A_nopass)."""
+    names = []
+    for base in ("A", "A_nopass"):
+        for suffix in ("_audit_length_matched", "_audit_matched_passages",
+                       "_audit_matched_wrong_answer", "_audit_self_replay"):
+            names.append(base + suffix)
+    return names
 
 
 def parse_audit_config_name(cfg_name: str):
@@ -436,7 +457,8 @@ class Evaluator:
     def _build_pipeline(self, cfg_name: str, profile_path: Optional[str], arch: str = "legacy",
                         dataset: str = "gsm8k", greedy: bool = False,
                         audit_pools: Optional[Dict[str, KVAuditPool]] = None,
-                        record_audit_pool: Optional[KVAuditPool] = None):
+                        record_audit_pool: Optional[KVAuditPool] = None,
+                        donor_sources: Optional[dict] = None):
         """Return a pipeline for cfg_name. Handles standard presets, ablations, single-agent,
         and causal-audit variants (<base>_audit_zeroed / _audit_random / _audit_mismatched,
         base in AUDIT_BASE_CONFIGS — see Phase 1 of the research-extensions plan).
@@ -565,9 +587,87 @@ class Evaluator:
                 )
             audit_pool = audit_pools[pool_key]
 
+        donor_source = None
+        if audit_mode in DONOR_SOURCE_MODES:
+            if base_name not in AUDIT_NEW_MODE_BASES:
+                raise ValueError(
+                    f"{cfg_name!r}: matched-donor audit modes are implemented for base config(s) "
+                    f"{AUDIT_NEW_MODE_BASES} only (got {base_name!r}).")
+            if audit_mode == "self_replay":
+                from lakv.donor_traces import SelfReplaySource
+                donor_source = SelfReplaySource()
+            else:
+                if not donor_sources or (pool_key, audit_mode) not in donor_sources:
+                    raise ValueError(
+                        f"{cfg_name!r} requires a donor source for {(pool_key, audit_mode)!r}, built by "
+                        f"run_experiment's pre-pass (_build_donor_sources) before reaching _build_pipeline.")
+                donor_source = donor_sources[(pool_key, audit_mode)]
+
         pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
-                            audit_pool=audit_pool, record_audit_pool=record_audit_pool)
+                            audit_pool=audit_pool, record_audit_pool=record_audit_pool,
+                            donor_source=donor_source)
         return pipe, "multi"
+
+    def _build_donor_sources(self, configs_to_run, samples, dataset, n_samples, profile_path, arch,
+                             dataset_name, greedy, base_seed, out, donor_pool_dir, pool_size):
+        """Pre-pass for the matched-donor modes (UNTESTED ON GPU).
+
+        length_matched -> disk-backed pool of `pool_size` held-out questions'
+        real caches (reused on resume if its index is marked complete).
+        matched_passages / matched_wrong_answer -> token-id traces for every
+        SCORED question (reused per question on resume). Returns
+        {(pool_key, mode): donor_source}.
+        """
+        from lakv.donor_traces import (LengthMatchedSource, TraceReplaySource, TraceStore,
+                                       donor_dir_name, generate_donor_traces)
+        sources = {}
+        root = Path(donor_pool_dir) if donor_pool_dir else Path(out) / "audit_pool"
+        needs = set()
+        for c in configs_to_run:
+            _b, pool_key, mode, _np = parse_audit_config_name(c)
+            if mode in ("length_matched", "matched_passages", "matched_wrong_answer"):
+                needs.add((pool_key, mode))
+        for pool_key, mode in sorted(needs):
+            base = parse_audit_config_name(pool_key)[0]
+            if base not in AUDIT_NEW_MODE_BASES:
+                raise ValueError(f"matched-donor mode {mode!r} supports base config(s) "
+                                 f"{AUDIT_NEW_MODE_BASES} only (got {base!r}).")
+            d = root / pool_key / donor_dir_name(mode, base_seed)
+            if mode == "length_matched":
+                pool = DiskKVAuditPool.open(d)
+                # Reuse only a COMPLETE pool of exactly the requested size for both
+                # relayed hops; anything else (e.g. a 30-donor smoke-test pool when
+                # 100 are requested) is rebuilt, never silently reused.
+                if pool.complete and pool.size(1) == pool_size and pool.size(2) == pool_size:
+                    print(f"[Evaluator] Re-using complete length_matched pool ({pool_size} donors) at {d}")
+                else:
+                    held = dataset[n_samples:n_samples + pool_size]
+                    if len(held) < pool_size:
+                        raise ValueError(
+                            f"length_matched needs {pool_size} held-out examples beyond n_samples={n_samples}, "
+                            f"only {len(held)} available (load n_samples + {pool_size}).")
+                    shutil.rmtree(d, ignore_errors=True)
+                    pool = DiskKVAuditPool(d)
+                    print(f"[Evaluator] Building disk-backed length_matched pool for {pool_key!r}: "
+                          f"{pool_size} held-out chains -> {d}")
+                    pipe, _ = self._build_pipeline(pool_key, profile_path, arch=arch, dataset=dataset_name,
+                                                   greedy=greedy, record_audit_pool=pool)
+                    for j, hs in enumerate(held):
+                        pipe.run(hs["question"])
+                        if (j + 1) % 10 == 0:
+                            print(f"  [pool] {j + 1}/{pool_size}")
+                    pool.mark_complete()
+                sources[(pool_key, mode)] = LengthMatchedSource(pool)
+            else:
+                store = TraceStore(d)
+                print(f"[Evaluator] Generating {mode} donor traces for {pool_key!r} "
+                      f"({len(samples)} scored questions) -> {d}")
+                pipe, _ = self._build_pipeline(pool_key, profile_path, arch=arch, dataset=dataset_name,
+                                               greedy=greedy)
+                counts = generate_donor_traces(pipe, samples, mode, store, base_seed)
+                print(f"[Evaluator] {mode} traces: {counts}")
+                sources[(pool_key, mode)] = TraceReplaySource(store, mode)
+        return sources
 
     def _build_audit_pool(self, base_cfg_name: str, profile_path: Optional[str],
                           held_out_samples: List[dict], arch: str = "legacy",
@@ -611,7 +711,9 @@ class Evaluator:
                        n_samples=100, output_dir="results/", checkpoint_every=5,
                        resume=False, arch: str = "legacy", print_raw_outputs: bool = False,
                        dataset_name: str = "gsm8k", greedy: bool = False,
-                       audit_donor_seed: int = 0):
+                       audit_donor_seed: int = 0,
+                       length_matched_pool_size: int = AUDIT_LENGTH_MATCHED_POOL_SIZE,
+                       donor_pool_dir: Optional[str] = None):
         # Seed for the mismatched-condition donor draw; 0 reproduces all
         # earlier runs. Read by _build_pipeline via self._audit_donor_seed.
         self._audit_donor_seed = audit_donor_seed
@@ -658,6 +760,10 @@ class Evaluator:
 
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
 
+        donor_sources = self._build_donor_sources(
+            configs_to_run, samples, dataset, n_samples, profile_path, arch, dataset_name, greedy,
+            audit_donor_seed, out, donor_pool_dir, length_matched_pool_size)
+
         partial_path = out / "experiment_results.partial.json"
         all_results = {}
 
@@ -694,11 +800,13 @@ class Evaluator:
                 all_results[cfg_name] = {"summary": summary, "per_sample": per_sample}
                 return
 
-            mean_latency = sum(x["latency_s"] for x in per_sample) / n_done
-            mean_comp = sum(x["compressed_mb"] for x in per_sample) / n_done
-            mean_ratio = sum(x["compression_ratio"] for x in per_sample) / n_done
-            parse_failures = sum(1 for x in per_sample if x["predicted"] is None)
-            malformed_rate = sum(1 for x in per_sample if x["is_malformed"]) / n_done
+            n_skipped = sum(1 for x in per_sample if x.get("skipped"))
+            n_eff = max(n_done - n_skipped, 1)
+            mean_latency = sum(x["latency_s"] for x in per_sample) / n_eff
+            mean_comp = sum(x["compressed_mb"] for x in per_sample) / n_eff
+            mean_ratio = sum(x["compression_ratio"] for x in per_sample) / n_eff
+            parse_failures = sum(1 for x in per_sample if x["predicted"] is None and not x.get("skipped"))
+            malformed_rate = sum(1 for x in per_sample if x["is_malformed"]) / n_eff
             grounding_failures = sum(1 for x in per_sample if x.get("numeric_grounding_failure"))
             f1_vals = [x["f1"] for x in per_sample if x.get("f1") is not None]
             mean_f1 = (sum(f1_vals) / len(f1_vals)) if f1_vals else None
@@ -712,7 +820,7 @@ class Evaluator:
 
             summary = {
                 "config": cfg_name,
-                "accuracy": correct / n_done,
+                "accuracy": correct / n_eff,
                 "mean_compressed_mb": mean_comp,
                 "mean_compression_ratio": mean_ratio,
                 "mean_layers_transmitted": mean_layers,
@@ -723,6 +831,7 @@ class Evaluator:
                 "mean_f1": mean_f1,
                 "n_correct": correct,
                 "n_samples": n_done,
+                "n_skipped": n_skipped,
                 "n_expected": len(samples),
                 "status": "running",
             }
@@ -737,7 +846,8 @@ class Evaluator:
 
                 pipe, pipe_type = self._build_pipeline(cfg_name, profile_path, arch=arch,
                                                         dataset=dataset_name, greedy=greedy,
-                                                        audit_pools=audit_pools)
+                                                        audit_pools=audit_pools,
+                                                        donor_sources=donor_sources)
                 pipe.config.print_raw_outputs = print_raw_outputs
                 print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
 
@@ -838,6 +948,19 @@ class Evaluator:
                             tot_ratio += r.overall_compression_ratio
                             tot_layers += sum(h.n_layers_transmitted for h in r.hop_stats)/nh
                             tot_lat += elapsed
+                    except DonorUnavailable as e:
+                        # A donor required by this audit arm does not exist for
+                        # this sample (e.g. length_matched: none within 5%).
+                        # Recorded as skipped: not scored, excluded from the
+                        # arm's accuracy denominator; stats pair on the rest.
+                        gold = str(s["answer"]).strip()
+                        print(f"  [skip] Config {cfg_name} sample {i}: {e.reason}")
+                        per_sample.append({"idx":i,"question":s["question"],"gold":gold,
+                            "predicted":None,"raw_answer":None,"correct":None,"f1":None,
+                            "is_malformed":False,"numeric_grounding_failure":False,
+                            "compressed_mb":0.0,"original_mb":0.0,"compression_ratio":0.0,
+                            "latency_s":0.0,"hop_stats":[],"skipped":True,"skip_reason":e.reason,
+                            "audit_logs":list(getattr(pipe, "last_run_audit_logs", [])) + [e.log]})
                     except (torch.OutOfMemoryError, RuntimeError) as e:
                         if isinstance(e, RuntimeError) and not isinstance(e, torch.OutOfMemoryError) \
                                 and "out of memory" not in str(e).lower():
@@ -860,17 +983,20 @@ class Evaluator:
                         _write_partial_file()
 
                 n = len(samples)
+                n_skipped = sum(1 for x in per_sample if x.get("skipped"))
+                n_eff = n - n_skipped  # scored samples; == n unless a donor was unavailable
                 f1_vals = [x["f1"] for x in per_sample if x.get("f1") is not None]
-                summary = {"config":cfg_name,"accuracy":correct/n if n else 0,
-                    "mean_compressed_mb":tot_comp/n if n else 0,
-                    "mean_compression_ratio":tot_ratio/n if n else 0,
-                    "mean_layers_transmitted":tot_layers/n if n else 0,
-                    "mean_latency_seconds":tot_lat/n if n else 0,
-                    "parse_failures":sum(1 for x in per_sample if x["predicted"] is None),
-                    "malformed_output_rate":sum(1 for x in per_sample if x["is_malformed"])/n if n else 0,
+                summary = {"config":cfg_name,"accuracy":correct/n_eff if n_eff else 0,
+                    "mean_compressed_mb":tot_comp/n_eff if n_eff else 0,
+                    "mean_compression_ratio":tot_ratio/n_eff if n_eff else 0,
+                    "mean_layers_transmitted":tot_layers/n_eff if n_eff else 0,
+                    "mean_latency_seconds":tot_lat/n_eff if n_eff else 0,
+                    "parse_failures":sum(1 for x in per_sample if x["predicted"] is None and not x.get("skipped")),
+                    "malformed_output_rate":sum(1 for x in per_sample if x["is_malformed"])/n_eff if n_eff else 0,
                     "numeric_grounding_failures":sum(1 for x in per_sample if x.get("numeric_grounding_failure")),
                     "mean_f1": (sum(f1_vals)/len(f1_vals)) if f1_vals else None,
                     "n_correct":correct,"n_samples":n,
+                    "n_skipped":n_skipped,"n_scored":n_eff,
                     "n_expected":n,
                     "status":"completed"}
                 all_results[cfg_name] = {"summary":summary,"per_sample":per_sample}
@@ -901,6 +1027,8 @@ class Evaluator:
                 profile_path=profile_path, audit_donor_seed=audit_donor_seed,
                 audit_pool_size=AUDIT_MISMATCHED_POOL_SIZE if mismatched_bases else None,
                 model=self.model,
+                extra={"length_matched_pool_size": length_matched_pool_size,
+                       "donor_pool_dir": str(donor_pool_dir) if donor_pool_dir else None},
             )
         except Exception as e:  # provenance must never kill a finished run
             run_md = {"error": f"{type(e).__name__}: {e}"}

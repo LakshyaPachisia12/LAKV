@@ -57,7 +57,9 @@ def _align_by_idx(per_sample_a: List[dict], per_sample_b: List[dict]) -> List[Tu
     pairs = []
     for sa in per_sample_a:
         sb = by_idx_b.get(sa["idx"])
-        if sb is not None:
+        # Samples recorded as skipped (an audit arm had no donor, see
+        # lakv/causal_audit.DonorUnavailable) have no outcome and never pair.
+        if sb is not None and not sa.get("skipped") and not sb.get("skipped"):
             pairs.append((sa, sb))
     return pairs
 
@@ -197,6 +199,18 @@ def compare(results_json: dict, cfg_a: str, cfg_b: str, n_boot: int = 10000, alp
         "significant_at_0.05": mc.p_value < 0.05,
     }
 
+    # Skip-aware reporting: when either arm skipped samples (matched-donor
+    # modes), the summary accuracies above are over DIFFERENT subsets. These
+    # fields compare both arms on exactly the paired, non-skipped subset.
+    pairs = _align_by_idx(pa, pb)
+    n_skipped_a = sum(1 for x in pa if x.get("skipped"))
+    n_skipped_b = sum(1 for x in pb if x.get("skipped"))
+    out.update({
+        "n_pairs": len(pairs), "n_skipped_a": n_skipped_a, "n_skipped_b": n_skipped_b,
+        "accuracy_a_on_pairs": (sum(bool(a["correct"]) for a, _ in pairs) / len(pairs)) if pairs else None,
+        "accuracy_b_on_pairs": (sum(bool(b["correct"]) for _, b in pairs) / len(pairs)) if pairs else None,
+    })
+
     has_f1 = any(s.get("f1") is not None for s in pa) and any(s.get("f1") is not None for s in pb)
     if has_f1:
         diff, lo, hi = bootstrap_f1_diff_ci(pa, pb, n_boot=n_boot, alpha=alpha)
@@ -241,6 +255,13 @@ def _cli() -> None:
             f"  accuracy: {result['accuracy_a']*100:.1f}% vs {result['accuracy_b']*100:.1f}% "
             f"(delta {result['accuracy_delta']*100:+.1f} pts)"
         )
+        if result.get("n_skipped_a") or result.get("n_skipped_b"):
+            print(
+                f"  NOTE skipped samples: {cfg_a}={result['n_skipped_a']}, {cfg_b}={result['n_skipped_b']}; "
+                f"the accuracies above cover different subsets. On the {result['n_pairs']} paired "
+                f"non-skipped samples: {result['accuracy_a_on_pairs']*100:.1f}% vs "
+                f"{result['accuracy_b_on_pairs']*100:.1f}% (McNemar/F1 below use this paired subset)"
+            )
         verdict = "SIGNIFICANT" if result["significant_at_0.05"] else "not significant"
         print(f"  McNemar exact p-value: {result['mcnemar_p_value']:.4f}  ({verdict} at alpha=0.05)")
         print(
