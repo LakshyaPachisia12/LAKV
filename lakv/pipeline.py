@@ -426,8 +426,18 @@ class LAKVPipeline:
 
     # ── public API ────────────────────────────────────────────────────────
 
-    def run(self, question: str) -> RunResult:
-        """Execute the 3-agent pipeline and return the final answer."""
+    def run(self, question: str, receiver_question: Optional[str] = None) -> RunResult:
+        """Execute the 3-agent pipeline and return the final answer.
+
+        receiver_question (relay-necessity curve, lakv/necessity_curve.py; UNTESTED ON GPU): when
+        given, agents >= 1 (the receivers) use it as their user content instead of `question`, so
+        they can be shown fewer passages while the sender (agent 0) still sees all of them. The
+        default None leaves behavior byte-identical to before. Conflicts with
+        receiver_sees_passages=False (that mode already replaces the receivers' content).
+        """
+        if receiver_question is not None and not self.config.receiver_sees_passages:
+            raise ValueError("receiver_question conflicts with receiver_sees_passages=False "
+                             "(_nopass); use one or the other")
         hop_stats: List[HopStat] = []
         hop_texts: List[str] = []
         kv_message: Optional[KVMessage] = None
@@ -460,6 +470,8 @@ class LAKVPipeline:
                     messages.append({"role": "assistant", "content": exemplar_a})
             if agent_idx >= 1 and not self.config.receiver_sees_passages:
                 user_content = self._question_only(question)
+            elif agent_idx >= 1 and receiver_question is not None:
+                user_content = receiver_question
             else:
                 user_content = question
             messages.append({"role": "user", "content": user_content})
