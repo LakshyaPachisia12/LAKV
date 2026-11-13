@@ -1,8 +1,17 @@
 # Core ML stack
-torch>=2.4.1
-transformers>=4.44.2
+# torch / transformers / datasets are PINNED to the versions recorded in
+# results/run_20260908_093810/run_metadata.json (all four 2026-09-08 run_metadata.json
+# files agree). The old floor transformers>=4.44.2 is wrong: the pipeline's
+# "prime, then hand off to model.generate()" decode path (hops >= 1) fails under 4.44
+# (IndexError in rotary embedding, reproduced on the unmodified branch tip).
+# Those runs used the CUDA 12.8 build of torch ("2.11.0+cu128"). The plain pin below
+# does not select a CUDA build; to match the recorded build install torch from the
+# PyTorch cu128 index, e.g.
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+transformers==5.16.1
 accelerate>=0.26.0
-datasets>=4.4.1
+datasets==5.0.1
 
 # Calibration profiling (plots + stats)
 numpy>=1.26.4
