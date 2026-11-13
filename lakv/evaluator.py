@@ -878,8 +878,29 @@ class Evaluator:
             raise
 
         self._print_table(all_results)
+        # Provenance (model, dataset, dtype, attention backend, decoding
+        # budgets, seeds, git commit, library versions) goes under a reserved
+        # top-level "_run_metadata" key, added ONLY to this final file: the
+        # in-memory all_results (and the partial checkpoint) stay pure
+        # {config: {summary, per_sample}}, so _print_table/_save_csv/hop_data
+        # and --resume are unaffected. Readers that address configs by name
+        # (lakv.stats, scripts/paired_audit.py) never see the extra key.
+        try:
+            from lakv.run_metadata import collect_run_metadata
+            run_md = collect_run_metadata(
+                mode="experiment",
+                model_name=getattr(getattr(self.model, "config", None), "_name_or_path", None),
+                dataset=dataset_name,
+                split="test" if dataset_name == "gsm8k" else "validation",
+                n_samples=n_samples, configs=configs_to_run, arch=arch, greedy=greedy,
+                profile_path=profile_path, audit_donor_seed=audit_donor_seed,
+                audit_pool_size=AUDIT_MISMATCHED_POOL_SIZE if mismatched_bases else None,
+                model=self.model,
+            )
+        except Exception as e:  # provenance must never kill a finished run
+            run_md = {"error": f"{type(e).__name__}: {e}"}
         with open(out/"experiment_results.json","w") as f:
-            json.dump(all_results, f, indent=2, default=str)
+            json.dump({"_run_metadata": run_md, **all_results}, f, indent=2, default=str)
         self._save_csv(all_results, out/"results_table.csv")
         hop_data = {c:[s["hop_stats"] for s in d["per_sample"]] for c,d in all_results.items()}
         with open(out/"per_hop_stats.json","w") as f:

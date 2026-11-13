@@ -37,44 +37,42 @@ def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _write_run_metadata(output_dir: Path, args) -> None:
+def _write_run_metadata(output_dir: Path, args, mode: str = "experiment",
+                        filename: str = "run_metadata.json") -> None:
     """Record what was actually run, so a results folder is reproducible
-    without having to guess it later. HotpotQA in particular had zero
-    provenance before this — no seed needed (load_hotpotqa/load_gsm8k are
-    both deterministic data[:n] slices, no shuffling), but the dataset
-    library version and exact split/n/config used were never recorded
-    anywhere, and load_dataset() itself doesn't pin a dataset revision, so
-    this is the next best thing: capture what version of everything
-    actually produced this run's numbers.
+    without having to guess it later. Written for EVERY mode (calibrate,
+    sanity, experiment, and resumed experiments under a separate filename),
+    not only experiment runs. See lakv/run_metadata.py for the fields: git
+    commit + dirty flag, model, dataset/split/n, configs, dtype, attention
+    backend, per-config token budgets and repetition_penalty, seeds, profile
+    hash, library versions. The model-derived fields (dtype, attention
+    backend, model generation_config defaults) are added by the evaluator
+    inside experiment_results.json once the model is loaded; this earlier
+    file exists so even a run that crashes before finishing has provenance.
+    Never raises: provenance must not kill a long run.
     """
+    from lakv.run_metadata import collect_run_metadata
     try:
-        git_commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
-    except Exception:
-        git_commit = None
-
-    import datasets
-    import transformers
-
-    metadata = {
-        "timestamp": _timestamp(),
-        "git_commit": git_commit,
-        "model": args.model,
-        "dataset": args.dataset,
-        "split": "validation" if args.dataset == "hotpotqa" else "test",
-        "n_samples": args.n_samples,
-        "configs": args.configs,
-        "arch": args.arch,
-        "greedy": args.greedy,
-        "profile_path": args.profile_path,
-        "datasets_version": datasets.__version__,
-        "transformers_version": transformers.__version__,
-        "torch_version": torch.__version__,
-    }
-    with open(output_dir / "run_metadata.json", "w") as f:
-        json.dump(metadata, f, indent=2)
+        dataset = getattr(args, "dataset", None)
+        metadata = collect_run_metadata(
+            mode=mode,
+            model_name=getattr(args, "model", None),
+            dataset=dataset,
+            split=("test" if dataset == "gsm8k" else "validation") if mode != "calibrate" else "train",
+            n_samples=(getattr(args, "n_calibration", None) if mode == "calibrate"
+                       else getattr(args, "n_samples", None)),
+            configs=getattr(args, "configs", None) if mode == "experiment" else None,
+            arch=getattr(args, "arch", None),
+            greedy=getattr(args, "greedy", None),
+            profile_path=getattr(args, "profile_path", None),
+            audit_donor_seed=getattr(args, "audit_donor_seed", None),
+        )
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with open(output_dir / filename, "w") as f:
+            json.dump(metadata, f, indent=2, default=str)
+    except Exception as e:
+        print(f"[run] WARNING: could not write {filename}: {type(e).__name__}: {e}")
 
 
 def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
@@ -202,6 +200,7 @@ def mode_calibrate(args):
     # misleadingly-named "qwen_*.json" profile for a non-Qwen model.
     profile_dir = Path(args.profile_dir) / f"run_{_timestamp()}"
     profile_dir.mkdir(parents=True, exist_ok=True)
+    _write_run_metadata(profile_dir, args, mode="calibrate")
     model_slug = args.model.rstrip("/").split("/")[-1].lower().replace(".", "_")
     profile_path = profile_dir / f"{model_slug}_{args.dataset}.json"
     print(f"[run] Profile will be saved to: {profile_path}")
@@ -239,6 +238,7 @@ def mode_sanity(args):
     KVCompressor.run_sanity_check(device=args.device)
     print()
 
+    _write_run_metadata(Path(args.output_dir) / f"sanity_{_timestamp()}", args, mode="sanity")
     model, tokenizer = load_model(args.model, args.device)
     split = "test" if args.dataset == "gsm8k" else "validation"
     dataset = load_dataset_samples(args.dataset, split, n=3)
@@ -259,12 +259,14 @@ def mode_experiment(args):
             raise ValueError(f"--resume_dir does not exist: {output_dir}")
         print(f"[run] Resuming run in: {output_dir}")
         resume = True
+        _write_run_metadata(output_dir, args, mode="experiment",
+                            filename=f"run_metadata_resume_{_timestamp()}.json")
     else:
         output_dir = Path(args.output_dir) / f"run_{_timestamp()}"
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"[run] Results will be saved to: {output_dir}")
         resume = False
-        _write_run_metadata(output_dir, args)
+        _write_run_metadata(output_dir, args, mode="experiment")
 
     model, tokenizer = load_model(args.model, args.device)
     split = "test" if args.dataset == "gsm8k" else "validation"
