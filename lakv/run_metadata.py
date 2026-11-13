@@ -12,6 +12,7 @@ Pure functions, CPU-only, testable with fake model objects.
 from __future__ import annotations
 
 import hashlib
+import json
 import platform
 import subprocess
 import sys
@@ -102,10 +103,18 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
     the model default, reported separately under model_info).
     """
     try:
-        from lakv.evaluator import PRESETS, parse_audit_config_name
+        from lakv.evaluator import PRESETS, parse_audit_config_name, AUDIT_MODE_SUFFIXES
         from lakv.evaluator import ABLATION_CONFIGS
+        from lakv.necessity_curve import split_hide_suffix
+        full_name = cfg_name
+        cfg_name, hide = split_hide_suffix(cfg_name, AUDIT_MODE_SUFFIXES)   # _hide100 -> _nopass
         base, _pool, audit_mode, nopass = parse_audit_config_name(cfg_name)
         d: Dict[str, Any] = {"base": base, "audit_mode": audit_mode, "receiver_sees_passages": not nopass}
+        if hide is not None:
+            d["hide"] = {"axis": hide.axis, "level": hide.level, "suffix": hide.suffix,
+                         "receivers_see": "reduced view; the sender (agent 0) sees all passages"}
+        if full_name != cfg_name and hide is None:
+            d["alias_of"] = cfg_name
         if base in ("single_agent", "single_agent_matched"):
             from lakv_v2.pipeline.single_agent import SingleAgentPipelineConfig as C
             c = C()
@@ -135,6 +144,47 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
         return d
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+def dataset_provenance(ds_split, *, hf_id: str, config: str, split: str, samples) -> Dict[str, Any]:
+    """Identify exactly which HuggingFace data produced a run (UNTESTED ON GPU; CPU-tested with fakes).
+
+    Best-effort, never raises. Records: the datasets library fingerprint of the split, the
+    cache revision directory (datasets caches hub datasets under .../<config>/<version>/<revision>/,
+    so that folder name is the hub revision hash), row count, the dataset info version, and two
+    content digests over the examples actually loaded (question+answer text; gold titles), which
+    identify the data offline even when the cache path is unavailable. Only the last three
+    components of cache file paths are kept (no user directory names).
+    """
+    import hashlib
+    out: Dict[str, Any] = {"hf_id": hf_id, "config": config, "split": split}
+    try:
+        try:
+            out["num_rows_split"] = len(ds_split)
+        except Exception:
+            out["num_rows_split"] = None
+        out["fingerprint"] = getattr(ds_split, "_fingerprint", None)
+        info = getattr(ds_split, "info", None)
+        out["info_version"] = str(getattr(info, "version", None)) if info is not None else None
+        out["builder_name"] = getattr(info, "builder_name", None) if info is not None else None
+        files = getattr(ds_split, "cache_files", None) or []
+        names = [f.get("filename") for f in files if isinstance(f, dict) and f.get("filename")]
+        out["cache_files"] = ["/".join(Path(n).parts[-3:]) for n in names]
+        out["cache_revision_dirs"] = sorted({Path(n).parent.name for n in names})
+        try:
+            import datasets as _ds
+            out["datasets_version"] = _ds.__version__
+        except Exception:
+            out["datasets_version"] = None
+        samples = list(samples)
+        out["n_loaded"] = len(samples)
+        qa = json.dumps([[x.get("question"), x.get("answer")] for x in samples], ensure_ascii=False, sort_keys=True)
+        out["questions_answers_sha256"] = hashlib.sha256(qa.encode("utf-8")).hexdigest()
+        gt = json.dumps([x.get("gold_titles") for x in samples], ensure_ascii=False)
+        out["gold_titles_sha256"] = hashlib.sha256(gt.encode("utf-8")).hexdigest()
+    except Exception as e:  # pragma: no cover - defensive
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
 
 
 def collect_run_metadata(

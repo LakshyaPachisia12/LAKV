@@ -66,13 +66,29 @@ def _write_run_metadata(output_dir: Path, args, mode: str = "experiment",
             greedy=getattr(args, "greedy", None),
             profile_path=getattr(args, "profile_path", None),
             audit_donor_seed=getattr(args, "audit_donor_seed", None),
+            extra={"hide_seed": getattr(args, "hide_seed", None)},
         )
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / filename, "w") as f:
             json.dump(metadata, f, indent=2, default=str)
+        return output_dir / filename
     except Exception as e:
         print(f"[run] WARNING: could not write {filename}: {type(e).__name__}: {e}")
+        return None
+
+
+def _merge_into_json(path, updates: dict) -> None:
+    """Add keys to an existing JSON file (used to attach the dataset fingerprint to
+    run_metadata.json once the data has been loaded). Never raises."""
+    try:
+        if path is None:
+            return
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data.update(updates)
+        Path(path).write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[run] WARNING: could not update {path}: {type(e).__name__}: {e}")
 
 
 def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
@@ -124,6 +140,11 @@ def load_gsm8k(split: str = "test", n: int = None):
     return data
 
 
+# Filled by load_hotpotqa(): which HuggingFace data produced this run (fingerprint, cache revision,
+# content digests). Written into run_metadata.json / experiment_results.json by mode_experiment.
+DATASET_PROVENANCE: dict = {}
+
+
 def load_hotpotqa(split: str = "validation", n: int = None):
     """Return list of {question, answer} dicts from HotpotQA (distractor config).
 
@@ -143,9 +164,17 @@ def load_hotpotqa(split: str = "validation", n: int = None):
             f"[{t}] " + " ".join(s) for t, s in zip(titles, sentences)
         )
         question = f"Context:\n{passages}\n\nQuestion: {item['question']}"
-        data.append({"question": question, "answer": item["answer"]})
+        sf = item.get("supporting_facts") if hasattr(item, "get") else None
+        # Gold passages = the supporting-fact titles (relay-necessity curve, lakv/necessity_curve.py).
+        # Extra key only: the question text is unchanged, so every earlier result is reproducible.
+        gold_titles = list(dict.fromkeys(sf["title"])) if sf else None
+        data.append({"question": question, "answer": item["answer"], "gold_titles": gold_titles})
     if n is not None:
         data = data[:n]
+    from lakv.run_metadata import dataset_provenance
+    DATASET_PROVENANCE.clear()
+    DATASET_PROVENANCE.update(dataset_provenance(
+        ds[split], hf_id="hotpotqa/hotpot_qa", config="distractor", split=split, samples=data))
     return data
 
 
@@ -259,16 +288,15 @@ def mode_experiment(args):
             raise ValueError(f"--resume_dir does not exist: {output_dir}")
         print(f"[run] Resuming run in: {output_dir}")
         resume = True
-        _write_run_metadata(output_dir, args, mode="experiment",
-                            filename=f"run_metadata_resume_{_timestamp()}.json")
+        meta_path = _write_run_metadata(output_dir, args, mode="experiment",
+                                        filename=f"run_metadata_resume_{_timestamp()}.json")
     else:
         output_dir = Path(args.output_dir) / f"run_{_timestamp()}"
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"[run] Results will be saved to: {output_dir}")
         resume = False
-        _write_run_metadata(output_dir, args, mode="experiment")
+        meta_path = _write_run_metadata(output_dir, args, mode="experiment")
 
-    model, tokenizer = load_model(args.model, args.device)
     split = "test" if args.dataset == "gsm8k" else "validation"
 
     # A "*_audit_mismatched" config (Phase 1 causal audit) needs held-out
@@ -279,6 +307,20 @@ def mode_experiment(args):
     needs_audit_pool = any(c.endswith("_audit_mismatched") for c in args.configs)
     n_to_load = args.n_samples + (AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0)
     dataset = load_dataset_samples(args.dataset, split, n=n_to_load)
+
+    # Relay-necessity curve (UNTESTED ON GPU): check every hide config on the CPU BEFORE the model
+    # is loaded, so a dataset without gold titles (or a blob that does not split) fails in seconds.
+    from lakv.evaluator import AUDIT_MODE_SUFFIXES
+    from lakv.necessity_curve import split_hide_suffix, summarize_hiding
+    for cfg in args.configs:
+        _core, hspec = split_hide_suffix(cfg, AUDIT_MODE_SUFFIXES)
+        if hspec is not None:
+            print(f"[run] {cfg}: {summarize_hiding(dataset[:args.n_samples], hspec, args.hide_seed)}")
+    provenance = dict(DATASET_PROVENANCE)
+    if provenance:
+        _merge_into_json(meta_path, {"dataset_provenance": provenance})
+
+    model, tokenizer = load_model(args.model, args.device)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
         dataset=dataset,
         profile_path=args.profile_path,
@@ -291,6 +333,8 @@ def mode_experiment(args):
         dataset_name=args.dataset,
         greedy=args.greedy,
         audit_donor_seed=args.audit_donor_seed,
+        hide_seed=args.hide_seed,
+        dataset_provenance=provenance or None,
     )
 
 
@@ -322,6 +366,9 @@ def main():
     parser.add_argument("--greedy", action="store_true",
                         help="Force do_sample=False on every config. Redundant now that greedy is the "
                              "default (kept as an explicit override / for readability in scripts)")
+    parser.add_argument("--hide_seed", type=int, default=0,
+                        help="Seed (zlib.crc32) for which passages the *_hide<PCT> / *_hidegold<G> configs hide. "
+                             "Identical for the real and dropped arms. Default 0; use 1 for the seed-sensitivity pair.")
     parser.add_argument("--audit_donor_seed", type=int, default=0,
                         help="Seed for the mismatched-condition donor draw (default 0 reproduces all "
                              "earlier runs). Use 1, 2, ... with separate --output_dir for a "
