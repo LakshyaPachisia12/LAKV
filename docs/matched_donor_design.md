@@ -84,13 +84,14 @@ Per held-out question, both relayed hops, from the exact mean cache lengths of t
    python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 20 --profile_path $PROFILE --output_dir results/matched_selfreplay --configs A A_audit_self_replay
    python scripts/check_matched_donors.py results/matched_selfreplay/run_*/experiment_results.json
    ```
-   **Stop if** `not_comparable > 0` (rebuilt length != real cache length: the `cache_gen_len` rule is wrong for the generate() path). Expect `min_cosine_worst` close to 1 and small `max_abs_diff`; my working threshold is cosine >= 0.999, which is a guess to be revised after seeing real bf16 numbers. `identical_answer_frac` and the McNemar line are informational: self-replay should track `A` closely, not necessarily identically.
+   **Gate (decides pass/fail; the script exits 1 on failure):** at least **19 of the 20 final answers agree** between `A` and `A_audit_self_replay` (the parsed `predicted` answers are equal after answer normalization), **and** `not_comparable == 0`. **Stop if `not_comparable > 0`:** the rebuilt cache length differs from the real cache, so the `cache_gen_len` rule is wrong for the `generate()` path. The script also fails the gate if fewer or more than 20 samples were compared (`--expect_pairs`, `--min_agree` override the defaults) or if rebuild logs are missing.
+   **Diagnostics only (printed, never gate):** cosine similarity, `max_abs_diff` and relative L2 of rebuilt vs real caches per hop (`min_cosine_worst` etc.), raw-text identity (`identical_answer_frac`) and the McNemar line. bf16 prefill vs incremental decode is not expected to be bit-identical and there is no validated numeric threshold, so a low cosine with agreeing answers is a note to read, not a failure; read the numbers anyway, since a very low cosine with agreeing answers would mean the cache barely matters to this model.
 3. **n=10 smoke** of every new arm (pool 30 so it is quick; many `length_matched` skips are expected at this size):
    ```
    python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 10 --length_matched_pool_size 30 --profile_path $PROFILE --output_dir results/matched_smoke --configs A A_audit_dropped A_audit_mismatched A_audit_length_matched A_audit_matched_passages A_audit_matched_wrong_answer A_audit_self_replay
-   python scripts/check_matched_donors.py results/matched_smoke/run_*/experiment_results.json
+   python scripts/check_matched_donors.py results/matched_smoke/run_*/experiment_results.json --expect_pairs 10 --min_agree 9
    ```
-   Check: exit status 0 (no padding, `length_matched` ratios within 1 +- 0.05); `hop0_differs_from_greedy_rate` is not ~0 (else sampling is vacuous: stop); `defends_distractor_rate` is high (else the wrong-answer arm is not wrong); skip counts sensible. Read a few traces:
+   The smoke run includes `A_audit_self_replay` at n=10, so its gate is rescaled with `--expect_pairs 10 --min_agree 9` (the step-2 rule of at most one disagreement). Check: exit status 0 (self-replay gate passes, no padding, `length_matched` ratios within 1 +- 0.05); `hop0_differs_from_greedy_rate` is not ~0 (else sampling is vacuous: stop); `defends_distractor_rate` is high (else the wrong-answer arm is not wrong); skip counts sensible. Read a few traces:
    ```
    python - <<'EOF'
    import json, glob; from transformers import AutoTokenizer

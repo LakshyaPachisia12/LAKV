@@ -3,8 +3,13 @@
     python scripts/check_matched_donors.py results/<run>/experiment_results.json
 
 Prints, for whichever of these configs are present:
-  * self-replay validation: A vs A_audit_self_replay (identical outputs, paired
-    McNemar on the common subset, numeric cache difference of rebuild vs real)
+  * self-replay validation: A vs A_audit_self_replay. GATE (decides the exit
+    status): (1) at least --min_agree of --expect_pairs final answers agree
+    (default 19 of 20; "agree" = the parsed `predicted` answers are equal after
+    answer normalization), and (2) no substitution had not_comparable > 0, i.e. the
+    rebuilt cache has the same length as the real one (otherwise the cache-length
+    rule is wrong). Cosine similarity / max-abs-diff / rel-L2 of rebuilt vs real
+    caches, raw-text identity and McNemar are printed as DIAGNOSTICS and never gate.
   * donor-log invariants for every matched-donor arm: skips, pad_positions,
     length ratios (length_matched), and the same-question donors' own checks
     (hop0_differs_from_greedy, defends_distractor)
@@ -36,7 +41,9 @@ def summarize_self_replay(results: dict, base: str = "A", replay: str = "A_audit
     by = {s["idx"]: s for s in pb}
     pairs = [(a, by[a["idx"]]) for a in pa if a["idx"] in by and not by[a["idx"]].get("skipped")]
     identical = sum(1 for a, b in pairs if (a.get("raw_answer") or "").strip() == (b.get("raw_answer") or "").strip())
-    out = {"n_pairs": len(pairs), "identical_answer_frac": identical / len(pairs) if pairs else None,
+    agree = sum(1 for a, b in pairs if answers_agree(a, b))
+    out = {"n_pairs": len(pairs), "n_answers_agree": agree,
+           "identical_answer_frac": identical / len(pairs) if pairs else None,  # diagnostic: raw text identical
            "accuracy_base": results[base]["summary"]["accuracy"], "accuracy_replay": results[replay]["summary"]["accuracy"]}
     if pairs:
         m = mcnemar_test(pa, pb)
@@ -54,7 +61,37 @@ def summarize_self_replay(results: dict, base: str = "A", replay: str = "A_audit
         for hop, v in sorted(per_hop.items())}
     out["not_comparable"] = sum(1 for _s, l in _logs(pb)
                                 if l.get("rebuild_vs_real") and not l["rebuild_vs_real"].get("comparable"))
+    out["n_rebuild_logs"] = sum(len(v) for v in per_hop.values()) + out["not_comparable"]
     return out
+
+
+def answers_agree(a: dict, b: dict) -> bool:
+    """Final answers agree: parsed `predicted` equal after answer normalization
+    (two unparsed answers, both None, count as agreeing)."""
+    from lakv.qa_scoring import normalize_answer
+    na = normalize_answer(a.get("predicted") or "")
+    nb = normalize_answer(b.get("predicted") or "")
+    return na == nb
+
+
+def self_replay_gate(summary: dict, expect_pairs: int = 20, min_agree: int = 19) -> dict:
+    """The self-replay pass/fail decision. Only answer agreement and cache-length
+    comparability gate; cosine and the other numbers are diagnostics."""
+    reasons = []
+    if summary["not_comparable"] > 0:
+        reasons.append(f"not_comparable = {summary['not_comparable']} > 0: the rebuilt cache length differs from the "
+                       f"real cache, so the cache-length rule (cache_gen_len) is wrong")
+    if summary["n_pairs"] != expect_pairs:
+        reasons.append(f"{summary['n_pairs']} comparable samples, expected {expect_pairs} "
+                       f"(skipped or missing samples, or a different --n_samples)")
+    if summary["n_answers_agree"] < min_agree:
+        reasons.append(f"only {summary['n_answers_agree']} of {summary['n_pairs']} final answers agree "
+                       f"(need >= {min_agree})")
+    if summary["n_rebuild_logs"] < 2 * summary["n_pairs"]:
+        reasons.append(f"only {summary['n_rebuild_logs']} rebuild logs for {summary['n_pairs']} samples "
+                       f"(expected 2 per sample)")
+    return {"pass": not reasons, "reasons": reasons, "rule": f">= {min_agree} of {expect_pairs} answers agree "
+            f"AND not_comparable == 0 (cosine is diagnostic only)"}
 
 
 def check_donor_logs(results: dict, cfg: str) -> dict:
@@ -89,12 +126,27 @@ def check_donor_logs(results: dict, cfg: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("results_json")
+    ap.add_argument("--expect_pairs", type=int, default=20,
+                    help="self-replay: number of samples that must be compared (default 20)")
+    ap.add_argument("--min_agree", type=int, default=19,
+                    help="self-replay: minimum number of agreeing final answers (default 19)")
     args = ap.parse_args()
     results = json.loads(Path(args.results_json).read_text(encoding="utf-8"))
     rc = 0
     if "A_audit_self_replay" in results and "A" in results:
+        summ = summarize_self_replay(results)
+        gate = self_replay_gate(summ, args.expect_pairs, args.min_agree)
         print("== self-replay validation ==")
-        print(json.dumps(summarize_self_replay(results), indent=2, default=str))
+        print(f"GATE: {'PASS' if gate['pass'] else 'FAIL'}   rule: {gate['rule']}")
+        print(f"      answers agree: {summ['n_answers_agree']} of {summ['n_pairs']}   "
+              f"not_comparable: {summ['not_comparable']}")
+        for r in gate["reasons"]:
+            print(f"      FAIL REASON: {r}")
+        diag = {k: v for k, v in summ.items() if k not in ("n_answers_agree", "not_comparable")}
+        print("DIAGNOSTICS (non-gating; cosine / abs diff / rel L2 of rebuilt vs real caches, raw-text identity, McNemar):")
+        print(json.dumps(diag, indent=2, default=str))
+        if not gate["pass"]:
+            rc = 1
     for cfg in results:
         if cfg.startswith("_"):
             continue
