@@ -89,6 +89,33 @@ def _match_seq_len(donor: torch.Tensor, target_shape: torch.Size, seq_dim: int =
     return donor, False
 
 
+def describe_seq_len_handling(donor_len: int, target_len: int) -> dict:
+    """How _match_seq_len treats a donor of donor_len for a target of target_len.
+
+    Pure bookkeeping; changes no behavior. handling is "exact" (same length),
+    "truncated" (donor longer: its tail is cut) or "zero_padded" (donor shorter:
+    zeros are appended after the donor's real positions). pad_fraction is the
+    share of the injected cache's target_len positions that are all-zero
+    padding (0.0 unless zero_padded); truncated_fraction is the share of the
+    donor's own positions that were discarded.
+    """
+    if donor_len == target_len:
+        handling, pad, cut = "exact", 0, 0
+    elif donor_len > target_len:
+        handling, pad, cut = "truncated", 0, donor_len - target_len
+    else:
+        handling, pad, cut = "zero_padded", target_len - donor_len, 0
+    return {
+        "handling": handling,
+        "donor_cache_len": int(donor_len),
+        "target_cache_len": int(target_len),
+        "pad_positions": int(pad),
+        "pad_fraction": (pad / target_len) if target_len else 0.0,
+        "truncated_positions": int(cut),
+        "truncated_fraction": (cut / donor_len) if donor_len else 0.0,
+    }
+
+
 # ─── mismatched-example pool ──────────────────────────────────────────────────
 
 @dataclass
@@ -98,6 +125,8 @@ class _PoolEntry:
     question_text: str = ""  # full question text, for post-hoc "did the wrong
     # answer bleed content from the DONOR question" analysis — question_key
     # alone is a hash, not reversible back to readable text.
+    order: int = -1  # insertion order within this agent's pool (0 = first held-out
+    # question recorded). Lets a per-sample log say WHICH donor was used.
 
 
 class KVAuditPool:
@@ -117,6 +146,11 @@ class KVAuditPool:
     def __init__(self, max_size_per_agent: int = 20):
         self.max_size_per_agent = max_size_per_agent
         self._pools: Dict[int, List[_PoolEntry]] = {}
+        self._next_order: Dict[int, int] = {}
+        # Optional: question_key -> offset into the held-out slice
+        # (dataset index = n_scored + offset). Filled by the evaluator after
+        # the pre-pass; used only for logging.
+        self.donor_heldout_offsets: Dict[str, int] = {}
 
     def add(self, agent_idx: int, question_key: str, kv: KVTuple, question_text: str = "") -> None:
         pool = self._pools.setdefault(agent_idx, [])
@@ -126,17 +160,19 @@ class KVAuditPool:
         # the GPU the whole time competing with the model's own memory —
         # moved back to the target device only at sample() time.
         cpu_kv = tuple((k.detach().to("cpu"), v.detach().to("cpu")) for k, v in kv)
-        pool.append(_PoolEntry(question_key, cpu_kv, question_text))
+        order = self._next_order.get(agent_idx, 0)
+        self._next_order[agent_idx] = order + 1
+        pool.append(_PoolEntry(question_key, cpu_kv, question_text, order))
         if len(pool) > self.max_size_per_agent:
             pool.pop(0)
 
     def size(self, agent_idx: int) -> int:
         return len(self._pools.get(agent_idx, []))
 
-    def sample(
+    def sample_with_info(
         self, agent_idx: int, exclude_question_key: str, target_shape: torch.Size,
         device, rng: Optional[_random_module.Random] = None,
-    ) -> Tuple[Optional[KVTuple], bool, str]:
+    ) -> Tuple[Optional[KVTuple], bool, str, dict]:
         """Return (substitute_kv, was_shape_resized, donor_question_text).
         substitute_kv is None only if this agent_idx's pool has no eligible
         entries at all — this should never happen if the pool was pre-built
@@ -156,7 +192,7 @@ class KVAuditPool:
         pool = self._pools.get(agent_idx, [])
         eligible = [e for e in pool if e.question_key != exclude_question_key]
         if not eligible:
-            return None, False, ""
+            return None, False, "", {}
 
         rng = rng or _random_module
         entry = rng.choice(eligible)
@@ -168,7 +204,28 @@ class KVAuditPool:
             v_matched, v_resized = _match_seq_len(v_dev, target_shape)
             resized = resized or k_resized or v_resized
             out.append((k_matched, v_matched))
-        return tuple(out), resized, entry.question_text
+        # Bookkeeping only (no effect on the substitute): every layer's K/V
+        # shares one seq length, so layer 0's K describes the whole cache.
+        info = describe_seq_len_handling(entry.kv[0][0].shape[2], target_shape[2])
+        info.update({
+            "donor_question_key": entry.question_key,
+            "donor_pool_order": entry.order,
+            "donor_heldout_offset": self.donor_heldout_offsets.get(entry.question_key),
+            "pool_size": len(pool),
+            "n_eligible_donors": len(eligible),
+        })
+        return tuple(out), resized, entry.question_text, info
+
+    def sample(
+        self, agent_idx: int, exclude_question_key: str, target_shape: torch.Size,
+        device, rng: Optional[_random_module.Random] = None,
+    ) -> Tuple[Optional[KVTuple], bool, str]:
+        """Original 3-tuple interface; see sample_with_info for the full record."""
+        substitute, resized, donor_text, _info = self.sample_with_info(
+            agent_idx, exclude_question_key, target_shape, device, rng=rng)
+        return substitute, resized, donor_text
+
+
 
 
 # ─── dispatch ─────────────────────────────────────────────────────────────────
@@ -202,7 +259,7 @@ def apply_causal_audit(
             raise ValueError("causal_audit_mode='mismatched' requires a KVAuditPool")
         target_shape = real_kv[0][0].shape
         device = real_kv[0][0].device
-        substitute, was_resized, donor_question = pool.sample(
+        substitute, was_resized, donor_question, handling_info = pool.sample_with_info(
             agent_idx, question_key, target_shape, device, rng=rng)
         if substitute is None:
             # The pool for this agent_idx was never populated before this
@@ -219,6 +276,7 @@ def apply_causal_audit(
         return substitute, {
             "mode": "mismatched", "shape_resized": was_resized,
             "donor_question": donor_question,
+            **handling_info,
         }
 
     raise ValueError(f"Unknown causal_audit_mode: {mode!r}")

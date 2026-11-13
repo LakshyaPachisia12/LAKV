@@ -600,6 +600,11 @@ class Evaluator:
         )
         for s in held_out_samples:
             pipe.run(s["question"])
+        # Logging only: remember each donor's offset into the held-out slice
+        # (dataset index = n_scored + offset) so the per-sample audit log can
+        # say which question's cache was substituted.
+        from lakv.anchor_table import question_key as _qkey
+        pool.donor_heldout_offsets = {_qkey(hs["question"]): j for j, hs in enumerate(held_out_samples)}
         return pool
 
     def run_experiment(self, dataset, profile_path, configs_to_run=None,
