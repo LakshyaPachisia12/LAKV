@@ -266,41 +266,69 @@ don't just trust this summary if more data has come in since):
    accounts for the whole recovery, not a coincidence. `B_int4_kivi`
    (plain, K-only) remains the config to report and use.**
 
-6. **Causal audit: config `A`'s relayed KV demonstrably carries real,
-   specific content — not just a generic non-empty cache.** Ran on `A`
-   (uncompressed relay), n=50, HotpotQA: `A` 50.0%/64.0%, `A_audit_zeroed`
-   0.0%/0.0%, `A_audit_random` (moment-matched noise) 0.0%/0.0%,
-   `A_audit_mismatched` (a real, different held-out question's KV) 28.0%/
-   37.1%. **Every pairwise comparison in the three-tier ladder is
-   statistically significant**: `A` vs zeroed p<0.0001, `A` vs random
-   p<0.0001, `A` vs mismatched p=0.0127 (borderline at an earlier n=20 pilot,
-   confirmed here), mismatched vs zeroed/random p=0.0001 each. This is the
-   mechanistic validation underneath every other finding in this document —
-   direct proof that accuracy comes from the specific transmitted content,
-   not merely from the receiving agent having *some* cache to attend over.
-   Qualitative texture confirms it: `A_audit_mismatched`'s wrong answers are
-   coherent, grammatical, plausible-sounding (real structure, wrong
-   question); `A_audit_zeroed`'s are garbled English; `A_audit_random`'s are
-   pure noise (code fragments, mixed-language garbage) — **worse than
-   zeroed**, plausibly because a zero vector is "quiet" to attention
-   (weak key signal, easy to down-weight) while realistic-magnitude random
-   noise looks like real signal and actively misdirects attention, a small
-   but genuine and explainable mechanistic aside worth a sentence in the
-   paper. **CONFIRMED, extended to `D`/`B_int8` (n=50 each,
-   `results/run_20260909_080434`): the exact same three-tier ordering holds
-   under compression, and MORE decisively than on uncompressed `A`.**
-   `D`: 54.0%/60.2% vs `D_audit_zeroed`/`D_audit_random` 0.0%/0.0%,0.2% vs
-   `D_audit_mismatched` 26.0%/32.2%. `B_int8`: 54.0%/68.0% vs zeroed/random
-   0.0%/0.0% vs mismatched 24.0%/34.4%. **All 10 pairwise comparisons across
-   both configs are significant** — real vs zeroed/random p<0.0001 each
-   (both configs); real vs mismatched p=0.0013 (`D`), p=0.0003 (`B_int8`) —
-   tighter than `A`'s own p=0.0127; mismatched vs zeroed/random p=0.0002-
-   0.0005. Raw text confirms the same failure signatures as `A`: zeroed →
-   garbled English, random → multilingual/code garbage (worse than zeroed),
-   mismatched → coherent, plausible, wrong. **This is the decision-gate
-   result for the non-exchangeability framing: content-identity
-   non-exchangeability holds under compression, not just uncompressed
-   relay — the framing does NOT need to narrow.**
+6. **Causal audit: a wrong or corrupted relayed cache hurts; the real cache
+   is NOT shown to beat having no cache in the sequential chain.**
+   (Rewritten to match `docs/latex/main_v9.tex`. The earlier version of this
+   finding read the ladder below as "direct proof that accuracy comes from
+   the specific transmitted content" and as the decision gate for the
+   non-exchangeability framing. That reading was too strong: the
+   zeroed/random/mismatched ladder has no *dropped* arm, so it cannot show
+   the receiver relies on the real cache. The measurements themselves are
+   unchanged and still valid.)
+
+   *Ladder (what the original audit measured).* On `A` (uncompressed relay),
+   n=50, HotpotQA, Qwen2.5: `A` 50.0%/64.0%, `A_audit_zeroed` 0.0%/0.0%,
+   `A_audit_random` (moment-matched noise) 0.0%/0.0%, `A_audit_mismatched`
+   (a real KV from a different held-out question) 28.0%/37.1%; real vs
+   zeroed/random p<0.0001, real vs mismatched p=0.0127, mismatched vs
+   zeroed/random p=0.0001. Same ordering on `D` and `B_int8` (n=50 each,
+   `results/run_20260909_080434`: real vs mismatched p=0.0013 and p=0.0003),
+   on GSM8K, and on Mistral. Qualitative texture: mismatched wrong answers are
+   coherent but wrong; zeroed are garbled English; random is code/multilingual
+   noise, worse than zeroed (a zero vector is "quiet" to attention, while
+   realistic-magnitude noise looks like signal). What this establishes:
+   **replacing the relayed cache with something wrong or empty-looking
+   degrades accuracy, and the degradation is graded by how realistic the
+   substitute is.** It does not establish that the real cache is what the
+   receiver uses.
+
+   *What the dropped arm adds (v9, n=100 chain, `A_audit_dropped` = the
+   receiver gets no cache at all).* Real is **not distinguishable from no
+   cache** on any of the three models: Qwen2.5 real 56.0%/69.1 vs dropped
+   59.0%/69.0 (p=0.68; `run_20261009_113254`), Mistral 53.0%/65.1 vs
+   49.0%/59.7 (p=0.45; `run_20261011_141020`), Qwen3-8B 63.0%/75.3 vs
+   62.0%/72.8 (p=1.0; `run_20261011_221317`). Doubling Qwen2.5 from n=50 to
+   n=100 moved the estimate toward zero. Read as "indistinguishable at this
+   n", not as "equivalent" and not as "the cache is unnecessary".
+   **A wrong cache is worse than none:** mismatched is below dropped on
+   Qwen2.5 (29.0% vs 59.0%, p<0.0001) and Mistral (26.0% vs 49.0%,
+   p=0.0002), and three independent donor draws agree (Qwen2.5
+   29.0/23.0/23.0%, Mistral 26.0/19.0/21.0%). Qwen3-8B shows no sensitivity
+   (mismatched 62.0%; its mismatched and dropped outputs are identical
+   strings on 80/100 questions), confounded with non-thinking mode.
+   Wrong *text* also hurts but less (47.0% vs 59.0% no relay, p=0.0005; wrong
+   cache 29.0% vs wrong text 47.0%, p=0.002). **When is the real cache
+   needed?** Only when it is the receiver's sole route to the evidence: with
+   the passages hidden from the Verifier/Finalizer, real 52.0%/66.0 vs
+   dropped 20.0%/29.6 (p=4e-7; text relay 48.0 vs 20.0); in the fan-in,
+   real 37.0%/46.6 vs dropped 25.0%/33.4 (p=0.050), while text relay (51.0%)
+   beats the cache there (p=0.009).
+
+   *Confounds that qualify the mismatched arm.* (i) Every mismatched
+   substitution is length-adjusted (100% of 200 per run): the donor tail is
+   truncated or the donor is zero-padded, roughly half each, with an
+   estimated mean zero tail of ~9-13% of positions
+   (`docs/MISMATCHED_PADDING_ANALYSIS.md`; padding vs content mismatch is not
+   separated). (ii) The donor carries its own passages as well as its
+   reasoning. (iii) Substitution is applied at every receiving hop.
+   Content bleed-through from the donor is real but rare (finding 9).
+
+   *Compression.* The real-vs-mismatched gap survives int8 and KIVI int4
+   (`D`/`B_int8` runs above on Qwen2.5; `B_int4_kivi` on Mistral in
+   finding 14; not on Qwen3-8B, finding 15), so compression does not make the cache generic. That is still a
+   statement about wrong content hurting, not about the real cache
+   outperforming no cache. The framing that is supported: **relayed caches
+   should be audited against no cache, not only against noise.**
 7. **A calibration signal's own confidence does not predict downstream
    layer-selection safety — and points the wrong way.** Tested directly
    (not assumed): mean separation between tier-1/2 (kept) and tier-3
