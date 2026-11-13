@@ -8,6 +8,7 @@ and produces the results table suitable for a paper.
 import csv
 import copy
 import json
+import random as _random_for_ablation
 import re
 import time
 from dataclasses import asdict
@@ -273,9 +274,33 @@ ABLATION_CONFIGS = {
     "C_random_20_s0": {"type": "random_select", "n_keep": 20, "seed": 0},
     "C_random_20_s1": {"type": "random_select", "n_keep": 20, "seed": 1},
     "C_random_20_s2": {"type": "random_select", "n_keep": 20, "seed": 2},
-    "C_top20":        {"type": "fixed_select",  "indices": list(range(20))},
-    "C_bottom20":     {"type": "fixed_select",  "indices": list(range(8, 28))},
+    # fixed_select: keep the first / last n_keep layers. On the original
+    # 28-layer model these are exactly range(20) and range(8, 28).
+    "C_top20":        {"type": "fixed_select",  "n_keep": 20, "side": "first"},
+    "C_bottom20":     {"type": "fixed_select",  "n_keep": 20, "side": "last"},
 }
+
+
+def resolve_ablation_indices(spec: dict, n_layers: int) -> List[int]:
+    """Kept-layer indices for an ABLATION_CONFIGS spec on an n_layers model.
+
+    n_layers must come from the loaded model's config (28 Qwen2.5-7B,
+    32 Mistral-7B, 36 Qwen3-8B), never a literal. n_keep is an absolute
+    layer count, unchanged from the original 28-layer definition.
+    """
+    n_keep = spec["n_keep"]
+    if not 0 < n_keep <= n_layers:
+        raise ValueError(f"n_keep={n_keep} invalid for a {n_layers}-layer model")
+    if spec["type"] == "random_select":
+        rng = _random_for_ablation.Random(spec["seed"])
+        return sorted(rng.sample(range(n_layers), n_keep))
+    if spec["type"] == "fixed_select":
+        if spec["side"] == "first":
+            return list(range(n_keep))
+        if spec["side"] == "last":
+            return list(range(n_layers - n_keep, n_layers))
+        raise ValueError(f"unknown side {spec['side']!r}")
+    raise ValueError(f"unknown ablation type {spec['type']!r}")
 
 
 def extract_answer(text: str) -> Optional[str]:
@@ -454,11 +479,7 @@ class Evaluator:
         # parse_audit_config_name branch below.
         if cfg_name in ABLATION_CONFIGS:
             spec = ABLATION_CONFIGS[cfg_name]
-            if spec["type"] == "random_select":
-                rng = _random.Random(spec["seed"])
-                indices = sorted(rng.sample(range(28), spec["n_keep"]))
-            else:
-                indices = spec["indices"]
+            indices = resolve_ablation_indices(spec, self.model.config.num_hidden_layers)
 
             # Build a fake profile where Tier 3 = dropped, Tier 1 = kept
             profile = LayerProfile.load(profile_path) if profile_path else None

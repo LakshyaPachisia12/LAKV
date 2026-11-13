@@ -14,6 +14,19 @@ import torch
 from lakv.calibration_profiler import LayerProfile
 
 
+def resolve_n_layers(n_layers: Optional[int] = None, model_config=None) -> int:
+    """Layer count from an explicit value, else ``model_config.num_hidden_layers``.
+
+    Raises instead of guessing, so a model with a different depth can never
+    be silently treated as 28 layers.
+    """
+    if n_layers is None and model_config is not None:
+        n_layers = getattr(model_config, "num_hidden_layers", None)
+    if n_layers is None:
+        raise ValueError("layer count unknown: pass n_layers or a model_config with num_hidden_layers")
+    return int(n_layers)
+
+
 # ─── dataclass ────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -37,8 +50,20 @@ class LayerSelector:
         self.n_layers = profile.n_layers
 
     @classmethod
-    def _from_custom_indices(cls, keep_indices: List[int], n_layers: int = 28) -> "LayerSelector":
-        """Build a selector that keeps exactly the given layer indices (ablation use)."""
+    def _from_custom_indices(cls, keep_indices: List[int], n_layers: Optional[int] = None,
+                             model_config=None) -> "LayerSelector":
+        """Build a selector that keeps exactly the given layer indices (ablation use).
+
+        The layer count comes from ``n_layers`` or, if that is None, from
+        ``model_config.num_hidden_layers`` (28 Qwen2.5-7B, 32 Mistral-7B,
+        36 Qwen3-8B). There is deliberately no silent default: the old
+        ``n_layers=28`` default would have mis-sized the selector on any
+        other model.
+        """
+        n_layers = resolve_n_layers(n_layers, model_config)
+        bad = [i for i in keep_indices if not 0 <= i < n_layers]
+        if bad:
+            raise ValueError(f"keep_indices {bad} out of range for a {n_layers}-layer model")
         keep_set = set(keep_indices)
         tier_assignment = [1 if i in keep_set else 3 for i in range(n_layers)]
         # Minimal stub profile — only tier_assignment and n_layers are used by select()
