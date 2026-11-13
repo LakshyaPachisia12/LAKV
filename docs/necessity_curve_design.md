@@ -1,6 +1,29 @@
-# Relay-necessity curve: design (STEP 1: design only, no code)
+# Relay-necessity curve: design, decisions and GPU checklist
 
-**Status: design only. Nothing in this document is implemented, and nothing here has been run on a GPU.** Branch `exp/relay-necessity-curve`, cut from `exp/consolidate-v9`. All code that follows from it will be marked untested until you run it.
+**Status: IMPLEMENTED on `exp/relay-necessity-curve`, UNTESTED ON GPU.** 302 CPU tests pass (1 skipped: the GPU parity test). Nothing here has run with a real model. The sections below are the original design; the next section lists what you approved and **overrides the earlier text where they differ**. The ordered GPU checklist is at the end.
+
+## Approved decisions (override earlier text)
+
+1. **Levels:** `_hide20/50/80/100` and `_hidegold1/2`; level 0 is the plain config; `_hide100` is rewritten to `_nopass` (same code path by construction); share-of-N rule for items with fewer than 10 passages (idx 27 has 2). **The gold axis is the PRIMARY curve; the fractional axis is secondary** (figure panel (a) vs (b), and the Holm/slope reporting keeps both).
+2. **Interface:** `gold_titles` added to each HotpotQA dataset dict (`run.py::load_hotpotqa`; question text unchanged; the 2Wiki loader is untouched); `LAKVPipeline.run(question, receiver_question=None)`. A golden-fixture test (`tests/fixtures/run_prompts_golden.json`, generated from the UNMODIFIED pipeline) shows every chat-template call and token-id list is byte-identical for the default and for explicit `None`.
+3. **Seeds:** one hide seed (0) for all levels (`--hide_seed`, `zlib.crc32` only; a test forbids calls to built-in `hash`), plus a **sensitivity pair at hide50 with seed 1**. Naming: the pair is the configs `A_hide50` and `A_hide50_audit_dropped` run with `--hide_seed 1` into their own output folder (the seed is a run flag, not part of the config name; you wrote `A_audit_dropped_hide50`, which does not match the suffix grammar `<base><hide suffix>[_audit_<mode>]`; please confirm this reading).
+4. **Cherry-picks (no merge of `exp/matched-donor`):** `bc7ce31` (regression script; its `docs/matched_donor_design.md` hunk dropped because that file does not exist here) and `885f614` (version pins), recommitted as `b8d40b9` and `524d4cc`; `--baseline-config` added to the regression script (`9f364af`).
+5. **Statistics/figure:** Holm over the 7 distinct level tests (0, 20, 50, 80, 100, gold1, gold2), bootstrap slope per axis, the overlay figure, plus panel (d) real-minus-dropped against dropped-arm accuracy.
+6. **n=100 now;** no n=200 pre-run. 7. **No mismatched arm; no Reasoner-hop caching.**
+8. **Provenance:** `run_metadata.json` and `experiment_results.json::_run_metadata` now record the HuggingFace dataset fingerprint, cache revision directory, row count, info version and SHA-256 digests of the loaded questions/answers and gold titles (`lakv.run_metadata.dataset_provenance`), plus `hide_seed`.
+
+## Implementation map (all UNTESTED ON GPU)
+
+| Piece | Where |
+|---|---|
+| Hiding logic, suffix parsing, hidden-set selection | `lakv/necessity_curve.py` |
+| Receiver view hook | `LAKVPipeline.run(..., receiver_question=None)` in `lakv/pipeline.py` |
+| Evaluator wiring (`A` only; real and `_audit_dropped` only; others rejected before model use), per-sample `hide` log | `lakv/evaluator.py` |
+| `gold_titles`, `--hide_seed`, CPU fail-fast check before the model loads, dataset provenance | `run.py`, `lakv/run_metadata.py` |
+| Statistics (paired CI, McNemar, Holm, slope, sensitivity) | `lakv/necessity_stats.py` |
+| Table + figures from a manifest | `scripts/make_necessity_curve.py`, `docs/necessity_curve_manifest.example.json` |
+| Run gate (real/dropped hid identical passages, exact counts, one seed) | `scripts/check_hide_run.py` |
+| Regression against the paper runs (`--baseline-config`) | `scripts/check_regression_vs_baseline.py` |
 
 **Goal.** Plot real-minus-dropped accuracy against how much information the *receivers* lack, on the Qwen2.5-7B-Instruct HotpotQA 3-agent chain (n=100, first 100 validation items). The two existing endpoints are the anchors: passages visible (`results/run_20261009_113254`: real 56%, dropped 59%, diff -3 pp, McNemar p=0.68) and passages hidden (`results/run_20261011_122408`: real 52%, dropped 20%, diff +32 pp, p=4.4e-7). The curve fills in between.
 
@@ -103,7 +126,7 @@ Measured latencies in the endpoint runs: real arm 8.4 s (hidden run) but **22.4 
 8. That the exact-reproduction test passes on the GPU box (step 4 above); the CPU prototype only shows the prompt *strings* are identical.
 9. All code described here is unwritten; the CPU prototype lived outside the repo and is not committed.
 
-## Decisions needed from you
+## Original decision list (all resolved: see "Approved decisions" at the top)
 
 1. **Levels and names:** `_hide20/50/80/100` + `_hidegold1/2`, level 0 = plain config, `_hide100` kept as an alias of `_nopass`? Share-of-N rule for idx 27 (2 passages) acceptable?
 2. **Interface:** add `gold_titles` to the dataset dicts and an optional `receiver_question` to `run()` (my proposal), or something else?
@@ -112,3 +135,72 @@ Measured latencies in the endpoint runs: real arm 8.4 s (hidden run) but **22.4 
 5. **Statistics and figure:** Holm over 7 level tests plus bootstrap slope, and the two-column layout with the common-x overlay: OK? Include the dropped-accuracy x-axis panel?
 6. **Power:** accept the 13 to 18 pp minimum detectable difference at n=100, or run intermediate levels at n=200?
 7. **Mismatched arm** later, yes or no; and whether to cache the Reasoner hop across levels (off by default).
+
+
+## Ordered GPU checklist (nothing below has been run)
+
+`PROFILE` = any existing profile file (config `A` never reads it, `lakv/evaluator.py` attaches it only for layer selection or adaptive compression, but `run.py` requires the flag). Check first: `python -c "import transformers; print(transformers.__version__)"` is 5.16.1 (the pins are in `requirements.txt`), and compare `pip freeze` and the GPU/driver with the 2026-09-08 `run_metadata.json` (the baselines recorded neither).
+
+**0. Regression checks at the 0% and 100% levels** (n=20, the first 20 idx; one run folder, six configs):
+```
+python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 20 --profile_path $PROFILE --output_dir results/necessity_regress --configs A A_audit_dropped A_nopass A_nopass_audit_dropped A_hide100 A_hide100_audit_dropped
+R=$(ls results/necessity_regress/run_*/experiment_results.json)
+B0=results/run_20261009_113254/experiment_results.json     # level 0 baseline (n=100)
+B1=results/run_20261011_122408/experiment_results.json     # level 100% baseline (n=100)
+python scripts/check_regression_vs_baseline.py $R $B0 --config A
+python scripts/check_regression_vs_baseline.py $R $B0 --config A_audit_dropped
+python scripts/check_regression_vs_baseline.py $R $B1 --config A_nopass
+python scripts/check_regression_vs_baseline.py $R $B1 --config A_nopass_audit_dropped
+python scripts/check_regression_vs_baseline.py $R $B1 --config A_hide100 --baseline-config A_nopass
+python scripts/check_regression_vs_baseline.py $R $B1 --config A_hide100_audit_dropped --baseline-config A_nopass_audit_dropped
+python scripts/check_regression_vs_baseline.py $R $R --config A_hide100 --baseline-config A_nopass          # same-run alias check
+```
+Pass = every command exits 0 (20/20 identical). The first four test that the edits to `pipeline.py`/`evaluator.py` did not move the paper's behavior; the last three test that `_hide100` is exactly `_nopass`. **If the first four fail,** separate environment drift from the new code: produce the same four configs on branch `exp/consolidate-v9` (no hide code at all) and compare them with the same script, taken from this branch (`git show exp/relay-necessity-curve:scripts/check_regression_vs_baseline.py > /tmp/check.py`, it only reads JSON). If those also differ, the cause is the environment. **Stop here on any failure.**
+
+**1. pytest:** `python -m pytest tests -q` (CPU result on the dev box: 302 passed, 1 skipped; the GPU parity test runs instead of skipping).
+
+**2. n=10 smoke** (every new config; also checks the CPU fail-fast message printed by `run.py` before the model loads):
+```
+python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 10 --profile_path $PROFILE --output_dir results/necessity_smoke --hide_seed 0 --configs A_hidegold1 A_hidegold1_audit_dropped A_hidegold2 A_hidegold2_audit_dropped A_hide20 A_hide20_audit_dropped A_hide50 A_hide50_audit_dropped A_hide80 A_hide80_audit_dropped
+python scripts/check_hide_run.py results/necessity_smoke/run_*/experiment_results.json --expect_seed 0
+```
+Pass = `RESULT: PASS` (real and dropped hid identical passages; exact counts). Then read a few raw `hop_texts` at `hide80` and `hidegold2` for degenerate Verifier behavior (its prompt still says "the context passages given").
+
+**3. n=100 runs** (three folders; each prints its hiding summary and the dataset fingerprint is written to `run_metadata.json`):
+```
+# gold axis (PRIMARY): 4 configs
+python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 100 --profile_path $PROFILE --output_dir results/necessity_gold --hide_seed 0 --configs A_hidegold1 A_hidegold1_audit_dropped A_hidegold2 A_hidegold2_audit_dropped
+# fractional axis (secondary): 6 configs
+python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 100 --profile_path $PROFILE --output_dir results/necessity_frac --hide_seed 0 --configs A_hide20 A_hide20_audit_dropped A_hide50 A_hide50_audit_dropped A_hide80 A_hide80_audit_dropped
+# seed-sensitivity pair at hide50, seed 1: 2 configs
+python run.py --mode experiment --model Qwen/Qwen2.5-7B-Instruct --dataset hotpotqa --n_samples 100 --profile_path $PROFILE --output_dir results/necessity_seed1 --hide_seed 1 --configs A_hide50 A_hide50_audit_dropped
+for d in necessity_gold necessity_frac; do python scripts/check_hide_run.py results/$d/run_*/experiment_results.json --expect_seed 0; done
+python scripts/check_hide_run.py results/necessity_seed1/run_*/experiment_results.json --expect_seed 1
+```
+Interrupted runs resume with `--resume_dir results/<dir>/run_<ts>` (same flags).
+
+**4. Table and figures** (CPU): copy `docs/necessity_curve_manifest.example.json`, replace `<TS_GOLD>`, `<TS_FRAC>`, `<TS_SEED1>` with the run folder names, then
+`python scripts/make_necessity_curve.py --manifest <your manifest> --out_dir results/necessity_curve`.
+Levels 0 and 100% reuse `run_20261009_113254` and `run_20261011_122408`.
+
+### Estimated GPU time (n=100; ~10 s per question as you specified)
+
+| Stage | Configs x questions | Question-runs | Hours at 10 s |
+|---|---|---|---|
+| 0 regression | 6 x 20 | 120 | 0.33 |
+| 2 smoke | 10 x 10 | 100 | 0.28 |
+| 3 gold axis | 4 x 100 | 400 | 1.11 |
+| 3 fractional axis | 6 x 100 | 600 | 1.67 |
+| 3 seed-1 pair | 2 x 100 | 200 | 0.56 |
+| **Total** | | **1,420** | **about 3.9 h** (3.3 h of it is stage 3) |
+
+Using the endpoint runs' measured latencies instead (real arm 8.4 s, or 22.4 s as in `run_20261009_113254` for unknown reasons; dropped arm about 7.3 s) stage 3 alone is about 2.6 h to 5.0 h. Add a few minutes of model load per `run.py` invocation (six in total).
+
+## Updated UNVERIFIED list (additions to section 9)
+
+* **Never run with a real model:** the hide path through `LAKVPipeline.run`, the evaluator wiring, and the figure script's behavior on real results; CPU tests use a fake pipeline, a tiny random model with a stub tokenizer, and synthetic results (plus the tracked endpoint runs).
+* **CPU test environment is not the pinned stack:** the dev box has torch 2.4.1+cpu and transformers 4.44.2, not 5.16.1/2.11.0. The tiny-model prompt tests force the manual decode loop because the `generate()` handoff fails under 4.44 (also on the unmodified branch tip), so the handoff path is covered only by the GPU regression in step 0.
+* **Dataset revision logging is best-effort:** the cache-revision directory is read from the `datasets` cache path, which may differ under datasets 5.x; the SHA-256 digests of the loaded questions, answers and gold titles are the dependable identity. Compare them with the `dataset_provenance` of the baseline runs: not possible, they recorded none.
+* **Naming of the seed-1 pair** (see decision 3) and the placeholders in the example manifest.
+* **Prompt wording is unchanged by hiding**; intermediate levels may produce odd Verifier output (smoke step reads it).
+* **`A_hide100` equals `A_nopass` by construction in the evaluator;** step 0 verifies the generated text, not just the config mapping.
