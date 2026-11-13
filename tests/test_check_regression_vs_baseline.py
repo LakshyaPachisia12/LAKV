@@ -81,3 +81,26 @@ def test_compare_runs_pure_function_counts():
     base = {"A": {"per_sample": [sample(0), sample(1), sample(2)]}}
     r = cr.compare_runs(new, base)
     assert (r["n_compared"], r["n_identical"], r["n_differing"], r["n_only_in_new"]) == (2, 1, 1, 1)
+
+
+def write_cfg(tmp, name, cfg, samples):
+    p = tmp / name
+    p.write_text(json.dumps({cfg: {"summary": {}, "per_sample": samples}}))
+    return str(p)
+
+
+def test_baseline_config_name_may_differ(tmp_path, capsys):
+    # relay-necessity curve: new A_hide100 must reproduce the baseline's A_nopass arm
+    new = write_cfg(tmp_path, "n.json", "A_hide100", [sample(i) for i in range(5)])
+    base = write_cfg(tmp_path, "b.json", "A_nopass", [sample(i) for i in range(20)])
+    assert cr.main([new, base, "--config", "A_hide100", "--baseline-config", "A_nopass"]) == 0
+    out = capsys.readouterr().out
+    assert "baseline config A_nopass" in out and "n compared: 5" in out
+    # without --baseline-config the baseline lookup uses the same name and fails with exit 2
+    assert cr.main([new, base, "--config", "A_hide100"]) == 2
+
+
+def test_baseline_config_difference_is_detected(tmp_path):
+    new = write_cfg(tmp_path, "n.json", "A_hide100", [sample(0, pred="x")])
+    base = write_cfg(tmp_path, "b.json", "A_nopass", [sample(0, pred="y")])
+    assert cr.main([new, base, "--config", "A_hide100", "--baseline-config", "A_nopass"]) == 1

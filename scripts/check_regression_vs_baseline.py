@@ -4,6 +4,11 @@ Compares a NEW run's per-sample outputs for one config (default A) against the
 baseline run that produced the paper's chain numbers, aligned by `idx`:
 
     python scripts/check_regression_vs_baseline.py NEW_experiment_results.json [BASELINE.json] [--config A]
+        [--baseline-config A_nopass]
+
+--baseline-config names the config to read from the BASELINE file when it differs
+from --config, e.g. `--config A_hide100 --baseline-config A_nopass` (the relay-necessity
+curve's 100%-hidden level must reproduce the baseline's A_nopass arm).
 
 BASELINE defaults to results/run_20261009_113254/experiment_results.json (Qwen2.5-7B,
 HotpotQA, n=100; see docs/matched_donor_design.md, GPU step 0, for how to produce a
@@ -32,12 +37,14 @@ def _load(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def compare_runs(new: dict, base: dict, config: str = "A") -> dict:
-    """Pure comparison of two loaded experiment_results dicts."""
-    for name, d in (("new", new), ("baseline", base)):
-        if config not in d or "per_sample" not in d.get(config, {}):
-            raise KeyError(f"config {config!r} not found in the {name} results")
-    by_idx = {s["idx"]: s for s in base[config]["per_sample"]}
+def compare_runs(new: dict, base: dict, config: str = "A", baseline_config: str = None) -> dict:
+    """Pure comparison of two loaded experiment_results dicts. `config` is read from
+    `new`; `baseline_config` (default: same as `config`) is read from `base`."""
+    baseline_config = baseline_config or config
+    for name, d, c in (("new", new, config), ("baseline", base, baseline_config)):
+        if c not in d or "per_sample" not in d.get(c, {}):
+            raise KeyError(f"config {c!r} not found in the {name} results")
+    by_idx = {s["idx"]: s for s in base[baseline_config]["per_sample"]}
     compared = identical = 0
     differences, question_mismatch, hop_text_diffs = [], [], []
     only_new = 0
@@ -60,7 +67,7 @@ def compare_runs(new: dict, base: dict, config: str = "A") -> dict:
                                 "new_raw_answer": s.get("raw_answer"), "base_raw_answer": b.get("raw_answer")})
         if s.get("hop_texts") != b.get("hop_texts"):
             hop_text_diffs.append(s["idx"])
-    return {"config": config, "n_compared": compared, "n_identical": identical,
+    return {"config": config, "baseline_config": baseline_config, "n_compared": compared, "n_identical": identical,
             "n_differing": len(differences), "differences": differences,
             "n_only_in_new": only_new, "question_mismatch_idx": question_mismatch,
             "hop_texts_differ_idx": hop_text_diffs}
@@ -77,13 +84,17 @@ def main(argv=None) -> int:
     ap.add_argument("new_results")
     ap.add_argument("baseline_results", nargs="?", default=DEFAULT_BASELINE)
     ap.add_argument("--config", default="A")
+    ap.add_argument("--baseline-config", default=None,
+                    help="config to read from the baseline file if its name differs from --config")
     args = ap.parse_args(argv)
     try:
-        res = compare_runs(_load(args.new_results), _load(args.baseline_results), args.config)
+        res = compare_runs(_load(args.new_results), _load(args.baseline_results), args.config,
+                           args.baseline_config)
     except KeyError as e:
         print(f"ERROR: {e}")
         return 2
-    print(f"config {res['config']}: new={args.new_results}  baseline={args.baseline_results}")
+    bc = f" (baseline config {res['baseline_config']})" if res["baseline_config"] != res["config"] else ""
+    print(f"config {res['config']}{bc}: new={args.new_results}  baseline={args.baseline_results}")
     print(f"n compared: {res['n_compared']}   n identical (raw_answer and predicted): {res['n_identical']}   "
           f"n differing: {res['n_differing']}")
     if res["n_only_in_new"]:
