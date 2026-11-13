@@ -1,0 +1,31 @@
+{
+  "_comment": "UNTESTED ON GPU. Paths are relative to this file's directory (or absolute). Level 0 and 100% REUSE existing runs; replace <TS_*> with the run folders you create (see docs/necessity_curve_design.md, GPU checklist). 'both' = the shared level 0 appears on both axes. 'reused' only changes the marker.",
+  "levels": [
+    {"axis": "both", "level": 0, "reused": true,
+     "real":    {"file": "../results/run_20261009_113254/experiment_results.json", "config": "A"},
+     "dropped": {"file": "../results/run_20261009_113254/experiment_results.json", "config": "A_audit_dropped"}},
+    {"axis": "gold", "level": 1,
+     "real":    {"file": "../results/necessity_gold/run_<TS_GOLD>/experiment_results.json", "config": "A_hidegold1"},
+     "dropped": {"file": "../results/necessity_gold/run_<TS_GOLD>/experiment_results.json", "config": "A_hidegold1_audit_dropped"}},
+    {"axis": "gold", "level": 2,
+     "real":    {"file": "../results/necessity_gold/run_<TS_GOLD>/experiment_results.json", "config": "A_hidegold2"},
+     "dropped": {"file": "../results/necessity_gold/run_<TS_GOLD>/experiment_results.json", "config": "A_hidegold2_audit_dropped"}},
+    {"axis": "frac", "level": 20,
+     "real":    {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide20"},
+     "dropped": {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide20_audit_dropped"}},
+    {"axis": "frac", "level": 50,
+     "real":    {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide50"},
+     "dropped": {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide50_audit_dropped"}},
+    {"axis": "frac", "level": 80,
+     "real":    {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide80"},
+     "dropped": {"file": "../results/necessity_frac/run_<TS_FRAC>/experiment_results.json", "config": "A_hide80_audit_dropped"}},
+    {"axis": "frac", "level": 100, "reused": true,
+     "real":    {"file": "../results/run_20261011_122408/experiment_results.json", "config": "A_nopass"},
+     "dropped": {"file": "../results/run_20261011_122408/experiment_results.json", "config": "A_nopass_audit_dropped"}}
+  ],
+  "sensitivity": [
+    {"axis": "frac", "level": 50, "label": "hide50, hide_seed=1",
+     "real":    {"file": "../results/necessity_seed1/run_<TS_SEED1>/experiment_results.json", "config": "A_hide50"},
+     "dropped": {"file": "../results/necessity_seed1/run_<TS_SEED1>/experiment_results.json", "config": "A_hide50_audit_dropped"}}
+  ]
+}
