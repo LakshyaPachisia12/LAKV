@@ -148,3 +148,56 @@ def apply_corruption_mode(mode: str, kv: KVTuple, question_key: str, agent_idx: 
         "cache_checksum": cache_checksum(out),
     })
     return out, info
+
+
+# ── opt-in attention masking of the modified positions (config suffix "_maskzero") ──
+MASKZERO_SUFFIX = "_maskzero"
+
+
+def split_maskzero(cfg_name: str) -> Tuple[str, bool]:
+    """("A_nopass_audit_real_pad10_maskzero") -> ("A_nopass_audit_real_pad10", True)."""
+    if cfg_name.endswith(MASKZERO_SUFFIX):
+        return cfg_name[: -len(MASKZERO_SUFFIX)], True
+    return cfg_name, False
+
+
+def hidden_mask_from_log(log: dict, carried: Optional[torch.Tensor] = None, device=None) -> torch.Tensor:
+    """Boolean [L_after] mask: True = position the audit zeroed/padded (to be hidden from attention).
+
+    Built purely from the audit log of the substitution just applied.
+      real_<op>: the real cache is kept, so positions hidden at the previous hop (`carried`,
+                 same length as the pre-operator cache) stay hidden; the operator's own
+                 positions are added (pad: the m appended ones; fill/fillhead: [start,end);
+                 trunc: positions are removed, nothing new to hide).
+      lm_<op>:   the whole cache is replaced by a donor, nothing carried.
+      mismatched: whole cache replaced; only the zero-padded tail of the donor is hidden
+                 (a truncated donor has nothing zero to hide).
+    Any other audit mode is unsupported (raises) - the mask only has a defined meaning for
+    positions an operator zeroed or padded."""
+    mode = log.get("mode")
+    if mode == "mismatched":
+        n = int(log["target_cache_len"])
+        out = torch.zeros(n, dtype=torch.bool)
+        pad = int(log.get("pad_positions", 0))
+        if pad:
+            out[n - pad:] = True
+        return out.to(device) if device is not None else out
+    if mode is None or not is_corruption_mode(mode):
+        raise ValueError(f"hidden-position masking is not defined for audit mode {mode!r}")
+    target = log["target"]
+    before, after = int(log["length_before"]), int(log["length_after"])
+    prev = torch.zeros(before, dtype=torch.bool)
+    if target == "real" and carried is not None:
+        if int(carried.shape[0]) != before:
+            raise ValueError(f"carried mask length {int(carried.shape[0])} != cache length {before}")
+        prev = carried.detach().cpu().clone()
+    op = log["op"]
+    if op == "trunc":
+        out = prev[:after]
+    elif op == "pad":
+        out = torch.cat([prev, torch.ones(after - before, dtype=torch.bool)])
+    else:  # fill / fillhead
+        out = prev
+        out[int(log["modified_start"]):int(log["modified_end"])] = True
+    assert int(out.shape[0]) == after
+    return out.to(device) if device is not None else out
