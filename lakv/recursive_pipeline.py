@@ -61,6 +61,7 @@ aggregator's combined position range) rather than reimplementing RoPE-shift
 math from scratch.
 """
 
+import random as _random_module
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -68,6 +69,7 @@ import torch
 from transformers import DynamicCache
 
 from lakv.anchor_table import AnchorTable, question_key
+from lakv.cache_corruption import is_corruption_mode, stable_seed
 from lakv.causal_audit import apply_causal_audit, KVAuditPool
 from lakv.confidence import ConfidenceStats, stats_from_logits
 
@@ -246,6 +248,10 @@ class RecursivePipelineConfig:
     aggregator_sees_passages: bool = False
     # Seed for the mismatched-condition donor draw (0 = all earlier runs).
     audit_donor_seed: int = 0
+    # Length-matched donors for the fan-in (design: LAKV_runs/fanin_length_matched_design.md;
+    # UNTESTED ON GPU). A LengthMatchedSource over a DiskKVAuditPool keyed by CHILD index.
+    # Used by causal_audit_mode "length_matched", "shift_control" and "lm_*" corruption modes.
+    donor_source: Optional[object] = None
 
     def __post_init__(self):
         if self.record_audit_pool is not None and self.causal_audit_mode != "none":
@@ -397,7 +403,13 @@ class RecursiveKVPipeline:
         return bool(merge_order_kvs)
 
     @staticmethod
-    def merge_child_kv(child_kvs: List[tuple], rope_theta: float) -> tuple:
+    def donor_rng(audit_donor_seed: int, q_key: str, child_idx: int):
+        """Per-(question, child) crc32-seeded RNG for the length-matched donor draw."""
+        return _random_module.Random(stable_seed("fanin_donor", audit_donor_seed, q_key, child_idx))
+
+    @staticmethod
+    def merge_child_kv(child_kvs: List[tuple], rope_theta: float,
+                       extra_shifts: Optional[List[int]] = None) -> tuple:
         """Fan-in merge: concatenate N independently-computed child KV
         tuples into one combined cache the aggregator can inject as if it
         were a single upstream sender.
@@ -429,11 +441,15 @@ class RecursiveKVPipeline:
         shifted_per_child: List[tuple] = []
         cumulative_len = 0
         for child_idx, kv in enumerate(child_kvs):
-            if child_idx == 0:
+            # extra_shifts (default None = every earlier call, unchanged behavior) adds a
+            # per-child RoPE offset on top of the cumulative-length shift. Only the
+            # shift_control diagnostic uses it (see run()).
+            shift = (cumulative_len if child_idx > 0 else 0) + (extra_shifts[child_idx] if extra_shifts else 0)
+            if shift == 0:
                 shifted_per_child.append(kv)
             else:
                 shifted = tuple(
-                    (AnchorTable._rope_shift_k(k, shift=cumulative_len, theta=rope_theta), v)
+                    (AnchorTable._rope_shift_k(k, shift=shift, theta=rope_theta), v)
                     for (k, v) in kv
                 )
                 shifted_per_child.append(shifted)
@@ -657,6 +673,7 @@ class RecursiveKVPipeline:
                     i, question_key(question), kv, question_text=question)
 
         audit_logs: List[dict] = []
+        gap_deltas: Dict[int, int] = {}
         if self.config.causal_audit_mode != "none" and self.config.return_channel in ("kv", "kv_synthesis"):
             target_idxs = self._resolve_audit_target_idxs(
                 self.config.causal_audit_child_idx, len(child_kvs)
@@ -670,14 +687,33 @@ class RecursiveKVPipeline:
                 child_kvs, dropped_logs = self._apply_dropped(child_kvs, target_idxs)
                 audit_logs.extend(dropped_logs)
             else:
+                mode = self.config.causal_audit_mode
+                new_mode = mode in ("length_matched", "shift_control") or is_corruption_mode(mode)
+                q_key = question_key(question)
                 for target_idx in target_idxs:
+                    # New modes draw their donor from a per-(question, child) crc32-seeded RNG, so a
+                    # skipped/resumed question never shifts another question's draw. Older modes keep
+                    # the shared seeded stream (bit-identical to earlier runs).
+                    rng = (self.donor_rng(self.config.audit_donor_seed, q_key, target_idx)
+                           if new_mode else self._audit_rng)
+                    if mode == "shift_control":
+                        _donor_kv, dlog = self.config.donor_source.fetch(
+                            agent_idx=target_idx, question_key=q_key,
+                            real_kv=child_kvs[target_idx], rng=rng)
+                        delta = int(dlog["donor_cache_len"]) - int(child_kvs[target_idx][0][0].shape[2])
+                        gap_deltas[target_idx] = delta
+                        audit_logs.append({"agent_idx": target_idx, "mode": "shift_control",
+                                           "delta_positions": delta, **dlog})
+                        continue  # real content stays; only the RoPE geometry changes
                     substituted_kv, audit_log = apply_causal_audit(
-                        self.config.causal_audit_mode, child_kvs[target_idx],
-                        agent_idx=target_idx, question_key=question_key(question),
-                        pool=self.config.audit_pool, rng=self._audit_rng,
+                        mode, child_kvs[target_idx],
+                        agent_idx=target_idx, question_key=q_key,
+                        pool=self.config.audit_pool, rng=rng,
+                        donor_source=self.config.donor_source,
+                        audit_seed=self.config.audit_donor_seed,
                     )
                     child_kvs[target_idx] = substituted_kv
-                    audit_logs.append(audit_log)
+                    audit_logs.append({"agent_idx": target_idx, **audit_log} if new_mode else audit_log)
 
         merge_order_kvs = list(reversed(child_kvs)) if self.config.reverse_child_merge_order else child_kvs
 
@@ -685,7 +721,19 @@ class RecursiveKVPipeline:
         reasoning_text = ""
         if self.config.return_channel == "kv":
             if self._should_use_injected_kv(merge_order_kvs):
-                merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta())
+                extra_shifts = None
+                if gap_deltas:
+                    # shift_control: real children, but with the RELATIVE geometry a length-matched donor
+                    # of length L_d would have produced. The aggregator sits at the real merged length;
+                    # a donor run would put it at sum(L_j + d_j), so each child's keys are moved by
+                    # (sum of earlier deltas) - (sum of all deltas): same query-key distances, real content.
+                    n_c = len(child_kvs)
+                    order = list(reversed(range(n_c))) if self.config.reverse_child_merge_order else list(range(n_c))
+                    ds = [gap_deltas.get(i, 0) for i in order]
+                    total = sum(ds)
+                    extra_shifts = [sum(ds[:c]) - total for c in range(n_c)]
+                merged_kv = self.merge_child_kv(merge_order_kvs, rope_theta=self._get_rope_theta(),
+                                                extra_shifts=extra_shifts)
                 answer, confidence = self._generate_with_injected_kv(question, merged_kv, capture_confidence=cc)
             else:
                 answer, confidence = self._generate_with_no_kv(question, capture_confidence=cc)

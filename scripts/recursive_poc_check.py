@@ -89,7 +89,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from run import load_model
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
-from lakv.causal_audit import KVAuditPool
+from lakv.causal_audit import DiskKVAuditPool, DonorUnavailable, KVAuditPool
+from lakv.donor_traces import LengthMatchedSource
 from lakv.recursive_pipeline import (
     RecursiveKVPipeline, RecursivePipelineConfig, load_hotpotqa_structured,
 )
@@ -98,6 +99,9 @@ from lakv.recursive_pipeline import (
 CHANNEL_CHOICES = [
     "text", "kv", "kv_synthesis",
     "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched", "kv_audit_dropped",
+    # Length-matched donor (no padding/truncation) and the RoPE-gap control, see
+    # LAKV_runs/fanin_length_matched_design.md. UNTESTED ON GPU.
+    "kv_audit_length_matched", "kv_audit_shift_control",
 ]
 
 # channel name -> (return_channel, causal_audit_mode)
@@ -113,6 +117,8 @@ _CHANNEL_SPEC = {
     # not a substitute. See RecursivePipelineConfig's causal_audit_mode
     # docstring for the AGGREGATOR_SYSTEM_PROMPT caveat this condition has.
     "kv_audit_dropped": ("kv", "dropped"),
+    "kv_audit_length_matched": ("kv", "length_matched"),
+    "kv_audit_shift_control": ("kv", "shift_control"),
 }
 
 
@@ -157,6 +163,12 @@ def main():
                               "evidence. Run the same --channels with and without this flag.")
     parser.add_argument("--audit_donor_seed", type=int, default=0,
                          help="Seed for the mismatched-condition donor draw (0 = earlier runs).")
+    parser.add_argument("--length_matched_pool_size", type=int, default=100,
+                         help="Held-out QUESTIONS (2 children each) whose child caches form the disk-backed "
+                              "pool for kv_audit_length_matched / kv_audit_shift_control.")
+    parser.add_argument("--donor_pool_dir", default=None,
+                         help="Directory for the length-matched pool (default <run dir>/audit_pool). "
+                              "A complete pool of the requested size is reused.")
     args = parser.parse_args()
     causal_audit_child_idx = (
         args.causal_audit_child_idx if args.causal_audit_child_idx == "all"
@@ -165,10 +177,12 @@ def main():
 
     model, tokenizer = load_model(args.model_name, device="cuda")
     needs_pool = "kv_audit_mismatched" in args.channels
-    total_n = args.n + (args.n_held_out if needs_pool else 0)
+    needs_lm = any(c in args.channels for c in ("kv_audit_length_matched", "kv_audit_shift_control"))
+    total_n = args.n + max(args.n_held_out if needs_pool else 0,
+                           args.length_matched_pool_size if needs_lm else 0)
     all_data = load_hotpotqa_structured(split=args.split, n=total_n)
     data = all_data[:args.n]
-    held_out_data = all_data[args.n:] if needs_pool else []
+    held_out_data = all_data[args.n:args.n + args.n_held_out] if needs_pool else []
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.output_dir) / f"run_{timestamp}"
@@ -190,6 +204,31 @@ def main():
         print(f"[recursive_poc_check] pool built, "
               f"{[audit_pool.size(i) for i in range(args.n_children)]} entries per child")
 
+    lm_source = None
+    if needs_lm:
+        lm_dir = Path(args.donor_pool_dir) if args.donor_pool_dir else out_dir / "audit_pool"
+        lm_dir = lm_dir / "fanin_length_matched"
+        lm_pool = DiskKVAuditPool.open(lm_dir)
+        size = args.length_matched_pool_size
+        if lm_pool.complete and all(lm_pool.size(i) == size for i in range(args.n_children)):
+            print(f"[recursive_poc_check] re-using complete length_matched pool ({size} questions) at {lm_dir}")
+        else:
+            import shutil
+            shutil.rmtree(lm_dir, ignore_errors=True)
+            lm_pool = DiskKVAuditPool(lm_dir)
+            lm_held = all_data[args.n:args.n + size]
+            print(f"\n{'=' * 70}\nBuilding disk-backed length_matched pool: {len(lm_held)} held-out questions "
+                  f"x {args.n_children} children -> {lm_dir}\n{'=' * 70}")
+            lm_cfg = RecursivePipelineConfig(n_children=args.n_children, return_channel="kv",
+                                             causal_audit_mode="none", record_audit_pool=lm_pool)
+            lm_pipe = RecursiveKVPipeline(model, tokenizer, lm_cfg, device="cuda")
+            for j, item in enumerate(lm_held):
+                lm_pipe.run(item["question"], item["passages"])
+                if (j + 1) % 10 == 0:
+                    print(f"  [pool] {j + 1}/{len(lm_held)}")
+            lm_pool.mark_complete()
+        lm_source = LengthMatchedSource(lm_pool)
+
     summary = {}
     all_records = {}
     for channel in args.channels:
@@ -205,6 +244,7 @@ def main():
             capture_confidence=args.capture_confidence,
             aggregator_sees_passages=args.aggregator_sees_passages,
             audit_donor_seed=args.audit_donor_seed,
+            donor_source=lm_source if causal_audit_mode in ("length_matched", "shift_control") else None,
         )
         pipeline = RecursiveKVPipeline(model, tokenizer, config, device="cuda")
 
@@ -213,8 +253,17 @@ def main():
         confidence_sum = {"mean_top1_prob": 0.0, "mean_entropy": 0.0}
         n_with_confidence = 0
         records = []
+        n_skipped = 0
         for i, item in enumerate(data):
-            result = pipeline.run(item["question"], item["passages"])
+            try:
+                result = pipeline.run(item["question"], item["passages"])
+            except DonorUnavailable as e:
+                # a child had no donor within 5%: question skipped (not scored); pair on the rest
+                n_skipped += 1
+                print(f"  [skip] {channel} example {i}: {e.reason}")
+                records.append({"idx": i, "question": item["question"], "gold": item["answer"], "skipped": True,
+                                "skip_reason": e.reason, "audit_logs": [e.log], "em": None, "f1": None})
+                continue
             pred = extract_qa_answer(result.answer)
             em = exact_match_score(pred, item["answer"])
             f1 = f1_score(pred, item["answer"])
@@ -258,7 +307,7 @@ def main():
                 "confidence": confidence_dict,
             })
 
-        n = len(data)
+        n = len(data) - n_skipped   # scored (non-skipped) questions
         mean_confidence = None
         if n_with_confidence > 0:
             mean_confidence = {
@@ -267,6 +316,8 @@ def main():
                 "n_examples": n_with_confidence,
             }
         summary[channel] = (n_correct, n, f1_total / max(n, 1), mean_confidence)
+        if n_skipped:
+            print(f"[{channel}] skipped {n_skipped}/{len(data)} questions (no donor within 5%)")
         all_records[channel] = records
         conf_str = ""
         if mean_confidence is not None:
