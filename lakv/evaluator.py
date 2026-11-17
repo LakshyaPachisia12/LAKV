@@ -22,7 +22,8 @@ from tqdm import tqdm
 from lakv.pipeline import LAKVPipeline, PipelineConfig, PROMPT_SETS, RunResult
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.causal_audit import (KVAuditPool, DiskKVAuditPool, DonorUnavailable, DONOR_SOURCE_MODES)
-from lakv.cache_corruption import (CONFIG_SUFFIX_RE, is_corruption_mode, uses_length_matched_donor)
+from lakv.cache_corruption import (CONFIG_SUFFIX_RE, is_corruption_mode, split_maskzero,
+                                   uses_length_matched_donor)
 
 
 TWO_AGENT_BENCH_PROMPTS = {
@@ -277,6 +278,7 @@ def parse_audit_config_name(cfg_name: str):
     gets its own mismatched pool, recorded from a no-passage chain);
     preset_name is the underlying preset ("A", "text_agent", ...).
     """
+    cfg_name, _maskzero = split_maskzero(cfg_name)  # opt-in "_maskzero" suffix: handled in _build_pipeline
     base_name, audit_mode = cfg_name, "none"
     corr = CONFIG_SUFFIX_RE.search(cfg_name)  # dose-response corruption: _audit_real_pad25, _audit_lm_trunc50, ...
     if corr:
@@ -529,6 +531,10 @@ class Evaluator:
         # Causal-audit / passage-ablation variant? See parse_audit_config_name.
         base_name, pool_key, audit_mode, nopass = parse_audit_config_name(cfg_name)
         receiver_sees_passages = not nopass
+        maskzero = split_maskzero(cfg_name)[1]
+        if maskzero and (base_name != "A" or not (audit_mode == "mismatched" or is_corruption_mode(audit_mode))):
+            raise ValueError(f"{cfg_name!r}: _maskzero is defined only for the A chain with a corruption "
+                             f"(_audit_real_*/_audit_lm_*) or _audit_mismatched audit mode.")
 
         # Text-relay variants ("text_agent_audit_dropped", "text_agent_nopass",
         # "text_agent_audit_mismatched", ...): the wrong-text control.
@@ -574,6 +580,7 @@ class Evaluator:
         preset.dataset = dataset
         preset.system_prompts = list(PROMPT_SETS[dataset])
         preset.causal_audit_mode = audit_mode
+        preset.mask_modified_positions = maskzero
         preset.receiver_sees_passages = receiver_sees_passages
         preset.audit_donor_seed = getattr(self, "_audit_donor_seed", 0)
         self._apply_arch(preset, arch)

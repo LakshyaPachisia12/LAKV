@@ -278,7 +278,8 @@ def mode_experiment(args):
     # Evaluator.run_experiment's pre-pass, which raises loudly if it doesn't
     # find enough. Load the extra examples here so that never happens.
     from lakv.evaluator import AUDIT_MISMATCHED_POOL_SIZE
-    needs_audit_pool = any(c.endswith("_audit_mismatched") for c in args.configs)
+    from lakv.cache_corruption import split_maskzero
+    needs_audit_pool = any(split_maskzero(c)[0].endswith("_audit_mismatched") for c in args.configs)
     # length_matched (matched-donor work, UNTESTED ON GPU) needs a larger
     # held-out pool so a within-5% length match usually exists.
     from lakv.cache_corruption import CONFIG_SUFFIX_RE
