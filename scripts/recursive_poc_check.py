@@ -69,6 +69,7 @@ underpowered by McNemar, p=0.25, though F1's CI already trends real).
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -255,8 +256,10 @@ def main():
         records = []
         n_skipped = 0
         for i, item in enumerate(data):
+            t_start = time.perf_counter()
             try:
                 result = pipeline.run(item["question"], item["passages"])
+                latency_s = time.perf_counter() - t_start
             except DonorUnavailable as e:
                 # a child had no donor within 5%: question skipped (not scored); pair on the rest
                 n_skipped += 1
@@ -305,6 +308,7 @@ def main():
                 "aggregator_reasoning_text": result.aggregator_reasoning_text,
                 "audit_logs": result.audit_logs,
                 "confidence": confidence_dict,
+                "latency_s": latency_s,
             })
 
         n = len(data) - n_skipped   # scored (non-skipped) questions
