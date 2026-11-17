@@ -36,6 +36,9 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
+from lakv.cache_corruption import (apply_corruption_mode, is_corruption_mode,
+                                   parse_corruption_mode)
+
 
 KVTuple = Tuple[Tuple[torch.Tensor, torch.Tensor], ...]  # per-layer (K, V)
 
@@ -372,6 +375,7 @@ def apply_causal_audit(
     rng: Optional[_random_module.Random] = None,
     donor_source=None,
     context: Optional[dict] = None,
+    audit_seed: int = 0,
 ) -> Tuple[KVTuple, dict]:
     """Dispatch to the right substitution for PipelineConfig.causal_audit_mode.
 
@@ -387,6 +391,22 @@ def apply_causal_audit(
 
     if mode == "random":
         return moment_matched_random_kv(real_kv, generator=generator), {"mode": "random"}
+
+    if is_corruption_mode(mode):
+        # Dose-response corruption (lakv/cache_corruption.py): operator applied to
+        # the REAL cache ("real_*") or to a clean length-matched wrong cache ("lm_*").
+        target, _op, _pct = parse_corruption_mode(mode)
+        base_kv, donor_log = real_kv, None
+        if target == "lm":
+            if donor_source is None:
+                raise ValueError(f"causal_audit_mode={mode!r} requires a length_matched donor_source")
+            base_kv, donor_log = donor_source.fetch(agent_idx=agent_idx, question_key=question_key,
+                                                    real_kv=real_kv, rng=rng, **(context or {}))
+        out, info = apply_corruption_mode(mode, base_kv, question_key, agent_idx, audit_seed=audit_seed)
+        log = {"mode": mode, **info}
+        if donor_log is not None:
+            log["donor"] = donor_log
+        return out, log
 
     if mode in DONOR_SOURCE_MODES:
         if donor_source is None:

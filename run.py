@@ -281,7 +281,9 @@ def mode_experiment(args):
     needs_audit_pool = any(c.endswith("_audit_mismatched") for c in args.configs)
     # length_matched (matched-donor work, UNTESTED ON GPU) needs a larger
     # held-out pool so a within-5% length match usually exists.
-    needs_lm_pool = any(c.endswith("_audit_length_matched") for c in args.configs)
+    from lakv.cache_corruption import CONFIG_SUFFIX_RE
+    needs_lm_pool = any(c.endswith("_audit_length_matched") or (CONFIG_SUFFIX_RE.search(c) and "_audit_lm_" in c)
+                        for c in args.configs)
     n_to_load = args.n_samples + max(
         AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0,
         args.length_matched_pool_size if needs_lm_pool else 0)

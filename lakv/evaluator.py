@@ -22,6 +22,7 @@ from tqdm import tqdm
 from lakv.pipeline import LAKVPipeline, PipelineConfig, PROMPT_SETS, RunResult
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.causal_audit import (KVAuditPool, DiskKVAuditPool, DonorUnavailable, DONOR_SOURCE_MODES)
+from lakv.cache_corruption import (CONFIG_SUFFIX_RE, is_corruption_mode, uses_length_matched_donor)
 
 
 TWO_AGENT_BENCH_PROMPTS = {
@@ -277,10 +278,14 @@ def parse_audit_config_name(cfg_name: str):
     preset_name is the underlying preset ("A", "text_agent", ...).
     """
     base_name, audit_mode = cfg_name, "none"
-    for suffix, mode in AUDIT_MODE_SUFFIXES.items():
-        if cfg_name.endswith(suffix):
-            base_name, audit_mode = cfg_name[: -len(suffix)], mode
-            break
+    corr = CONFIG_SUFFIX_RE.search(cfg_name)  # dose-response corruption: _audit_real_pad25, _audit_lm_trunc50, ...
+    if corr:
+        base_name, audit_mode = cfg_name[: corr.start()], corr.group(1)
+    else:
+        for suffix, mode in AUDIT_MODE_SUFFIXES.items():
+            if cfg_name.endswith(suffix):
+                base_name, audit_mode = cfg_name[: -len(suffix)], mode
+                break
     pool_key = base_name
     nopass = False
     if base_name.endswith("_nopass"):
@@ -588,7 +593,7 @@ class Evaluator:
             audit_pool = audit_pools[pool_key]
 
         donor_source = None
-        if audit_mode in DONOR_SOURCE_MODES:
+        if audit_mode in DONOR_SOURCE_MODES or is_corruption_mode(audit_mode):
             if base_name not in AUDIT_NEW_MODE_BASES:
                 raise ValueError(
                     f"{cfg_name!r}: matched-donor audit modes are implemented for base config(s) "
@@ -596,6 +601,8 @@ class Evaluator:
             if audit_mode == "self_replay":
                 from lakv.donor_traces import SelfReplaySource
                 donor_source = SelfReplaySource()
+            elif is_corruption_mode(audit_mode) and not uses_length_matched_donor(audit_mode):
+                donor_source = None  # real_*: operator on the real cache, no donor needed
             else:
                 if not donor_sources or (pool_key, audit_mode) not in donor_sources:
                     raise ValueError(
@@ -625,15 +632,17 @@ class Evaluator:
         needs = set()
         for c in configs_to_run:
             _b, pool_key, mode, _np = parse_audit_config_name(c)
-            if mode in ("length_matched", "matched_passages", "matched_wrong_answer"):
+            if mode in ("length_matched", "matched_passages", "matched_wrong_answer") or uses_length_matched_donor(mode):
                 needs.add((pool_key, mode))
         for pool_key, mode in sorted(needs):
             base = parse_audit_config_name(pool_key)[0]
             if base not in AUDIT_NEW_MODE_BASES:
                 raise ValueError(f"matched-donor mode {mode!r} supports base config(s) "
                                  f"{AUDIT_NEW_MODE_BASES} only (got {base!r}).")
-            d = root / pool_key / donor_dir_name(mode, base_seed)
-            if mode == "length_matched":
+            lm_like = mode == "length_matched" or uses_length_matched_donor(mode)
+            # lm_<op><pct> corruption arms share the length_matched pool directory
+            d = root / pool_key / donor_dir_name("length_matched" if lm_like else mode, base_seed)
+            if lm_like:
                 pool = DiskKVAuditPool.open(d)
                 # Reuse only a COMPLETE pool of exactly the requested size for both
                 # relayed hops; anything else (e.g. a 30-donor smoke-test pool when

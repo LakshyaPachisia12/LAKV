@@ -495,6 +495,7 @@ class LAKVPipeline:
                         rng=self._audit_rng,
                         donor_source=self.donor_source,
                         context={"pipeline": self, "question": question},
+                        audit_seed=getattr(self.config, "audit_donor_seed", 0),
                     )
                     self.last_run_audit_logs.append({"agent_idx": agent_idx, **audit_log})
 
