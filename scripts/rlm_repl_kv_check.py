@@ -94,6 +94,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import argparse
 import json
+import time
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -119,15 +120,21 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 from run import load_model
+
+NL = chr(10)
 from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.recursive_pipeline import load_hotpotqa_structured
-from lakv.causal_audit import KVAuditPool
+from lakv.causal_audit import DiskAnswerRegionPool, DonorUnavailable, KVAuditPool
+from lakv.donor_traces import AnswerRegionSource
 from lakv.rlm_repl_kv import RLMKVSession
 
 
 CHANNEL_CHOICES = [
     "text", "kv",
     "kv_audit_zeroed", "kv_audit_random", "kv_audit_mismatched", "kv_audit_dropped",
+    # Length-matched ANSWER-REGION donor, no padding/truncation (LAKV_runs/fanin_length_matched_design.md;
+    # UNTESTED ON GPU).
+    "kv_audit_length_matched",
 ]
 
 # channel name -> (return_channel, causal_audit_mode)
@@ -141,6 +148,7 @@ _CHANNEL_SPEC = {
     # the root's cache. See RLMKVSession's causal_audit_mode docstring
     # for the kv_decision_cue false-premise caveat this condition has.
     "kv_audit_dropped": ("kv", "dropped"),
+    "kv_audit_length_matched": ("kv", "length_matched"),
 }
 
 
@@ -170,14 +178,26 @@ def main():
                               "testing whether the currently-null kv-vs-text comparison "
                               "depends on this channel-asymmetric compensating mechanism. "
                               "No effect on 'text' or the audit channels, which never use it.")
+    parser.add_argument("--length_matched_pool_size", type=int, default=100,
+                         help="Target number of donor ANSWER REGIONS (one per held-out child call) for "
+                              "kv_audit_length_matched. Held-out sessions run until this many are recorded "
+                              "or --max_pool_sessions is exhausted.")
+    parser.add_argument("--max_pool_sessions", type=int, default=150,
+                         help="Upper bound on held-out sessions used to fill the length-matched pool.")
+    parser.add_argument("--donor_pool_dir", default=None,
+                         help="Directory for the length-matched pool (default <run dir>/audit_pool). "
+                              "A complete pool with at least the requested number of regions is reused.")
+    parser.add_argument("--audit_donor_seed", type=int, default=0,
+                         help="Seed for the length-matched donor draw (per-call crc32-seeded).")
     args = parser.parse_args()
 
     model, tokenizer = load_model(args.model_name, device="cuda")
     needs_pool = "kv_audit_mismatched" in args.channels
-    total_n = args.n + (args.n_held_out if needs_pool else 0)
+    needs_lm = "kv_audit_length_matched" in args.channels
+    total_n = args.n + max(args.n_held_out if needs_pool else 0, args.max_pool_sessions if needs_lm else 0)
     all_data = load_hotpotqa_structured(split=args.split, n=total_n)
     data = all_data[:args.n]
-    held_out_data = all_data[args.n:] if needs_pool else []
+    held_out_data = all_data[args.n:args.n + args.n_held_out] if needs_pool else []
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.output_dir) / f"run_{timestamp}"
@@ -199,6 +219,44 @@ def main():
             pool_session.run(item["question"], item["passages"])
         print(f"[rlm_kv_check] pool built, {audit_pool.size(0)} entries recorded")
 
+    lm_source = None
+    pool_timing = None
+    if needs_lm:
+        import shutil
+        lm_dir = (Path(args.donor_pool_dir) if args.donor_pool_dir else out_dir / "audit_pool") / "rlm_answer_regions"
+        lm_pool = DiskAnswerRegionPool.open(lm_dir)
+        if lm_pool.complete and lm_pool.size(0) >= args.length_matched_pool_size:
+            print(f"[rlm_kv_check] re-using complete answer-region pool ({lm_pool.size(0)} regions) at {lm_dir}")
+        else:
+            shutil.rmtree(lm_dir, ignore_errors=True)
+            lm_pool = DiskAnswerRegionPool(lm_dir)
+            print(f"{NL}{'=' * 70}{NL}Building answer-region pool: target {args.length_matched_pool_size} regions "
+                  f"from up to {args.max_pool_sessions} held-out sessions -> {lm_dir}{NL}{'=' * 70}")
+            pool_session = RLMKVSession(
+                model, tokenizer, device="cuda", return_channel="kv", max_turns=args.max_turns,
+                causal_audit_mode="none", record_audit_pool=lm_pool,
+                kv_decision_cue=not args.no_kv_decision_cue)
+            sess_times, regions_before = [], 0
+            sess_regions = []
+            for j, item in enumerate(all_data[args.n:args.n + args.max_pool_sessions]):
+                t0 = time.perf_counter()
+                pool_session.run(item["question"], item["passages"])
+                sess_times.append(time.perf_counter() - t0)
+                sess_regions.append(lm_pool.size(0) - regions_before)
+                regions_before = lm_pool.size(0)
+                if (j + 1) % 10 == 0:
+                    print(f"  [pool] {j + 1} sessions, {lm_pool.size(0)} answer regions, "
+                          f"mean {sum(sess_times) / len(sess_times):.1f}s/session")
+                if lm_pool.size(0) >= args.length_matched_pool_size:
+                    break
+            lm_pool.mark_complete()
+            pool_timing = {"sessions": len(sess_times), "regions": lm_pool.size(0),
+                           "mean_s_per_session": sum(sess_times) / max(len(sess_times), 1),
+                           "total_s": sum(sess_times), "regions_per_session": sess_regions}
+            print(f"[rlm_kv_check] pool built: {pool_timing['regions']} regions from {pool_timing['sessions']} "
+                  f"sessions, mean {pool_timing['mean_s_per_session']:.1f}s/session")
+        lm_source = AnswerRegionSource(lm_pool)
+
     summary = {}
     all_records = {}
     for channel in args.channels:
@@ -211,8 +269,11 @@ def main():
             audit_pool=audit_pool if causal_audit_mode == "mismatched" else None,
             capture_confidence=args.capture_confidence,
             kv_decision_cue=not args.no_kv_decision_cue,
+            donor_source=lm_source if causal_audit_mode == "length_matched" else None,
+            audit_donor_seed=args.audit_donor_seed,
         )
 
+        n_skipped = 0
         n_correct = 0
         f1_total = 0.0
         confidence_sum = {"mean_top1_prob": 0.0, "mean_entropy": 0.0}
@@ -223,7 +284,18 @@ def main():
             print(f"Question: {item['question']}")
             print(f"Gold answer: {item['answer']}")
 
-            result = session.run(item["question"], item["passages"])
+            t_start = time.perf_counter()
+            try:
+                result = session.run(item["question"], item["passages"])
+            except DonorUnavailable as e:
+                # a child call had no answer-region donor within 5%: the whole session is skipped
+                n_skipped += 1
+                print(f"  [skip] {channel} example {i}: {e.reason}")
+                records.append({"idx": i, "question": item["question"], "gold": item["answer"], "skipped": True,
+                                "skip_reason": e.reason, "audit_logs": [e.log], "em": None, "f1": None,
+                                "latency_s": time.perf_counter() - t_start})
+                continue
+            latency_s = time.perf_counter() - t_start
 
             for t, text in enumerate(result.turn_texts):
                 print(f"  [root turn {t}] {text.strip()[:400]!r}")
@@ -275,9 +347,10 @@ def main():
                 "child_texts": result.child_texts,
                 "audit_logs": result.audit_logs,
                 "confidence": confidence_dict,
+                "latency_s": latency_s,
             })
 
-        n = len(data)
+        n = len(data) - n_skipped   # scored (non-skipped) sessions
         mean_confidence = None
         if n_with_confidence > 0:
             mean_confidence = {
@@ -286,6 +359,8 @@ def main():
                 "n_examples": n_with_confidence,
             }
         summary[channel] = (n_correct, n, f1_total / max(n, 1), mean_confidence)
+        if n_skipped:
+            print(f"[{channel}] skipped {n_skipped}/{len(data)} sessions (no donor within 5%)")
         all_records[channel] = records
         conf_str = ""
         if mean_confidence is not None:
@@ -312,6 +387,7 @@ def main():
                 for c, (nc, n, mf1, conf) in summary.items()
             },
             "records": all_records,
+            "length_matched_pool_timing": pool_timing,
         }, f, indent=2)
     print(f"\n[rlm_kv_check] full transcripts + audit logs saved to: {out_path}")
 
