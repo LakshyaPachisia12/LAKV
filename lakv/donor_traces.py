@@ -286,6 +286,25 @@ class LengthMatchedSource:
             agent_idx, question_key, _len(real_kv), real_kv[0][0].device, rng=rng, tolerance=self.tolerance)
 
 
+class AnswerRegionSource:
+    """RLM+KV length_matched: match on the ANSWER-region length (total - prompt_len of the
+    real child call) and return the donor's answer region, unmodified. The caller splices it
+    with the returned donor_prompt_len as the RoPE start (RLMKVSession.splice_child_kv)."""
+
+    def __init__(self, pool, tolerance: float = LENGTH_MATCH_TOLERANCE):
+        self.pool, self.tolerance = pool, tolerance
+
+    def fetch(self, agent_idx, question_key, real_kv, rng=None, prompt_len=None, **_ctx):
+        if prompt_len is None:
+            raise ValueError("AnswerRegionSource.fetch needs the real child call's prompt_len")
+        answer_len = _len(real_kv) - int(prompt_len)
+        kv, log = self.pool.select_length_matched(
+            agent_idx, question_key, answer_len, real_kv[0][0].device, rng=rng, tolerance=self.tolerance)
+        log["real_prompt_len"] = int(prompt_len)
+        log["real_answer_len"] = int(answer_len)
+        return kv, log
+
+
 class TraceReplaySource:
     """matched_passages / matched_wrong_answer: rebuild the stored same-question
     trace with the STANDARD prompts and inject it unmodified."""

@@ -352,7 +352,9 @@ class DiskKVAuditPool:
         blob = torch.load(self.dir / entry["path"], map_location=device, weights_only=True)
         kv = blob["kv"]
         donor_len = int(kv[0][0].shape[2])
+        extra = {"donor_prompt_len": entry["prompt_len"]} if "prompt_len" in entry else {}
         return kv, {
+            **extra,
             "agent_idx": agent_idx, "skipped": False,
             "donor_question_key": entry["key"], "donor_question": entry["text"],
             "donor_pool_order": entry["order"], "donor_cache_len": donor_len,
@@ -361,6 +363,45 @@ class DiskKVAuditPool:
             "pad_positions": 0, "truncated_positions": 0, "tolerance": tolerance,
             "n_eligible": len(elig), "pool_size": len(pool),
         }
+
+
+class DiskAnswerRegionPool(DiskKVAuditPool):
+    """Disk pool of delegation CHILD ANSWER REGIONS (RLM+KV length-matched donors).
+
+    The root only ever receives the child's answer region (the positions after its
+    prompt: see RLMKVSession.splice_child_kv), so that is what is stored and what
+    length matching is done on: an entry's "len" is the ANSWER length, and the donor
+    is later spliced by its own prompt length (RoPE start), never padded/truncated.
+    One held-out session can contribute several entries (one per child call); entries
+    are keyed "<question_key>#<n>" and remember their question ("qkey") so a donor
+    never comes from the scored question itself.
+    Design: LAKV_runs/fanin_length_matched_design.md (UNTESTED ON GPU).
+    """
+
+    records_answer_regions = True
+
+    def add(self, agent_idx: int, question_key: str, kv: KVTuple, question_text: str = "",
+            prompt_len: int = 0) -> None:
+        total = int(kv[0][0].shape[2])
+        if prompt_len <= 0 or prompt_len >= total:
+            return  # no answer region to store
+        entries = self._index.setdefault(agent_idx, [])
+        order = self._next_order.get(agent_idx, 0)
+        self._next_order[agent_idx] = order + 1
+        rel = f"hop{agent_idx}/{order:04d}_{question_key}.pt"
+        path = self.dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        region = tuple((k[:, :, prompt_len:, :].detach().to("cpu").contiguous(),
+                        v[:, :, prompt_len:, :].detach().to("cpu").contiguous()) for k, v in kv)
+        torch.save({"kv": region}, path)
+        entries.append({"key": f"{question_key}#{order}", "qkey": question_key, "text": question_text,
+                        "len": total - prompt_len, "prompt_len": int(prompt_len), "order": order, "path": rel})
+        self._write_index()
+
+    def eligible(self, agent_idx: int, exclude_key: str, target_len: int,
+                 tolerance: float = LENGTH_MATCH_TOLERANCE) -> List[dict]:
+        return [e for e in self._index.get(agent_idx, [])
+                if e.get("qkey", e["key"]) != exclude_key and abs(e["len"] - target_len) <= tolerance * target_len]
 
 
 # ─── dispatch ─────────────────────────────────────────────────────────────────

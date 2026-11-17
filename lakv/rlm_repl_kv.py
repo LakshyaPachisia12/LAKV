@@ -50,10 +50,13 @@ and stop-when-found instructions live in RLM_SYSTEM_PROMPT itself
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+import random as _random_module
+
 import torch
 from transformers import DynamicCache
 
 from lakv.anchor_table import AnchorTable, question_key
+from lakv.cache_corruption import stable_seed
 from lakv.causal_audit import apply_causal_audit, KVAuditPool
 from lakv.confidence import ConfidenceStats, stats_from_logits
 from lakv.rlm_repl import (
@@ -93,6 +96,8 @@ class RLMKVSession:
                  audit_generator: Optional[torch.Generator] = None,
                  kv_decision_cue: bool = True,
                  record_audit_pool: Optional["KVAuditPool"] = None,
+                 donor_source=None,
+                 audit_donor_seed: int = 0,
                  capture_confidence: bool = False):
         """causal_audit_mode: "none" (real child KV spliced, default) /
         "zeroed" / "random" / "mismatched" / "dropped" -- substitutes the
@@ -152,7 +157,7 @@ class RLMKVSession:
         the other two topologies in this project can also produce."""
         if return_channel not in ("text", "kv"):
             raise ValueError(f"Unknown return_channel: {return_channel!r}")
-        if causal_audit_mode not in ("none", "zeroed", "random", "mismatched", "dropped"):
+        if causal_audit_mode not in ("none", "zeroed", "random", "mismatched", "dropped", "length_matched"):
             raise ValueError(f"Unknown causal_audit_mode: {causal_audit_mode!r}")
         if record_audit_pool is not None and causal_audit_mode != "none":
             raise ValueError(
@@ -173,6 +178,11 @@ class RLMKVSession:
         self.audit_generator = audit_generator
         self.kv_decision_cue = kv_decision_cue
         self.record_audit_pool = record_audit_pool
+        # length_matched: AnswerRegionSource over a DiskAnswerRegionPool (UNTESTED ON GPU)
+        if causal_audit_mode == "length_matched" and donor_source is None:
+            raise ValueError("causal_audit_mode='length_matched' requires a donor_source (AnswerRegionSource)")
+        self.donor_source = donor_source
+        self.audit_donor_seed = audit_donor_seed
         self.capture_confidence = capture_confidence
         # Seeded, reproducible donor selection for "mismatched" mode --
         # matches LAKVPipeline's self._audit_rng exactly (lakv/pipeline.py),
@@ -392,7 +402,7 @@ class RLMKVSession:
 
     @staticmethod
     def splice_child_kv(root_kv: tuple, child_kv: tuple, rope_theta: float,
-                         answer_only_from: int = 0) -> tuple:
+                         answer_only_from: int = 0, pre_sliced_start: Optional[int] = None) -> tuple:
         """Append an independently-computed child KV cache onto the
         root's running cache, RoPE-shifting the child's K tensors to
         start at the root's current length -- the same primitive
@@ -430,6 +440,16 @@ class RLMKVSession:
         tokens' positions land at exactly root_len, root_len+1, ...,
         matching what a real continuation would look like."""
         root_len = RLMKVSession._cache_len(root_kv)
+        if pre_sliced_start is not None:
+            # child_kv is ALREADY an answer region whose K carries the RoPE positions
+            # pre_sliced_start, pre_sliced_start+1, ... (a length-matched donor's stored answer
+            # region). No slicing; identical to passing the full child cache with
+            # answer_only_from == pre_sliced_start (checked in tests/test_rlm_length_matched.py).
+            merged_layers = []
+            for (rk, rv), (ck, cv) in zip(root_kv, child_kv):
+                ck_shifted = AnchorTable._rope_shift_k(ck, shift=root_len - pre_sliced_start, theta=rope_theta)
+                merged_layers.append((torch.cat([rk, ck_shifted], dim=2), torch.cat([rv, cv], dim=2)))
+            return tuple(merged_layers)
         merged_layers = []
         for (rk, rv), (ck, cv) in zip(root_kv, child_kv):
             if answer_only_from > 0:
@@ -441,6 +461,21 @@ class RLMKVSession:
                 torch.cat([rv, cv], dim=2),
             ))
         return tuple(merged_layers)
+
+    def _splice_length_matched(self, root_kv: tuple, real_child_kv: tuple, prompt_len: int,
+                               q_key: str, call_index: int) -> Tuple[tuple, dict]:
+        """length_matched audit for one child call: splice a donor's ANSWER REGION of the same
+        length (within 5%) as the real child's answer region, positioned by the donor's own
+        prompt length. No padding, no truncation, and the root receives the donor's answer
+        (the old padded arm gave it the donor's tail). Raises DonorUnavailable when no donor
+        qualifies; the caller skips the whole session. The donor draw uses a per-(question,
+        call) crc32-seeded RNG, so it does not depend on how many other questions ran."""
+        call_rng = _random_module.Random(stable_seed("rlm_donor", self.audit_donor_seed, q_key, call_index))
+        donor_region, dlog = self.donor_source.fetch(
+            agent_idx=0, question_key=q_key, real_kv=real_child_kv, rng=call_rng, prompt_len=prompt_len)
+        spliced = self.splice_child_kv(root_kv, donor_region, self._get_rope_theta(),
+                                       pre_sliced_start=dlog["donor_prompt_len"])
+        return spliced, {"mode": "length_matched", "call_index": call_index, **dlog}
 
     def run(self, question: str, passages: List[str]) -> RLMKVRunResult:
         self._session_generated_ids: List[int] = []
@@ -476,7 +511,12 @@ class RLMKVSession:
                     # substitutes against below -- pool.sample()'s
                     # target_shape check needs the same pre-truncation
                     # shape a 'mismatched' run will later compare against.
-                    self.record_audit_pool.add(0, q_key, kv_tuple, question_text=question)
+                    if getattr(self.record_audit_pool, "records_answer_regions", False):
+                        # length_matched pool: keep only the answer region + the child's prompt length
+                        self.record_audit_pool.add(0, q_key, kv_tuple, question_text=question,
+                                                   prompt_len=prompt_len)
+                    else:
+                        self.record_audit_pool.add(0, q_key, kv_tuple, question_text=question)
             child_texts.append(decoded_text)
             return decoded_text
 
@@ -554,7 +594,11 @@ class RLMKVSession:
             if turn.error:
                 kv, next_logits = self._extend_text(kv, f"[error]\n{turn.error}")
             elif self.return_channel == "kv" and pending_child_kv["kv"] is not None:
-                if self._should_splice_child_kv(self.causal_audit_mode):
+                if self.causal_audit_mode == "length_matched":
+                    kv, dlog = self._splice_length_matched(
+                        kv, pending_child_kv["kv"], pending_child_kv["prompt_len"], q_key, llm_query_calls)
+                    audit_logs.append(dlog)
+                elif self._should_splice_child_kv(self.causal_audit_mode):
                     child_kv_to_splice, audit_log = apply_causal_audit(
                         self.causal_audit_mode, pending_child_kv["kv"],
                         agent_idx=0, question_key=q_key,
