@@ -754,8 +754,8 @@ class Evaluator:
         # under-sized/degenerate pool silently.
         audit_pools: Dict[str, KVAuditPool] = {}
         mismatched_bases = sorted({
-            cfg[: -len("_audit_mismatched")]
-            for cfg in configs_to_run if cfg.endswith("_audit_mismatched")
+            split_maskzero(cfg)[0][: -len("_audit_mismatched")]
+            for cfg in configs_to_run if split_maskzero(cfg)[0].endswith("_audit_mismatched")
         })
         if mismatched_bases:
             held_out = dataset[n_samples:n_samples + AUDIT_MISMATCHED_POOL_SIZE]
