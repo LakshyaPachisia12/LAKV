@@ -23,6 +23,7 @@ from lakv.layer_selector import LayerSelector, SelectionMask
 from lakv.kv_compressor import KVCompressor, KVMessage
 from lakv.offset_corrector import OffsetCorrector
 from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
+from lakv.cache_corruption import hidden_mask_from_log
 from lakv.causal_audit import KVAuditPool, apply_causal_audit
 from lakv.confidence import ConfidenceStats, stats_from_logits
 
@@ -258,6 +259,10 @@ class PipelineConfig:
     # 0 reproduces every earlier run exactly; other values give independent
     # donor assignments for a donor-robustness check.
     audit_donor_seed: int = 0
+    # Opt-in (default off): hide the positions a corruption audit zeroed/padded
+    # from attention (mask=0) in the receiving hops. See
+    # lakv/cache_corruption.py::hidden_mask_from_log. Config suffix "_maskzero".
+    mask_modified_positions: bool = False
     # Process-level confidence signature (2026-09-18 research audit,
     # generalizing the RLM+KV behavioral signature -- see
     # lakv/confidence.py's module docstring for the full motivation).
@@ -447,6 +452,10 @@ class LAKVPipeline:
         confidence: Optional[ConfidenceStats] = None
         finalizer_latency = 0.0
         q_key = make_key(question)
+        hidden_now: Optional[torch.Tensor] = None     # opt-in mask (mask_modified_positions)
+        hidden_carry: Optional[torch.Tensor] = None
+        if self.config.mask_modified_positions and self.config.use_offset_correction:
+            raise ValueError("mask_modified_positions is not supported with offset correction")
         self.last_run_offset_logs = []
         self.last_run_audit_logs: List[dict] = []
         self._run_trace = {}
@@ -468,6 +477,7 @@ class LAKVPipeline:
 
             # ── decompress + inject KV from previous agent ───────────
             injected_kv_tuple: Optional[tuple] = None
+            hidden_now = None
             if self._should_inject_kv(kv_message, self.config.causal_audit_mode):
                 decompressed = self.compressor.decompress(kv_message, device=self.device)
 
@@ -498,6 +508,10 @@ class LAKVPipeline:
                         audit_seed=getattr(self.config, "audit_donor_seed", 0),
                     )
                     self.last_run_audit_logs.append({"agent_idx": agent_idx, **audit_log})
+                    if self.config.mask_modified_positions:
+                        hidden_now = hidden_mask_from_log(
+                            audit_log, carried=hidden_carry, device=self.device)
+                        self.last_run_audit_logs[-1]["mask_n_hidden"] = int(hidden_now.sum().item())
 
                 injected_kv_tuple = decompressed
             elif kv_message is not None:
@@ -521,6 +535,7 @@ class LAKVPipeline:
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
                     capture_confidence=self.config.capture_confidence,
+                    hidden_positions=hidden_now,
                 )
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
@@ -537,7 +552,15 @@ class LAKVPipeline:
                     max_new=self.config.intermediate_max_new_tokens,
                     position_offset=pending_position_offset,
                     receiver_prompt_len=input_ids.shape[1],
+                    hidden_positions=hidden_now,
                 )
+                if hidden_now is not None:
+                    # this hop's output cache = [injected | prompt | generated]; the
+                    # hidden prefix stays hidden for the next hop (real_* arms only)
+                    hidden_carry = torch.nn.functional.pad(
+                        hidden_now, (0, int(raw_kv_tuple[0][0].shape[2]) - int(hidden_now.shape[0])), value=False)
+                else:
+                    hidden_carry = None
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 hop_latency = time.perf_counter() - _t0
@@ -901,6 +924,23 @@ class LAKVPipeline:
 
         return torch.multinomial(probs, num_samples=1)
 
+    def _apply_hidden_mask(self, mask, hidden, cache_len, position_offset, full_len=None):
+        """Opt-in only. Zero `mask` on the injected-cache positions flagged in `hidden`
+        (bool [cache_len]). Returns (mask, extra_generate_kwargs). For a generate() handoff
+        (full_len given) the extra kwargs carry explicit position_ids: generate() otherwise
+        derives positions from mask.cumsum, which would shift every decoded token's RoPE
+        position down by the number of hidden positions."""
+        if position_offset != 0:
+            raise ValueError("hidden-position masking is not supported with a position offset")
+        if int(hidden.shape[0]) != cache_len:
+            raise ValueError(f"hidden mask length {int(hidden.shape[0])} != injected cache length {cache_len}")
+        mask = mask.clone()
+        mask[0, :cache_len][hidden.to(mask.device)] = 0
+        extra = {}
+        if full_len is not None:
+            extra["position_ids"] = torch.arange(full_len, device=mask.device).unsqueeze(0)
+        return mask, extra
+
     def _generate(
         self,
         input_ids: torch.Tensor,
@@ -909,6 +949,7 @@ class LAKVPipeline:
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
         capture_confidence: bool = False,
+        hidden_positions: Optional[torch.Tensor] = None,
     ) -> Tuple[str, Optional[ConfidenceStats]]:
         """Run generation for the final agent. Returns (answer_text,
         confidence_stats) -- confidence_stats is None unless
@@ -972,6 +1013,10 @@ class LAKVPipeline:
             (1, cache_seq_len + prompt_len),
             dtype=torch.long, device=self.device,
         )
+        gen_extra = {}
+        if hidden_positions is not None:
+            attention_mask, gen_extra = self._apply_hidden_mask(
+                attention_mask, hidden_positions, cache_seq_len, position_offset)
 
         # Step 1 — Prime: forward pass with injected KV + full prompt
         with torch.no_grad():
@@ -1009,6 +1054,9 @@ class LAKVPipeline:
                 generated_ids = [] if first_tok_id in eos_ids else [first_tok_id]
             else:
                 handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                if hidden_positions is not None:
+                    handoff_mask, gen_extra = self._apply_hidden_mask(
+                        handoff_mask, hidden_positions, cache_seq_len, position_offset, full_len=cur_pos + 1)
                 with torch.no_grad():
                     gen_out = self.model.generate(
                         input_ids=first_token,
@@ -1018,6 +1066,7 @@ class LAKVPipeline:
                         use_cache=True,
                         return_dict_in_generate=True,
                         output_scores=capture_confidence,
+                        **gen_extra,
                         **self.config.generation_kwargs,
                     )
                 generated_ids = gen_out.sequences[0].tolist()
@@ -1129,6 +1178,7 @@ class LAKVPipeline:
         max_new: Optional[int] = None,
         position_offset: int = 0,
         receiver_prompt_len: Optional[int] = None,
+        hidden_positions: Optional[torch.Tensor] = None,
     ) -> tuple:
         """Like _generate_intermediate but also returns last hidden states for anchor embedding."""
         eos_ids = self._eos_ids
@@ -1186,6 +1236,10 @@ class LAKVPipeline:
             (1, cache_seq_len + prompt_len),
             dtype=torch.long, device=self.device,
         )
+        gen_extra = {}
+        if hidden_positions is not None:
+            attention_mask, gen_extra = self._apply_hidden_mask(
+                attention_mask, hidden_positions, cache_seq_len, position_offset)
         with torch.no_grad():
             out = self.model(
                 input_ids=input_ids,
@@ -1256,6 +1310,9 @@ class LAKVPipeline:
                 running_cache = out.past_key_values
             else:
                 handoff_mask = torch.ones((1, cur_pos + 1), dtype=torch.long, device=self.device)
+                if hidden_positions is not None:
+                    handoff_mask, gen_extra = self._apply_hidden_mask(
+                        handoff_mask, hidden_positions, cache_seq_len, position_offset, full_len=cur_pos + 1)
                 with torch.no_grad():
                     gen_out = self.model.generate(
                         input_ids=first_token,
@@ -1264,6 +1321,7 @@ class LAKVPipeline:
                         max_new_tokens=max_new - 1,
                         use_cache=True,
                         return_dict_in_generate=True,
+                        **gen_extra,
                         **self.config.generation_kwargs,
                     )
                 generated_ids = gen_out.sequences[0].tolist()
