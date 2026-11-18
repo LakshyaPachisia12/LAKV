@@ -446,8 +446,18 @@ class LAKVPipeline:
 
     # ── public API ────────────────────────────────────────────────────────
 
-    def run(self, question: str) -> RunResult:
-        """Execute the 3-agent pipeline and return the final answer."""
+    def run(self, question: str, receiver_question: Optional[str] = None) -> RunResult:
+        """Execute the 3-agent pipeline and return the final answer.
+
+        receiver_question (relay-necessity curve, lakv/necessity_curve.py; UNTESTED ON GPU): when
+        given, agents >= 1 (the receivers) use it as their user content instead of `question`, so
+        they can be shown fewer passages while the sender (agent 0) still sees all of them. The
+        default None leaves behavior byte-identical to before. Conflicts with
+        receiver_sees_passages=False (that mode already replaces the receivers' content).
+        """
+        if receiver_question is not None and not self.config.receiver_sees_passages:
+            raise ValueError("receiver_question conflicts with receiver_sees_passages=False "
+                             "(_nopass); use one or the other")
         hop_stats: List[HopStat] = []
         hop_texts: List[str] = []
         kv_message: Optional[KVMessage] = None
@@ -477,7 +487,7 @@ class LAKVPipeline:
         prompts = self.config.system_prompts
 
         for agent_idx in range(n_agents):
-            input_ids = self._agent_input_ids(question, agent_idx)
+            input_ids = self._agent_input_ids(question, agent_idx, receiver_question=receiver_question)
 
             is_last = (agent_idx == n_agents - 1)
 
@@ -715,13 +725,17 @@ class LAKVPipeline:
             confidence=confidence,
         )
 
-    def _agent_input_ids(self, question: str, agent_idx: int, system_suffix: str = "") -> torch.Tensor:
+    def _agent_input_ids(self, question: str, agent_idx: int, system_suffix: str = "",
+                         receiver_question: Optional[str] = None) -> torch.Tensor:
         """The chat-templated prompt ids agent `agent_idx` receives for `question`.
 
         Code moved verbatim from run() (so run() and the donor-trace rebuild
         use one definition of "the standard prompt"). system_suffix is for
         DONOR GENERATION ONLY (matched_wrong_answer's "defend X" line): run()
         never passes it, and caches are always rebuilt without it.
+
+        receiver_question (relay-necessity curve, lakv/necessity_curve.py): when given, agents >= 1
+        use it as their user content instead of `question`. Default None = unchanged behaviour.
         """
         prompts = self.config.system_prompts
         system_prompt = prompts[agent_idx] if agent_idx < len(prompts) else prompts[-1]
@@ -734,6 +748,8 @@ class LAKVPipeline:
                 messages.append({"role": "assistant", "content": exemplar_a})
         if agent_idx >= 1 and not self.config.receiver_sees_passages:
             user_content = self._question_only(question)
+        elif agent_idx >= 1 and receiver_question is not None:
+            user_content = receiver_question
         else:
             user_content = question
         messages.append({"role": "user", "content": user_content})
