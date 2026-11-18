@@ -88,3 +88,15 @@ def test_run_metadata_reports_hidden_setting_for_thirds():
         assert d["receiver_sees_passages"] is False and d["ablation_spec"]["type"] == "third"
         assert d["use_layer_selection"] is True
     assert decoding_for_config("C_top20")["receiver_sees_passages"] is True
+
+
+def test_ablation_config_builds_when_a_profile_path_is_given():
+    """Regression: the ablation branch referenced an un-imported LayerProfile and crashed with --profile_path."""
+    from transformers import Qwen2Config, Qwen2ForCausalLM
+    torch.manual_seed(0)
+    m = Qwen2ForCausalLM(Qwen2Config(vocab_size=64, hidden_size=16, intermediate_size=32, num_hidden_layers=28,
+                                     num_attention_heads=2, num_key_value_heads=1, max_position_embeddings=256)).eval()
+    ev = Evaluator(m, tokenizer=_Tok(), device="cpu")
+    pipe, kind = ev._build_pipeline("A_nopass_layers_mid3", "profiles/qwen_gsm8k.json", dataset="hotpotqa", greedy=True)
+    kept = [i for i, t in enumerate(pipe.selector.tier_assignment) if t in (1, 2)]
+    assert kept == list(range(9, 19)) and kind == "multi"

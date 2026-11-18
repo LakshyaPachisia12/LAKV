@@ -530,6 +530,7 @@ class Evaluator:
             indices = resolve_ablation_indices(spec, self.model.config.num_hidden_layers)
 
             # Build a fake profile where Tier 3 = dropped, Tier 1 = kept
+            from lakv.calibration_profiler import LayerProfile  # was never imported: any ablation config crashed when a profile path was given
             profile = LayerProfile.load(profile_path) if profile_path else None
             preset = PipelineConfig(
                 use_layer_selection=True,
