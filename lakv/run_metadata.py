@@ -103,7 +103,7 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
     """
     try:
         from lakv.evaluator import PRESETS, parse_audit_config_name
-        from lakv.evaluator import ABLATION_CONFIGS
+        from lakv.evaluator import ABLATION_CONFIGS, LAYER_BAND_CONFIGS
         base, _pool, audit_mode, nopass = parse_audit_config_name(cfg_name)
         d: Dict[str, Any] = {"base": base, "audit_mode": audit_mode, "receiver_sees_passages": not nopass}
         if base in ("single_agent", "single_agent_matched"):
@@ -118,13 +118,15 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
             d.update(final_max_new_tokens=512 if base.endswith("_matched") else c.final_max_new_tokens,
                      intermediate_max_new_tokens=c.intermediate_max_new_tokens, do_sample=c.do_sample,
                      repetition_penalty="model default (not set by this pipeline)")
-        elif cfg_name in ABLATION_CONFIGS or base in PRESETS and PRESETS[base] is not None:
+        elif cfg_name in ABLATION_CONFIGS or cfg_name in LAYER_BAND_CONFIGS or base in PRESETS and PRESETS[base] is not None:
             p = PRESETS.get(base)
             if p is None:  # ablation configs are built at runtime
                 from lakv.pipeline import PipelineConfig
                 p = PipelineConfig(use_layer_selection=True, compression_mode="none",
                                    use_offset_correction=False, reconstruction_strategy="zeros")
-                d["ablation_spec"] = ABLATION_CONFIGS.get(cfg_name)
+                spec = ABLATION_CONFIGS.get(cfg_name) or LAYER_BAND_CONFIGS.get(cfg_name)
+                d["ablation_spec"] = spec
+                d["receiver_sees_passages"] = (spec or {}).get("receiver_sees_passages", True)
             d.update(final_max_new_tokens=p.final_max_new_tokens,
                      intermediate_max_new_tokens=p.intermediate_max_new_tokens,
                      compression_mode=p.compression_mode, use_layer_selection=p.use_layer_selection,

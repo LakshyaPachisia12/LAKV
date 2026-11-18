@@ -309,6 +309,17 @@ ABLATION_CONFIGS = {
 }
 
 
+# Layer-band ablation (kept separate from ABLATION_CONFIGS so the legacy 20-layer presets and the tests
+# that iterate them are untouched). Relay only one contiguous third of the layers (the rest are rebuilt
+# as zeros, as in C/D), hidden setting (the receivers do not see the passages). Third boundaries:
+# round(n/3), round(2n/3); on the 28-layer Qwen2.5 that is layers 0-8 / 9-18 / 19-27.
+LAYER_BAND_CONFIGS = {
+    "A_nopass_layers_first3": {"type": "third", "which": 0, "receiver_sees_passages": False},
+    "A_nopass_layers_mid3":   {"type": "third", "which": 1, "receiver_sees_passages": False},
+    "A_nopass_layers_last3":  {"type": "third", "which": 2, "receiver_sees_passages": False},
+}
+
+
 def resolve_ablation_indices(spec: dict, n_layers: int) -> List[int]:
     """Kept-layer indices for an ABLATION_CONFIGS spec on an n_layers model.
 
@@ -316,6 +327,14 @@ def resolve_ablation_indices(spec: dict, n_layers: int) -> List[int]:
     32 Mistral-7B, 36 Qwen3-8B), never a literal. n_keep is an absolute
     layer count, unchanged from the original 28-layer definition.
     """
+    if spec["type"] == "third":
+        if n_layers < 3:
+            raise ValueError(f"cannot split a {n_layers}-layer model into thirds")
+        bounds = [0, round(n_layers / 3), round(2 * n_layers / 3), n_layers]
+        which = spec["which"]
+        if which not in (0, 1, 2):
+            raise ValueError(f"unknown third {which!r}")
+        return list(range(bounds[which], bounds[which + 1]))
     n_keep = spec["n_keep"]
     if not 0 < n_keep <= n_layers:
         raise ValueError(f"n_keep={n_keep} invalid for a {n_layers}-layer model")
@@ -506,8 +525,8 @@ class Evaluator:
         # pre-pass for "text_agent_audit_mismatched" (empty pool). Every
         # text_agent variant, including the plain one, now goes through the
         # parse_audit_config_name branch below.
-        if cfg_name in ABLATION_CONFIGS:
-            spec = ABLATION_CONFIGS[cfg_name]
+        if cfg_name in ABLATION_CONFIGS or cfg_name in LAYER_BAND_CONFIGS:
+            spec = ABLATION_CONFIGS.get(cfg_name) or LAYER_BAND_CONFIGS[cfg_name]
             indices = resolve_ablation_indices(spec, self.model.config.num_hidden_layers)
 
             # Build a fake profile where Tier 3 = dropped, Tier 1 = kept
@@ -520,6 +539,7 @@ class Evaluator:
                 profile_path=profile_path,
                 _custom_layer_indices=indices,
                 dataset=dataset,
+                receiver_sees_passages=spec.get("receiver_sees_passages", True),
             )
             self._apply_arch(preset, arch)
             if greedy:
