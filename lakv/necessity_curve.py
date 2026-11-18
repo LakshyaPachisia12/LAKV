@@ -182,3 +182,15 @@ def make_receiver_question(blob: str, gold_titles: Optional[Sequence[str]], spec
         "hidden_idx": list(hidden), "hidden_titles": [_title_of(passages[j]) for j in hidden],
     }
     return view, info
+
+
+def summarize_hiding(samples: Sequence[dict], spec: HideSpec, hide_seed: int = 0) -> Dict:
+    """Realized hiding over a list of dataset items (each with 'question' and 'gold_titles').
+    Raises (ValueError) on any item that cannot be processed, so a bad dataset fails on the CPU
+    before any model is loaded."""
+    infos = [make_receiver_question(s["question"], s.get("gold_titles"), spec, hide_seed)[1] for s in samples]
+    n = len(infos)
+    return {"spec": spec.suffix, "n": n,
+            "mean_passages_hidden": sum(i["n_hidden"] for i in infos) / n if n else 0.0,
+            "mean_gold_hidden": sum(i["n_gold_hidden"] for i in infos) / n if n else 0.0,
+            "frac_questions_with_gold_hidden": sum(1 for i in infos if i["n_gold_hidden"] > 0) / n if n else 0.0}

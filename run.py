@@ -67,14 +67,30 @@ def _write_run_metadata(output_dir: Path, args, mode: str = "experiment",
             profile_path=getattr(args, "profile_path", None),
             audit_donor_seed=getattr(args, "audit_donor_seed", None),
             extra={"length_matched_pool_size": getattr(args, "length_matched_pool_size", None),
-                   "donor_pool_dir": getattr(args, "donor_pool_dir", None)},
+                   "donor_pool_dir": getattr(args, "donor_pool_dir", None),
+                   "hide_seed": getattr(args, "hide_seed", None)},
         )
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / filename, "w") as f:
             json.dump(metadata, f, indent=2, default=str)
+        return output_dir / filename
     except Exception as e:
         print(f"[run] WARNING: could not write {filename}: {type(e).__name__}: {e}")
+        return None
+
+
+def _merge_into_json(path, updates: dict) -> None:
+    """Add keys to an existing JSON file (used to attach the dataset fingerprint to
+    run_metadata.json once the data has been loaded). Never raises."""
+    try:
+        if path is None:
+            return
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data.update(updates)
+        Path(path).write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[run] WARNING: could not update {path}: {type(e).__name__}: {e}")
 
 
 def load_model(model_name: str, device: str, attn_implementation: str = "sdpa"):
@@ -126,7 +142,26 @@ def load_gsm8k(split: str = "test", n: int = None):
     return data
 
 
-def load_hotpotqa(split: str = "validation", n: int = None):
+# Filled by load_hotpotqa(): which HuggingFace data produced this run (fingerprint, cache revision,
+# content digests). Written into run_metadata.json / experiment_results.json by mode_experiment.
+DATASET_PROVENANCE: dict = {}
+
+
+def _gold_titles(item):
+    """Gold passage titles = the distinct supporting-fact titles (relay-necessity curve,
+    lakv/necessity_curve.py). Same field layout in HotpotQA and framolfese/2WikiMultihopQA."""
+    sf = item.get("supporting_facts") if hasattr(item, "get") else None
+    return list(dict.fromkeys(sf["title"])) if sf else None
+
+
+def _record_provenance(ds_split, hf_id, config, split, samples):
+    """Metadata only: remember which HuggingFace data produced this run (see lakv.run_metadata)."""
+    from lakv.run_metadata import dataset_provenance
+    DATASET_PROVENANCE.clear()
+    DATASET_PROVENANCE.update(dataset_provenance(ds_split, hf_id=hf_id, config=config, split=split, samples=samples))
+
+
+def load_hotpotqa(split: str = "validation", n: int = None, with_gold_titles: bool = False):
     """Return list of {question, answer} dicts from HotpotQA (distractor config).
 
     Uses the distractor config: each item already bundles its 10 candidate
@@ -145,13 +180,17 @@ def load_hotpotqa(split: str = "validation", n: int = None):
             f"[{t}] " + " ".join(s) for t, s in zip(titles, sentences)
         )
         question = f"Context:\n{passages}\n\nQuestion: {item['question']}"
-        data.append({"question": question, "answer": item["answer"]})
+        row = {"question": question, "answer": item["answer"]}
+        if with_gold_titles:
+            row["gold_titles"] = _gold_titles(item)
+        data.append(row)
     if n is not None:
         data = data[:n]
+    _record_provenance(ds[split], "hotpotqa/hotpot_qa", "distractor", split, data)
     return data
 
 
-def load_2wikimultihopqa(split: str = "validation", n: int = None):
+def load_2wikimultihopqa(split: str = "validation", n: int = None, with_gold_titles: bool = False):
     """Return list of {question, answer} dicts from 2WikiMultihopQA.
 
     Uses framolfese/2WikiMultihopQA, a repackaging of the original dataset
@@ -177,19 +216,26 @@ def load_2wikimultihopqa(split: str = "validation", n: int = None):
             f"[{t}] " + " ".join(s) for t, s in zip(titles, sentences)
         )
         question = f"Context:\n{passages}\n\nQuestion: {item['question']}"
-        data.append({"question": question, "answer": item["answer"]})
+        row = {"question": question, "answer": item["answer"]}
+        if with_gold_titles:
+            row["gold_titles"] = _gold_titles(item)
+        data.append(row)
     if n is not None:
         data = data[:n]
+    _record_provenance(ds[split], "framolfese/2WikiMultihopQA", None, split, data)
     return data
 
 
-def load_dataset_samples(dataset: str, split: str, n: int = None):
-    """Dispatch to the right loader by dataset name."""
+def load_dataset_samples(dataset: str, split: str, n: int = None, with_gold_titles: bool = False):
+    """Dispatch to the right loader by dataset name. with_gold_titles (hotpotqa / 2wikimultihopqa only)
+    adds a 'gold_titles' key per item, needed by the *_hide<PCT> / *_hidegold<G> configs; default off."""
     loaders = {
         "gsm8k": load_gsm8k,
         "hotpotqa": load_hotpotqa,
         "2wikimultihopqa": load_2wikimultihopqa,
     }
+    if dataset in ("hotpotqa", "2wikimultihopqa"):
+        return loaders[dataset](split, n, with_gold_titles=with_gold_titles)
     return loaders[dataset](split, n)
 
 
@@ -261,16 +307,15 @@ def mode_experiment(args):
             raise ValueError(f"--resume_dir does not exist: {output_dir}")
         print(f"[run] Resuming run in: {output_dir}")
         resume = True
-        _write_run_metadata(output_dir, args, mode="experiment",
-                            filename=f"run_metadata_resume_{_timestamp()}.json")
+        meta_path = _write_run_metadata(output_dir, args, mode="experiment",
+                                        filename=f"run_metadata_resume_{_timestamp()}.json")
     else:
         output_dir = Path(args.output_dir) / f"run_{_timestamp()}"
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"[run] Results will be saved to: {output_dir}")
         resume = False
-        _write_run_metadata(output_dir, args, mode="experiment")
+        meta_path = _write_run_metadata(output_dir, args, mode="experiment")
 
-    model, tokenizer = load_model(args.model, args.device)
     split = "test" if args.dataset == "gsm8k" else "validation"
 
     # A "*_audit_mismatched" config (Phase 1 causal audit) needs held-out
@@ -288,7 +333,22 @@ def mode_experiment(args):
     n_to_load = args.n_samples + max(
         AUDIT_MISMATCHED_POOL_SIZE if needs_audit_pool else 0,
         args.length_matched_pool_size if needs_lm_pool else 0)
-    dataset = load_dataset_samples(args.dataset, split, n=n_to_load)
+    from lakv.evaluator import AUDIT_MODE_SUFFIXES
+    from lakv.necessity_curve import split_hide_suffix, summarize_hiding
+    needs_gold = any(split_hide_suffix(c, AUDIT_MODE_SUFFIXES)[1] is not None for c in args.configs)
+    dataset = load_dataset_samples(args.dataset, split, n=n_to_load, with_gold_titles=needs_gold)
+
+    # Relay-necessity curve: check every hide config on the CPU BEFORE the model is loaded, so a
+    # dataset without gold titles (or a blob that does not split) fails in seconds.
+    for cfg in args.configs:
+        _core, hspec = split_hide_suffix(cfg, AUDIT_MODE_SUFFIXES)
+        if hspec is not None:
+            print(f"[run] {cfg}: {summarize_hiding(dataset[:args.n_samples], hspec, args.hide_seed)}")
+    provenance = dict(DATASET_PROVENANCE)
+    if provenance:
+        _merge_into_json(meta_path, {"dataset_provenance": provenance})
+
+    model, tokenizer = load_model(args.model, args.device)
     Evaluator(model, tokenizer, device=args.device).run_experiment(
         dataset=dataset,
         profile_path=args.profile_path,
@@ -303,6 +363,8 @@ def mode_experiment(args):
         audit_donor_seed=args.audit_donor_seed,
         length_matched_pool_size=args.length_matched_pool_size,
         donor_pool_dir=args.donor_pool_dir,
+        hide_seed=args.hide_seed,
+        dataset_provenance=provenance or None,
     )
 
 
@@ -342,6 +404,9 @@ def main():
                         help="Where the length_matched cache pool and the matched_passages / "
                              "matched_wrong_answer token-id traces are stored (default: <run dir>/audit_pool). "
                              "Point a rerun at an existing dir to reuse donors.")
+    parser.add_argument("--hide_seed", type=int, default=0,
+                        help="Seed (zlib.crc32) for which passages the *_hide<PCT> / *_hidegold<G> configs hide. "
+                             "Identical for the real and dropped arms. Default 0; use 1 for the seed-sensitivity pair.")
     parser.add_argument("--audit_donor_seed", type=int, default=0,
                         help="Seed for the mismatched-condition donor draw (default 0 reproduces all "
                              "earlier runs). Use 1, 2, ... with separate --output_dir for a "

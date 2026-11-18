@@ -24,6 +24,7 @@ from lakv.qa_scoring import extract_qa_answer, exact_match_score, f1_score
 from lakv.causal_audit import (KVAuditPool, DiskKVAuditPool, DonorUnavailable, DONOR_SOURCE_MODES)
 from lakv.cache_corruption import (CONFIG_SUFFIX_RE, is_corruption_mode, split_maskzero,
                                    uses_length_matched_donor)
+from lakv.necessity_curve import HideSpec, make_receiver_question, split_hide_suffix
 
 
 TWO_AGENT_BENCH_PROMPTS = {
@@ -296,6 +297,17 @@ def parse_audit_config_name(cfg_name: str):
     return base_name, pool_key, audit_mode, nopass
 
 
+def validate_hide_config(core_name: str, hide: HideSpec, original: str) -> None:
+    """The relay-necessity curve (UNTESTED ON GPU) is defined for the uncompressed chain `A` with the
+    real arm or the dropped arm only (design: docs/necessity_curve_design.md, section 5)."""
+    base, _pool, audit_mode, nopass = parse_audit_config_name(core_name)
+    if base != "A" or nopass:
+        raise ValueError(f"{original!r}: hide suffixes are supported on base config 'A' only (got {base!r})")
+    if audit_mode not in ("none", "dropped"):
+        raise ValueError(f"{original!r}: hide suffixes support only the real arm and _audit_dropped "
+                         f"(got audit mode {audit_mode!r}); the mismatched arm is out of scope")
+
+
 # ── ablation presets (require custom layer indices, built at runtime) ─────────
 # These are registered by name; Evaluator builds them after loading the profile.
 ABLATION_CONFIGS = {
@@ -512,6 +524,15 @@ class Evaluator:
         pre-pass. Mutually exclusive with cfg_name being an audit variant.
         """
         import random as _random
+
+        # Relay-necessity curve: the pipeline for A_hide50 / A_hidegold1 (and their _audit_dropped
+        # forms) is the plain A / A_audit_dropped pipeline; the evaluator hands the receivers a
+        # reduced view per sample (run(..., receiver_question=...)). _hide100 is rewritten to the
+        # existing _nopass config here, so the two are the same code path by construction.
+        _orig_cfg_name = cfg_name
+        cfg_name, _hide = split_hide_suffix(cfg_name, AUDIT_MODE_SUFFIXES)
+        if _hide is not None:
+            validate_hide_config(cfg_name, _hide, _orig_cfg_name)
 
         if cfg_name in ("single_agent", "single_agent_matched"):
             from lakv_v2.pipeline.single_agent import SingleAgentPipeline, SingleAgentPipelineConfig
@@ -766,7 +787,9 @@ class Evaluator:
                        dataset_name: str = "gsm8k", greedy: bool = False,
                        audit_donor_seed: int = 0,
                        length_matched_pool_size: int = AUDIT_LENGTH_MATCHED_POOL_SIZE,
-                       donor_pool_dir: Optional[str] = None):
+                       donor_pool_dir: Optional[str] = None,
+                       hide_seed: int = 0,
+                       dataset_provenance: Optional[dict] = None):
         # Seed for the mismatched-condition donor draw; 0 reproduces all
         # earlier runs. Read by _build_pipeline via self._audit_donor_seed.
         self._audit_donor_seed = audit_donor_seed
@@ -902,7 +925,15 @@ class Evaluator:
                                                         audit_pools=audit_pools,
                                                         donor_sources=donor_sources)
                 pipe.config.print_raw_outputs = print_raw_outputs
-                print(f"\n{'='*60}\nRunning Config {cfg_name}\n{'='*60}")
+                _core_name, hide_spec = split_hide_suffix(cfg_name, AUDIT_MODE_SUFFIXES)
+                if hide_spec is not None:
+                    missing = [i for i, x in enumerate(samples) if not x.get("gold_titles")]
+                    if missing:
+                        raise ValueError(f"{cfg_name}: {len(missing)} dataset items have no gold_titles "
+                                         f"(first idx {missing[:5]}); hide configs need the HotpotQA loader in run.py")
+                print(f"\n{'='*60}\nRunning Config {cfg_name}"
+                      + (f"  [hiding {hide_spec.suffix} from the receivers, hide_seed={hide_seed}]" if hide_spec else "")
+                      + f"\n{'='*60}")
 
                 # Restore partial progress for this config if resuming mid-config
                 if resume and cfg_name in all_results and all_results[cfg_name]["summary"].get("status") == "running":
@@ -974,7 +1005,13 @@ class Evaluator:
                             tot_ratio += 1.0
                             tot_lat += elapsed
                         else:
-                            r = pipe.run(s["question"])
+                            hide_info = None
+                            if hide_spec is not None:
+                                rq, hide_info = make_receiver_question(
+                                    s["question"], s.get("gold_titles"), hide_spec, hide_seed)
+                                r = pipe.run(s["question"], receiver_question=rq)
+                            else:
+                                r = pipe.run(s["question"])
                             elapsed = time.time() - t0
                             pred, ok, f1 = score_sample(dataset_name, r.answer, gold)
                             if ok: correct += 1
@@ -995,7 +1032,8 @@ class Evaluator:
                                 "hop_stats":[asdict(h) for h in r.hop_stats],
                                 "finalizer_latency_s":r.finalizer_latency_seconds,
                                 "offset_logs":list(pipe.last_run_offset_logs),
-                                "audit_logs":list(getattr(pipe, "last_run_audit_logs", []))})
+                                "audit_logs":list(getattr(pipe, "last_run_audit_logs", [])),
+                                **({"hide": hide_info} if hide_info else {})})
                             tot_comp += r.total_compressed_mb/nh
                             tot_orig += r.total_original_mb/nh
                             tot_ratio += r.overall_compression_ratio
@@ -1081,7 +1119,8 @@ class Evaluator:
                 audit_pool_size=AUDIT_MISMATCHED_POOL_SIZE if mismatched_bases else None,
                 model=self.model,
                 extra={"length_matched_pool_size": length_matched_pool_size,
-                       "donor_pool_dir": str(donor_pool_dir) if donor_pool_dir else None},
+                       "donor_pool_dir": str(donor_pool_dir) if donor_pool_dir else None,
+                       "hide_seed": hide_seed, "dataset_provenance": dataset_provenance},
             )
         except Exception as e:  # provenance must never kill a finished run
             run_md = {"error": f"{type(e).__name__}: {e}"}
