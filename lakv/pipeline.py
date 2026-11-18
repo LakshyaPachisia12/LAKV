@@ -23,7 +23,7 @@ from lakv.layer_selector import LayerSelector, SelectionMask
 from lakv.kv_compressor import KVCompressor, KVMessage
 from lakv.offset_corrector import OffsetCorrector
 from lakv.anchor_table import AnchorTable, question_key as make_key, compute_base_kv
-from lakv.cache_corruption import hidden_mask_from_log
+from lakv.cache_corruption import hidden_mask_from_log, hidden_mask_from_ranges
 from lakv.causal_audit import KVAuditPool, apply_causal_audit
 from lakv.confidence import ConfidenceStats, stats_from_logits
 
@@ -263,6 +263,12 @@ class PipelineConfig:
     # from attention (mask=0) in the receiving hops. See
     # lakv/cache_corruption.py::hidden_mask_from_log. Config suffix "_maskzero".
     mask_modified_positions: bool = False
+    # Opt-in (default None = off, every existing path untouched): hide a region of the relayed
+    # chain cache from attention in the receiving hops. "reasoning" hides all generated tokens
+    # (-> passage region + system/question tokens stay visible); "passages" hides the passage
+    # tokens of the hop-0 prompt. Hidden setting (receiver_sees_passages=False) only.
+    # See lakv/regions.py. Config names A_nopass_region_*_only (evaluator.REGION_CONFIGS).
+    mask_region: Optional[str] = None
     # Process-level confidence signature (2026-09-18 research audit,
     # generalizing the RLM+KV behavioral signature -- see
     # lakv/confidence.py's module docstring for the full motivation).
@@ -512,6 +518,20 @@ class LAKVPipeline:
                         hidden_now = hidden_mask_from_log(
                             audit_log, carried=hidden_carry, device=self.device)
                         self.last_run_audit_logs[-1]["mask_n_hidden"] = int(hidden_now.sum().item())
+
+                if self.config.mask_region is not None:
+                    from lakv.regions import region_ranges
+                    if hidden_now is not None or self.config.causal_audit_mode != "none":
+                        raise ValueError("mask_region cannot be combined with an audit mode or _maskzero")
+                    if self.config.receiver_sees_passages:
+                        raise ValueError("mask_region is defined for the hidden setting (receiver_sees_passages=False) only")
+                    _clen = int(decompressed[0][0].shape[2])
+                    _rng = region_ranges(self.config.mask_region, self._run_trace, agent_idx, self.tokenizer, _clen)
+                    hidden_now = hidden_mask_from_ranges(_clen, _rng, device=self.device)
+                    self.last_run_audit_logs.append({
+                        "agent_idx": agent_idx, "mode": "region", "region_masked": self.config.mask_region,
+                        "cache_len": _clen, "ranges": [list(map(int, r)) for r in _rng],
+                        "mask_n_hidden": int(hidden_now.sum().item())})
 
                 injected_kv_tuple = decompressed
             elif kv_message is not None:

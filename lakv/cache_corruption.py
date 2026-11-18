@@ -201,3 +201,15 @@ def hidden_mask_from_log(log: dict, carried: Optional[torch.Tensor] = None, devi
         out[int(log["modified_start"]):int(log["modified_end"])] = True
     assert int(out.shape[0]) == after
     return out.to(device) if device is not None else out
+
+
+def hidden_mask_from_ranges(length: int, ranges, device=None) -> torch.Tensor:
+    """Boolean [length] mask, True inside any half-open [start, end) range (generic form of the
+    hidden-position mask; used by the region-ablation arms). Ranges must lie inside [0, length]."""
+    out = torch.zeros(int(length), dtype=torch.bool)
+    for a, b in ranges:
+        a, b = int(a), int(b)
+        if not (0 <= a <= b <= int(length)):
+            raise ValueError(f"range ({a}, {b}) outside cache length {length}")
+        out[a:b] = True
+    return out.to(device) if device is not None else out

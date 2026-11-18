@@ -319,6 +319,15 @@ LAYER_BAND_CONFIGS = {
     "A_nopass_layers_last3":  {"type": "third", "which": 2, "receiver_sees_passages": False},
 }
 
+# Region-ablation arms (hidden setting): relay the whole chain cache but hide one region from
+# attention via the existing hidden-position mask. "mask" = the region that is HIDDEN.
+# passage_region_only hides the reasoning (generated) tokens; reasoning_region_only hides the
+# passage tokens. Separate from ABLATION_CONFIGS so those keep their meaning.
+REGION_CONFIGS = {
+    "A_nopass_region_passages_only": {"base": "A_nopass", "mask": "reasoning"},
+    "A_nopass_region_reasoning_only": {"base": "A_nopass", "mask": "passages"},
+}
+
 
 def resolve_ablation_indices(spec: dict, n_layers: int) -> List[int]:
     """Kept-layer indices for an ABLATION_CONFIGS spec on an n_layers model.
@@ -548,6 +557,13 @@ class Evaluator:
             pipe = LAKVPipeline(self.model, self.tokenizer, preset, self.device,
                                 custom_layer_indices=indices)
             return pipe, "multi"
+
+        if cfg_name in REGION_CONFIGS:
+            rspec = REGION_CONFIGS[cfg_name]
+            pipe, ptype = self._build_pipeline(rspec["base"], profile_path, arch=arch, dataset=dataset,
+                                               greedy=greedy)
+            pipe.config.mask_region = rspec["mask"]
+            return pipe, ptype
 
         # Causal-audit / passage-ablation variant? See parse_audit_config_name.
         base_name, pool_key, audit_mode, nopass = parse_audit_config_name(cfg_name)

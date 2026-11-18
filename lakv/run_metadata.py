@@ -104,7 +104,9 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
     try:
         from lakv.evaluator import PRESETS, parse_audit_config_name
         from lakv.evaluator import ABLATION_CONFIGS, LAYER_BAND_CONFIGS
-        base, _pool, audit_mode, nopass = parse_audit_config_name(cfg_name)
+        from lakv.evaluator import REGION_CONFIGS
+        region_spec = REGION_CONFIGS.get(cfg_name)
+        base, _pool, audit_mode, nopass = parse_audit_config_name(region_spec["base"] if region_spec else cfg_name)
         d: Dict[str, Any] = {"base": base, "audit_mode": audit_mode, "receiver_sees_passages": not nopass}
         if base in ("single_agent", "single_agent_matched"):
             from lakv_v2.pipeline.single_agent import SingleAgentPipelineConfig as C
@@ -134,6 +136,8 @@ def decoding_for_config(cfg_name: str) -> Dict[str, Any]:
                      reconstruction_strategy=p.reconstruction_strategy, n_agents=p.n_agents,
                      generation_kwargs=dict(p.generation_kwargs),
                      repetition_penalty=p.generation_kwargs.get("repetition_penalty"))
+        if region_spec:
+            d["region_spec"] = region_spec
         return d
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
